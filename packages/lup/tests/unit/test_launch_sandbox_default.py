@@ -19,7 +19,6 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-import typer
 from typer.testing import CliRunner
 
 import lup.devtools.harness.launch as launch
@@ -31,6 +30,7 @@ import lup.providers.codex.launch as codex_launch
 from lup.devtools.harness.app import create_harness_app
 from lup.devtools.harness.composition import NativeTargets
 from lup.devtools.harness.launch import launch_claude, launch_codex
+from lup.diagnostics import Refusal
 from lup.harness.codescan.common import RuleSelection
 from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import ContainerClient
@@ -184,11 +184,10 @@ def test_an_explicit_outer_with_no_engine_is_refused_rather_than_degraded(
     monkeypatch.setattr(contained, "detected_client", lambda: None)
     monkeypatch.setattr(launch_session, "contained_argv", contained.contained_argv)
 
-    with pytest.raises(
-        typer.BadParameter, match="Install one to launch in a container"
-    ):
+    with pytest.raises(Refusal) as refused:
         opened(seen, runtime, sandbox=LaunchSandbox.OUTER)
 
+    assert "Install one to launch in a container" in refused.value.said["why"]
     assert "runs under the inner sandbox" not in capsys.readouterr().out
     assert "cli" not in seen.caught.events
 

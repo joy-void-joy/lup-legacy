@@ -65,6 +65,7 @@ from typing import TypedDict
 
 from pydantic import BaseModel
 
+from lup.policy.kernel.diagnostic import Step
 from lup.policy.kernel.effects import EffectRow, external_effects
 from lup.policy.kernel.semantics import EffectClass, ReviewerRequirement
 from lup.policy.kernel.decision import (
@@ -300,7 +301,7 @@ class RunnerTargetRule(BaseModel, frozen=True):
     reason: str = ""
     """What the target does that stopped it, as the approver of one reads it."""
 
-    recovery: str = ""
+    recovery: list[Step] = []
     """What the agent is told to do instead, which for a refusal is its value.
 
     A refused target usually has a right way to reach the same end — print
@@ -361,7 +362,7 @@ class ShellOperationRule(BaseModel, frozen=True):
     reviewer: ReviewerRequirement = ROOT_REVIEWER
     effect_class: EffectClass | None = None
     reason: str = ""
-    recovery: str = ""
+    recovery: list[Step] = []
 
     def declared(self) -> DeclaredAxes:
         """The axes this operation states itself, leaving the rest to inherit."""
@@ -441,7 +442,7 @@ class ShellSubcommandRule(BaseModel, frozen=True):
     reviewer: ReviewerRequirement = ROOT_REVIEWER
     effect_class: EffectClass | None = None
     reason: str = ""
-    recovery: str = ""
+    recovery: list[Step] = []
 
     def declared(self) -> DeclaredAxes:
         """The axes this subcommand states itself, leaving the rest to inherit."""
@@ -657,7 +658,7 @@ class ShellCommandRule(SelectableRule, frozen=True):
     effect_class: EffectClass | None = None
     reason: str = ""
     """What the command does that stopped it, as the approver of one reads it."""
-    recovery: str = ""
+    recovery: list[Step] = []
     """What the agent can do instead, where the command has a better route."""
 
     def selection_id(self) -> str:

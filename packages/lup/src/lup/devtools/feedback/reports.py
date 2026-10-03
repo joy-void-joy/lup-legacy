@@ -51,6 +51,7 @@ from lup.devtools.feedback.state import (
     save_analyzed,
 )
 from lup.devtools.utils import format_table, output_json
+from lup.diagnostics import refuse
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +159,7 @@ def costs(
 ) -> None:
     """Per-backend session cost/token rollup from session result JSONs.
 
-    The cross-backend counterpart of ``lup-devtools dev usageclaude`` (which is
+    The cross-backend counterpart of ``uv run lup-devtools dev usage claude`` (which is
     Anthropic-OAuth only): codex/openai sessions carry normalized token
     usage and rate-estimated cost in their session JSON, and this is
     where they aggregate.
@@ -272,8 +273,7 @@ def collect(
 ) -> None:
     """Collect feedback metrics from sessions."""
     if since and all_time:
-        typer.echo("Error: --since and --all-time are mutually exclusive", err=True)
-        raise typer.Exit(1)
+        refuse("are mutually exclusive", what="--since --all-time")
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

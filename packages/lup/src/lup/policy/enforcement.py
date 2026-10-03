@@ -19,7 +19,8 @@ from collections.abc import Callable
 
 from pydantic import BaseModel, Field
 
-from lup.policy.assets.host import unjudged_reason, unjudged_recovery
+from lup.policy.assets.host import ran_out, unjudged_reason
+from lup.policy.kernel.decision import unjudged_recovery
 from lup.policy.bundle import hook_deadline
 from lup.policy.hooks import (
     LupHookInput,
@@ -99,10 +100,11 @@ def policy_hook_output(
     decision = decision.placed(escapable, contained=contained)
     match decision.effect:
         case "allow":
-            return allow_hook(decision.sandbox, decision.reason)
+            return allow_hook(decision.sandbox, decision.as_kernel().headline())
         case "ask":
-            return ask_hook(decision.reason, decision.sandbox).model_copy(
-                update={"additional_context": decision.recovery}
+            kernel = decision.as_kernel()
+            return ask_hook(kernel.headline(), decision.sandbox).model_copy(
+                update={"additional_context": kernel.beside()}
             )
         case "deny" if decision.escalated and relay is not None:
             # The refusal stands — nothing here can approve what no human
@@ -133,7 +135,7 @@ def unjudged_output(error: BaseException | None) -> LupHookOutput:
         Decision(
             effect="deny",
             reason=unjudged_reason(error, True),
-            recovery=unjudged_recovery(error),
+            recovery=unjudged_recovery(ran_out(error)),
         )
     )
 

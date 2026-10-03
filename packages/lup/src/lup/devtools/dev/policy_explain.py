@@ -20,6 +20,7 @@ import typer
 from pydantic import AnyHttpUrl, BaseModel
 
 from lup.devtools.utils import output_json
+from lup.diagnostics import refuse
 from lup.harness.enforcement import semantic_policy_for
 from lup.harness.environment import Placement
 from lup.harness.models import HookSet
@@ -32,10 +33,13 @@ from lup.policy.assets.host import (
     delivers,
     measured_boundary,
     opened_deadline,
+    ran_out,
     text_at,
     unjudged_reason,
 )
 from lup.policy.bundle import hook_deadline
+from lup.policy.kernel.decision import unjudged_recovery
+from lup.policy.kernel.diagnostic import Diagnostic, diagnostic, rendered
 from lup.policy.kernel.lex import shell_write_targets, shell_written_targets
 from lup.policy.kernel.semantics import UnjudgedAmbient
 from lup.policy.models import EditBatch, EditChange, FetchUrl, ShellCommand
@@ -123,11 +127,14 @@ def session_placement(cwd: Path) -> PolicyPlacement:
 
 
 class PolicyReading(BaseModel, frozen=True):
-    """What one placement's answer is, and why."""
+    """What one placement's answer is, and why, as its readers get it."""
 
     placement: str
     effect: str
     reason: str
+    said: Diagnostic
+    """The verdict as the hook renders it: the line an approver reads, and the
+    ways through the agent reads beside it or under a refusal."""
 
 
 class PolicyVerdict(BaseModel, frozen=True):
@@ -264,11 +271,22 @@ def read_under(
             placement=placement.name,
             effect="deny",
             reason=unjudged_reason(overran, True),
+            said=diagnostic(
+                "refused",
+                unjudged_reason(overran, True),
+                steps=unjudged_recovery(ran_out(overran)),
+            ),
         )
     finally:
         closed_deadline(previous)
+    # Composed as the dispatcher composes it before it renders, so every
+    # reason and way through a compound command joined is shown, as it is sent.
+    placed = decision.as_kernel().placed(escapable=True)
     return PolicyReading(
-        placement=placement.name, effect=decision.effect, reason=decision.reason
+        placement=placement.name,
+        effect=decision.effect,
+        reason=decision.reason,
+        said=placed.diagnostic(),
     )
 
 
@@ -397,7 +415,7 @@ def explain(
             for subject in subjects
         ]
     except (OSError, ValueError) as error:
-        raise typer.BadParameter(str(error)) from error
+        refuse(str(error), code=2)
     if as_json:
         output_json([verdict.model_dump() for verdict in verdicts])
         if not any(verdict.allows_anywhere() for verdict in verdicts):
@@ -410,22 +428,18 @@ def explain(
             for reading in shown
         )
         typer.echo(f"{head}  {verdict.input}")
+        # The text the hook sends, line for line: the approver reads the
+        # first, and the agent the ways through after it.
         for reading in shown:
             label = "" if verdict.settled() else f"{reading.placement}: "
-            typer.echo(f"       {label}{reading.reason}")
+            for line in rendered(reading.said).splitlines():
+                typer.echo(f"       {label}{line}")
         for assumed in verdict.assumed:
             typer.echo(f"       assuming {assumed}")
         for unavailable in verdict.unavailable:
             typer.echo(f"       unavailable {unavailable}")
         for scope in verdict.declared:
             typer.echo(f"       scope {scope}")
-        # The declaration's answer, which a remembered approval overrides in
-        # a session: said only under a question, since it moves nothing else.
-        if any(reading.effect == "ask" for reading in shown):
-            typer.echo(
-                "       a matching approval may authorize an exact retry;"
-                " use the runtime's review channel"
-            )
     if not any(verdict.allows_anywhere() for verdict in verdicts):
         raise typer.Exit(1)
 

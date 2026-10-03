@@ -25,8 +25,9 @@ import sh
 import typer
 from pydantic import BaseModel, Field
 
-from lup.execution.git import Repository
 from lup.devtools.utils import decode_stderr, output_json
+from lup.diagnostics import refuse
+from lup.execution.git import Repository
 from lup.execution.shell import git
 
 Side = Literal["ours", "theirs"]
@@ -207,12 +208,11 @@ def union_file(path: Path, first: Side, dry_run: bool) -> UnionResult:
     try:
         versions = {name: staged(named, stage) for name, stage in STAGES.items()}
     except sh.ErrorReturnCode as error:
-        typer.echo(
-            f"{named}: not a conflict holding all three stages — a union needs "
-            f"the base and both sides ({decode_stderr(error)})",
-            err=True,
+        refuse(
+            "is not a conflict holding all three stages, and a union needs the "
+            f"base and both sides ({decode_stderr(error)})",
+            what=named,
         )
-        raise typer.Exit(1) from error
     result = union_merge(
         named, versions["base"], versions["ours"], versions["theirs"], first
     )

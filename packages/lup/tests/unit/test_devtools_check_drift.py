@@ -24,16 +24,18 @@ def test_a_stale_repository_artifact_is_named_where_no_tree_is() -> None:
     verdict = DriftVerdict(reports=[], stale_repository=[WORK_STATUS_STALE])
 
     assert verdict.summary == [
-        "harness drift: FAIL (0 tree(s), 1 repository artifact(s))",
+        "harness drift: FAIL — 1 stale repository artifact(s)",
         f"  {WORK_STATUS_STALE}",
     ]
 
 
-def test_the_count_says_which_half_is_behind() -> None:
-    # The number a reader acts on is not "how much is stale" but "which of the
-    # two regenerations do I owe" — `harness generate all` for a tree, the
-    # command each repository message names for the other.
+def test_the_row_says_which_half_is_behind() -> None:
+    # What a reader acts on is not "how much is stale" but "which of the two
+    # regenerations do I owe" — `harness generate all` for a tree, the command
+    # each repository message names for the other — so the regeneration is
+    # named only where a tree is behind.
     verdict = DriftVerdict(reports=[], stale_repository=[WORK_STATUS_STALE])
 
-    assert verdict.summary[0].endswith("(0 tree(s), 1 repository artifact(s))")
+    assert verdict.summary[0].endswith("— 1 stale repository artifact(s)")
+    assert not any("harness generate all" in line for line in verdict.summary)
     assert not verdict.clean

@@ -184,10 +184,12 @@ def test_a_spawn_named_from_its_description_tells_its_caller_once(
 
     notice = told(decide(finished(read, tmp_path)))
 
-    assert notice.startswith(declared.notice)
-    assert f"`{read}`" in notice
+    assert notice.startswith(
+        f"warning: `{read}` — went out under the name read from its description"
+    )
+    assert f"→ {declared.notice}" in notice
     assert "pass the name as `name`" in notice
-    assert declared.recovery in notice
+    assert all(through["says"] in notice for through in declared.recovery)
     assert told(decide(finished(read, tmp_path))) == ""
 
 
@@ -284,7 +286,7 @@ def test_a_description_with_nothing_to_read_is_refused_with_the_shape_of_a_name(
 
     assert declared.reason in reason
     assert "pass the name as `name`" in reason
-    assert declared.recovery in reason
+    assert all(through["says"] in reason for through in declared.recovery)
 
 
 def test_the_recovery_names_the_key_each_runtime_reads() -> None:
@@ -295,8 +297,8 @@ def test_the_recovery_names_the_key_each_runtime_reads() -> None:
     for field in ("name", "task_name"):
         refused = decide_spawn("", "", [], declared.erased(), field)
         assert refused.effect == "deny"
-        assert f"pass the name as `{field}`" in str(refused.recovery)
-        assert declared.recovery in str(refused.recovery)
+        assert f"pass the name as `{field}`" in refused.addressed()
+        assert all(through in refused.recovery for through in declared.recovery)
 
 
 def test_a_project_running_one_runtime_may_widen_what_a_name_carries() -> None:

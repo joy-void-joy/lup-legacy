@@ -73,8 +73,8 @@ def edit_payload(path: str, old: str, new: str, replace_all: bool) -> JsonObject
     [
         (None, "hook input is malformed"),
         ([], "hook input is malformed"),
-        ({}, "could not judge"),
-        ({"tool_name": "Bash", "tool_input": {}}, "could not judge"),
+        ({}, "refused unjudged"),
+        ({"tool_name": "Bash", "tool_input": {}}, "refused unjudged"),
     ],
 )
 def test_malformed_payload_fails_closed(payload: object, cause: str) -> None:
@@ -97,7 +97,7 @@ def test_a_replace_all_edit_is_judged_rather_than_refused() -> None:
     specific = decision["hookSpecificOutput"]
     assert isinstance(specific, dict)
     assert specific["permissionDecision"] == "allow"
-    assert specific["permissionDecisionReason"] == "small safe edit"
+    assert specific["permissionDecisionReason"] == "allowed: small safe edit"
 
 
 def test_a_preimage_that_is_absent_is_still_a_malformed_edit() -> None:
@@ -525,7 +525,7 @@ def test_a_command_that_could_destroy_work_is_snapshotted_first(
     effect, reason = snapshotting_effect("rm untracked.py", delete_repo)
 
     assert effect == "allow"
-    assert "captured and restorable" in reason
+    assert "captured and can be restored" in reason
     assert undo_refs(delete_repo) == ["lup undo: rm untracked.py"]
 
 
@@ -1136,7 +1136,7 @@ def test_a_loss_the_capture_holds_is_permitted_by_this_policy(
     specific = decide_from(payload, delete_repo)["hookSpecificOutput"]
     assert isinstance(specific, dict)
     assert specific["permissionDecision"] == "allow"
-    assert "captured and restorable" in str(specific["permissionDecisionReason"])
+    assert "captured and can be restored" in str(specific["permissionDecisionReason"])
     assert undo_refs(delete_repo) == ["lup undo: git reset --hard"]
 
 

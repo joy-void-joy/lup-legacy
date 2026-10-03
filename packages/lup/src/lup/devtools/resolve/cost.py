@@ -7,6 +7,7 @@ import typer
 
 from lup.devtools.supervisor.doors import resolve_state_root
 from lup.devtools.utils import format_table
+from lup.diagnostics import refuse
 from lup.resolver.cost import CostReport, read_cost
 from lup.resolver.status import compact_interval
 
@@ -93,7 +94,7 @@ def show_cost(
             resolve_state_root() / run_id, timedelta(seconds=gap_seconds)
         )
     except (FileNotFoundError, ValueError) as error:
-        raise typer.BadParameter(str(error)) from error
+        refuse(str(error), what=run_id, code=2)
     if as_json:
         typer.echo(report.model_dump_json(indent=2))
     else:

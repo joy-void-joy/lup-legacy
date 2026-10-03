@@ -18,6 +18,7 @@ from pathlib import PurePosixPath
 from lup.coordination.bare.store import COORDINATION_DIR, STORE_DIR, WINDOWS_DIR
 from lup.coordination.identity import MEMBER_ENV
 from lup.coordination.peers import USER_ADDRESS
+from lup.policy.kernel.diagnostic import Step, step
 from lup.policy.peer_policy import PeerPolicy
 from lup.policy.refused_paths import RefusedPaths
 
@@ -37,10 +38,12 @@ SEND_REDIRECT = (
 """Why a native send to a roster member was stopped, in one line."""
 
 SEND_RECOVERY = (
-    "Say it with `coordination_send` instead: it reaches the same peer, records"
-    " it where every session in this clone can read it, and reports whether the"
-    " peer's hook will put it in front of that peer's next tool call or it waits"
-    " until they next look."
+    step(
+        "say it with `coordination_send` instead: it reaches the same peer,"
+        " records it where every session in this clone can read it, and reports"
+        " whether the peer's hook puts it in front of that peer's next tool call"
+        " or it waits until they next look"
+    ),
 )
 """What the durable path buys, for a sender that would otherwise retry.
 
@@ -75,10 +78,15 @@ be is silent — the failure this exists for is finding out at merge time.
 """
 
 CLAIM_RECOVERY = (
-    "Writing under a held path is how two sessions overwrite each other between"
-    " merges. Ask the holder with `coordination_send` first, or go ahead if you"
-    " already know what they are doing; a claim expires with the session"
-    " holding it, so one still standing means that session has not stopped."
+    step(
+        "ask the holder with `coordination_send` first: writing under a held"
+        " path is how two sessions overwrite each other between merges"
+    ),
+    step(
+        "or go ahead if you already know what they are doing; a claim expires"
+        " with the session holding it, so one still standing means that session"
+        " has not stopped"
+    ),
 )
 """What the writing agent can do about the holder, beside the question."""
 
@@ -95,8 +103,8 @@ def peer_policy(
     send_reason: str = SEND_REDIRECT,
     listing_note: str = LISTING_NOTE,
     claim_reason: str = CLAIM_HELD,
-    send_recovery: str = SEND_RECOVERY,
-    claim_recovery: str = CLAIM_RECOVERY,
+    send_recovery: tuple[Step, ...] = SEND_RECOVERY,
+    claim_recovery: tuple[Step, ...] = CLAIM_RECOVERY,
     server: str = COORDINATION_SERVER,
     operator_reason: str = OPERATOR_HELD,
 ) -> PeerPolicy:
@@ -107,10 +115,10 @@ def peer_policy(
         windows_dir=WINDOWS_DIR,
         member_env=MEMBER_ENV,
         send_reason=send_reason,
-        send_recovery=send_recovery,
+        send_recovery=list(send_recovery),
         listing_note=listing_note,
         claim_reason=claim_reason,
-        claim_recovery=claim_recovery,
+        claim_recovery=list(claim_recovery),
         operator=USER_ADDRESS,
         operator_reason=operator_reason,
     )
@@ -123,9 +131,11 @@ WAKE_SOCKET_REACHED = (
 """Why a command connecting to a peer's wake socket was stopped, in one line."""
 
 WAKE_SOCKET_RECOVERY = (
-    "Reach the peer with `coordination_send` instead: it records the message"
-    " where every session in this clone can read it, and wakes the peer"
-    " through this socket itself."
+    step(
+        "reach the peer with `coordination_send` instead: it records the message"
+        " where every session in this clone can read it, and wakes the peer"
+        " through this socket itself"
+    ),
 )
 """What reaches the same peer and leaves the record a raw frame does not."""
 
@@ -133,7 +143,7 @@ WAKE_SOCKET_RECOVERY = (
 def wake_socket_refusal(
     directory: str,
     reason: str = WAKE_SOCKET_REACHED,
-    recovery: str = WAKE_SOCKET_RECOVERY,
+    recovery: tuple[Step, ...] = WAKE_SOCKET_RECOVERY,
 ) -> list[RefusedPaths]:
     """The directory sessions bind their wake sockets in, withheld from every command.
 
@@ -150,6 +160,6 @@ def wake_socket_refusal(
         RefusedPaths(
             paths=[str(PurePosixPath(directory) / "**")],
             reason=reason,
-            recovery=recovery,
+            recovery=list(recovery),
         )
     ]

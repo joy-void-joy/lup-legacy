@@ -133,9 +133,9 @@ def test_a_copy_into_a_sibling_worktree_answers_as_one_here_does() -> None:
     unread_copy = decided([])
 
     assert judged_copy.effect == "allow", judged_copy.reason
-    assert (unread_copy.effect, unread_copy.reason) == (
+    assert (unread_copy.effect, unread_copy.headline()) == (
         "ask",
-        f"copying over files requires approval — `{command}`",
+        f"asks: `cp {target}` — copying over files requires approval",
     )
 
 

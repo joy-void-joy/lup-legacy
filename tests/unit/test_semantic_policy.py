@@ -55,6 +55,7 @@ from lup.policy.bundle import (
     runtime_url_scope,
     shell_rule_rows_literal,
 )
+from lup.policy.kernel.diagnostic import step
 from lup.policy.kernel.effects import EffectEvidence, declare, deciding
 from lup.policy.kernel.decision import (
     DecisionEffect,
@@ -504,13 +505,13 @@ FIXTURE_REFUSED_TOOLS = [
     RefusedTool(
         tool="Quuxify",
         reason="quuxifying leaves the repository",
-        recovery="Quuxify it under tmp/ instead.",
+        recovery=[step("quuxify it under tmp/ instead")],
     ),
     RefusedTool(
         tool="Skill",
         specifier="quux-design",
         reason="designing quux leaves it too",
-        recovery="Design it under tmp/ instead.",
+        recovery=[step("design it under tmp/ instead")],
     ),
 ]
 """One whole-tool refusal and one narrowed to a single subject.
@@ -1262,7 +1263,7 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="cp tmp/ci.yml .github/workflows/ci.yml", effect="ask"),
     DecisionCase(input="echo x > .github/actions/setup/action.yml", effect="ask"),
     DecisionCase(input="cat uv.lock web/package.json", effect="allow"),
-    DecisionCase(input="echo x > docs/pyproject.toml.md", effect="allow"),
+    DecisionCase(input="echo x > notes/pyproject.toml.md", effect="allow"),
     # Named anywhere, a manifest is named by what it is, and one a scratch
     # root holds is a disposable copy no install trusts: a project scaffolded
     # under `tmp/` writes its own.
@@ -1273,7 +1274,7 @@ SHELL_POLICY_CASES = [
     DecisionCase(input="cd tmp/adopter && echo x > pyproject.toml", effect="allow"),
     DecisionCase(input="cp tmp/adopter/pyproject.toml pyproject.toml", effect="ask"),
     DecisionCase(input="uv lock", effect="allow"),
-    DecisionCase(input="echo x > docs/fresh-note.md", effect="allow"),
+    DecisionCase(input="echo x > notes/fresh-note.md", effect="allow"),
     # Housekeeping confined to the disposable roots is as safe as writing
     # them; any long flag, opaque word, or outside target keeps the verb's ask.
     DecisionCase(input="rm tmp/oneoff.py", effect="allow"),
@@ -2751,7 +2752,7 @@ EDIT_POLICY_CASES = [
         path=".git/info/exclude", before="a\n", after="a\nb\n", effect="allow"
     ),
     EditDecisionCase(
-        path="docs/refs/heads/main.md", before="a\n", after="b\n", effect="allow"
+        path="notes/refs/heads/main.md", before="a\n", after="b\n", effect="allow"
     ),
     # A protected root asks a self-reviewing identity too: the settings, the
     # launch registry and the policy are what confine that identity, and it
@@ -3404,7 +3405,7 @@ def test_a_tool_refusal_names_what_to_reach_for_instead() -> None:
     decision = policy.decide(refused_tool_call("Quuxify", {"content": "a page"}))
 
     assert "quuxifying leaves the repository" in decision.reason
-    assert "lup: escalate[decision]:" in decision.recovery
+    assert "lup: escalate[decision]:" in decision.addressed()
 
 
 def test_malformed_native_fetch_urls_become_conservative_unknown_tools() -> None:
@@ -3476,7 +3477,7 @@ def test_the_settled_sandbox_composition_rows_render_as_decided() -> None:
 
     assert asked.get("permissionDecision") == "ask"
     assert asked.get("permissionDecisionReason") == (
-        "needs a human — this will run on the host, outside the boundary"
+        "asks: needs a human — this will run on the host, outside the boundary"
     )
     assert asked.get("updatedInput") == {**shell, "dangerouslyDisableSandbox": True}
     assert (denied.get("permissionDecision"), denied.get("updatedInput")) == (
@@ -3888,14 +3889,16 @@ def test_loading_a_secrets_file_is_asked_about_as_one(tmp_path: Path) -> None:
         )
         for verdict in (canonical, generated):
             assert verdict.effect == "ask", command
-            assert "--env-file .env loads a secrets file" in verdict.reason
+            assert "--env-file .env" in verdict.subject
+            assert "loads a secrets file" in verdict.reason
             assert "external code" not in verdict.reason
     mixed = policy.decide(
         ShellCommand(command="uv run --with requests --env-file .env pytest")
     )
     assert mixed.effect == "ask"
-    assert "fetches and runs external code: --with requests" in mixed.reason
-    assert "--env-file .env loads a secrets file" in mixed.reason
+    assert "--with requests --env-file .env" in mixed.subject
+    assert "fetches what it names and runs its code" in mixed.reason
+    assert "loads a secrets file" in mixed.reason
 
 
 def test_a_scope_may_cover_every_port_on_one_host() -> None:
@@ -4225,7 +4228,7 @@ def test_a_declared_module_root_admits_every_module_beneath_it(
     assert decide("uv run python -m demos.one_shot").effect == "allow"
     refused = decide("uv run -m http.server")
     assert refused.effect == "deny"
-    assert "`http` is not a module root" in refused.reason
+    assert "`uv run -m http` — is not a module root" in refused.addressed()
     # `-c` keeps the refusal and the wording that is true only of it.
     assert "inline code" in decide("uv run -c 'print(1)'").reason
     # A target's own `-m` stays its own: pytest selects markers with it, and
@@ -4479,7 +4482,7 @@ def test_a_requester_cannot_start_the_operator_dashboard(runner: str) -> None:
         )
         assert decision.effect == "deny"
         assert "cannot mint operator credentials" in decision.reason
-        assert "outside the agent session" in decision.recovery
+        assert "outside the agent session" in decision.addressed()
 
 
 def test_shell_policy_checks_every_segment_and_deny_wins() -> None:
@@ -4649,7 +4652,7 @@ def test_a_variable_nobody_can_read_says_how_to_spell_it_readably(
     )
 
     assert decided.effect == "deny"
-    assert "script file" in decided.recovery
+    assert "script file" in decided.addressed()
 
 
 def test_write_targets_name_only_the_paths_a_command_opens_for_writing() -> None:
@@ -4711,7 +4714,7 @@ def test_sandbox_escape_reenters_the_lattice_the_boundary_was_answering() -> Non
         ShellCommand(command="cat x ;& rm -rf ~", unsandboxed=True)
     )
     assert unreadable.effect == "deny"
-    assert "escalate" in unreadable.recovery
+    assert "escalate" in unreadable.addressed()
 
 
 def test_an_operation_the_profile_cannot_place_is_refused_by_capability() -> None:
@@ -4801,7 +4804,7 @@ def test_non_interactive_denials_do_not_prescribe_escalation() -> None:
     )
     assert blocked.effect == "deny"
     assert "escalate" not in blocked.reason
-    assert "allowed vocabulary" in blocked.recovery
+    assert "the policy allows" in blocked.addressed()
 
 
 def test_a_reviewed_worker_is_told_the_route_it_actually_has() -> None:
@@ -4821,12 +4824,12 @@ def test_a_reviewed_worker_is_told_the_route_it_actually_has() -> None:
 
     assert relayed.effect == "ask"
     assert alone.effect == "deny"
-    assert "Reshape the command" in alone.recovery
+    assert "change the command to one the policy allows" in alone.addressed()
     assert (
         "request_allowance"
         in ShellPolicy(SHELL_RULES, interactive=False, relayed=True)
         .decide(ShellCommand(command="cat x ;& rm -rf ~"))
-        .recovery
+        .addressed()
     )
 
 
@@ -4863,7 +4866,7 @@ def test_edit_policy_checks_every_file_before_allowing_batch() -> None:
 
     denied = policy.decide(batch)
     assert denied.effect == "deny"
-    assert "(rule any-type)" in denied.reason and "docs/rules.md" in denied.recovery
+    assert "(rule any-type)" in denied.reason and "docs/rules.md" in denied.addressed()
     protected = EditBatch(
         changes=[EditChange(path=Path("pyproject.toml"), after="version = '2'")]
     )
@@ -5004,7 +5007,7 @@ def test_an_uncovered_violation_denies_whatever_else_the_edit_declares() -> None
     assert bare.effect == "deny"
     # The denial names what the ask was hiding, or it trades a silent approval
     # for a silent refusal.
-    assert "line 3" in genuine.reason
+    assert "line 3" in genuine.addressed()
     assert "any-type" in genuine.reason
     assert every_one_covered.effect == "ask"
 
@@ -5122,7 +5125,7 @@ def test_only_the_dead_half_of_a_directive_is_refused() -> None:
 
     assert decision.effect == "deny"
     assert "names dict-get" in decision.reason
-    assert "Drop dict-get from it" in decision.recovery
+    assert "drop dict-get from it" in decision.addressed()
 
 
 def test_a_rule_another_scanner_owns_is_not_refused_over() -> None:
@@ -5219,9 +5222,7 @@ def test_a_creation_names_the_suppressions_it_arrives_carrying() -> None:
         "line 3 silences any-type: value: Any = 1  # lup: ignore[any-type]"
         in decision.reason
     )
-    assert policy.decide(plain).reason == (
-        "src/new.py is written whole, 1 line at once"
-    )
+    assert policy.decide(plain).reason == ("is written whole, 1 line at once")
 
 
 def test_a_creation_names_only_the_suppressions_that_silence_something() -> None:
@@ -5756,7 +5757,7 @@ def test_a_denial_names_the_line_that_tripped_it() -> None:
     decision = policy.decide(batch)
 
     assert decision.effect == "deny"
-    assert decision.reason.startswith("line 2: ")
+    assert decision.subject == "line 2"
 
 
 def test_a_composed_session_enforces_the_rules_the_generated_tree_does() -> None:
@@ -5825,14 +5826,14 @@ def test_the_state_the_hooks_write_is_protected_whatever_a_project_declares(
 @pytest.mark.parametrize(
     ("path", "effect", "named"),
     [
-        ("pyproject.toml", "ask", "pyproject.toml: protected path"),
-        ("uv.lock", "ask", "uv.lock: protected path"),
-        ("packages/app/pyproject.toml", "ask", "matches **/pyproject.toml"),
-        ("web/package.json", "ask", "matches **/package.json"),
-        ("web/bun.lock", "ask", "matches **/bun.lock"),
-        ("crates/core/Cargo.lock", "ask", "matches **/Cargo.lock"),
-        (".github/workflows/ci.yml", "ask", "is under .github"),
-        ("docs/package.json.md", "allow", ""),
+        ("pyproject.toml", "ask", "protected path requires approval"),
+        ("uv.lock", "ask", "protected path requires approval"),
+        ("packages/app/pyproject.toml", "ask", "as it matches `**/pyproject.toml`"),
+        ("web/package.json", "ask", "as it matches `**/package.json`"),
+        ("web/bun.lock", "ask", "as it matches `**/bun.lock`"),
+        ("crates/core/Cargo.lock", "ask", "as it matches `**/Cargo.lock`"),
+        (".github/workflows/ci.yml", "ask", "as it is under `.github`"),
+        ("notes/package.json.md", "allow", ""),
         # A project scaffolded in scratch carries its own manifest, and a
         # scratch root is disposable by declaration: nothing installs from it.
         ("tmp/adopter/pyproject.toml", "allow", ""),
@@ -6547,7 +6548,7 @@ def test_a_note_whose_words_leave_the_file_is_still_a_deletion() -> None:
 
     assert decision.effect == "deny"
     assert "removes inline review feedback" in decision.reason
-    assert "dev comments --withdraw" in decision.recovery
+    assert "dev comments --withdraw" in decision.addressed()
 
 
 def test_moving_one_note_does_not_cover_deleting_another() -> None:
@@ -6616,7 +6617,7 @@ def test_a_frozen_restore_is_allowed_for_every_package_manager_alike() -> None:
     bare = decide_command_rows(["bun", "install"], bun_rows)
     assert bare.effect == "ask"
     assert "free to rewrite the lockfile" in bare.reason
-    assert "`--frozen-lockfile`" in bare.recovery
+    assert "--frozen-lockfile" in bare.addressed()
     added = decide_command_rows(["bun", "add", "zod"], bun_rows)
     assert added.effect == "ask" and "adding a dependency" in added.reason
 

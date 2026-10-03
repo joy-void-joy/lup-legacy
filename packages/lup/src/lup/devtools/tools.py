@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from lup.devtools.subapps import subapp
 from lup.devtools.utils import JSON_OPT, format_table, output_json
+from lup.diagnostics import refuse
 from lup.mcp.serve import ServedSessions, serve_command
 from lup.observability.metrics import (
     MetricsSnapshot,
@@ -152,8 +153,7 @@ def metrics_command(
     try:
         moment = datetime.fromisoformat(since).astimezone() if since else None
     except ValueError as problem:
-        typer.echo(f"--since {since!r} is not an ISO 8601 moment: {problem}", err=True)
-        raise typer.Exit(1) from problem
+        refuse(f"is not an ISO 8601 moment: {problem}", what=f"--since {since}")
     directories = (
         list(iter_session_dirs(session_id=session))
         if session is not None

@@ -1571,21 +1571,46 @@ Each rule id is shown in the deny message that cites it, and indexed in
 
 ## What a question says
 
-A verdict carries two texts for two readers, and the contract is that
-neither borrows from the other. The `reason` is read by whoever approves,
-who answers yes or no and can act on nothing else, so it is one sentence of
-at most two hundred characters that leads with the operands the decision
-turns on — the packages a `--with` installs, the path a write lands on, the
-host a fetch reaches — and states the one fact that stopped it. A compound
-command that trips several rules lists each survivor after the first, one
-per line, because the answer is one decision over the whole operation. The
-`recovery` is read by the agent, on a refusal or a question nobody can be
-shown, and says what to change; it is where every instruction goes, and an
-instruction found in a reason is a defect
-`packages/lup/tests/unit/test_reason_voice.py` refuses. Neither carries
-reference. A scope table, a rule index, the marker grammar: each is the same
-on every occurrence and read on none, so a question names where it is
-pulled from — `dev policy`, this page — rather than repeating it.
+Every message read at an event — a hook's refusal, a question put to an
+approver, a command's error, a gate's finding — takes one shape, declared in
+`lup.policy.kernel.diagnostic`:
+
+```
+refused: `pip` — changes packages outside this project's lockfile
+→ add the package through uv, which keeps the lockfile: `uv add <package>`
+→ or remove one: `uv remove <package>`
+```
+
+The first line is the verdict — `refused`, `asks`, `queued`, `allowed` or
+`deferred` from the policy, `error` or `warning` from a command — then the
+words of the call that decided it, in backticks, then why, in one clause.
+The words are the verdict's `subject`: the packages a `--with` installs, the
+paths a write or a delete touches as the policy placed them (`rm
+$PWD/tmp/x` where a `cd` left the directory unknown), the host a fetch
+reaches, never the whole command echoed back. That line is the whole of what an approver reads, who answers
+yes or no and can act on nothing else, so the `reason` it ends with carries
+no instruction: one found there is a defect
+`packages/lup/tests/unit/test_reason_voice.py` refuses. A compound command
+that trips several rules lists each survivor after the first on an `also:`
+line, because the answer is one decision over the whole operation.
+
+Each arrow line is one way through, read by the agent: under a refusal, or
+beside a question as context. A rule's own ways come first, then the route
+past the verdict, escalating or asking the relay; "change the command to one
+the policy allows" is offered only where the rule names no way of its own,
+since beside one it tells the agent nothing. A way through is data — what to do in plain
+words, and the command that does it as the words a shell runs — so a command
+is spelled one way wherever it is shown, `uv run lup-devtools …` for this
+project's own CLI. The `documented commands` row of `dev check` resolves
+every devtools command a way through names against the CLI that serves it,
+and `tests/unit/test_diagnostics_standard.py` refuses a command named in a
+way through's prose, and a command's error exit built from a bare string:
+a command ends on an error through `lup.diagnostics.refuse`.
+
+Neither carries reference. A scope table, a rule index, the marker grammar:
+each is the same on every occurrence and read on none, so a diagnostic names
+the page it is pulled from on a closing `see` line rather than repeating it.
+`dev policy` prints a verdict exactly as the hook sends it.
 
 ## Execution does not grant authority
 

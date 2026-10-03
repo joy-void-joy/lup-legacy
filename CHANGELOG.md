@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+### Every refusal, question and command error says what was caught, why, and the way through
+
+A hook's refusal, a question put to the person approving a call, a devtools
+command's error and a gate's finding now read alike:
+
+```
+refused: `pip` — changes packages outside this project's lockfile
+→ add the package through uv, which keeps the lockfile: `uv add <package>`
+→ or remove one: `uv remove <package>`
+```
+
+The first line is the verdict, the words of the call that decided it, and
+why; an approver reads only that line. Each `→` line is one way through, and
+a command it names is stored as the words that run it rather than written
+into the sentence, so it is always spelled the same — `uv run lup-devtools …`
+for this project's CLI — and `dev check` confirms each one exists.
+
+- A reason no longer repeats the whole command back (`… — \`rm -rf build\``);
+  the operative words lead instead (`asks: \`rm build\` — deleting files
+  requires approval`). A write or a delete names the paths it touches as the
+  policy placed them, so one a `cd` left unknown reads `$PWD/…`.
+- An ask the container or a capture settles says only why it is allowed,
+  instead of "requires approval … allowed without asking".
+- A parked review opens on `queued:`, not `refused:`.
+- `dev policy` prints a verdict exactly as the hook sends it, ways through
+  included.
+- "Change the command to one the policy allows" is offered only where a
+  refusal names no way of its own; the escalation line stays either way.
+- The generated pages under `docs/` and `AGENTS.md` are refused alike to an
+  edit tool and a shell `>`, naming `uv run lup-devtools harness generate all`;
+  an edit tool used to be allowed there while `>` asked for an unrelated reason.
+- Hints that named `dev coordination …` (no such group) or a bare
+  `lup-devtools …` (which the policy refuses) name the real command.
+- `run monitor` on a path that is not a directory is an error, where it used
+  to read as a run with nothing landed and wait forever.
+- A command ends on an error through `lup.diagnostics.refuse`, and
+  a test refuses an error exit built from a bare string.
+
+A project's own shell rules, refused tools and paths declare `recovery` as a
+list of `step(...)` from `lup.policy.kernel.diagnostic`; `dev migrate pending`
+names the change. The edit-evaluator protocol is version 2.
 ### A runtime's tree is spelled by its adapter, and read off it everywhere else
 
 `.claude` and `.codex` were spelled by hand outside their adapters: in the

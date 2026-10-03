@@ -17,7 +17,10 @@ from .decision import (
 )
 from .edit import path_rule_matches, protected_path_reason, yields_to_scratch
 from .programs import InterpreterGrammar, ReadOption, grammar, read_options
+from .diagnostic import step
 from .roles import (
+    GENERATED_ARTIFACT_RECOVERY,
+    GENERATED_ARTIFACT_REFUSAL,
     GENERATED_PLUGIN_RECOVERY,
     GENERATED_PLUGIN_REFUSAL,
     declared_scratch,
@@ -744,35 +747,45 @@ def unread_question(path: str) -> KernelDecision:
     """
     return KernelDecision(
         "ask",
-        f"{path} is replaced with content only running the command produces,"
-        " so nothing reads it before it lands",
+        "is replaced with content only running the command produces, so"
+        " nothing reads it before it lands",
+        subject=path,
         checkpoint=write_checkpoint("production"),
         purpose="quality_review",
         recovery=(
-            "write into a scratch path and move the result in once it has been"
-            " read, or carry the content in the command so the edit gates read"
-            " it as they would an Edit"
+            step(
+                "write into a scratch path, and move the result in once it has"
+                " been read"
+            ),
+            step(
+                "or carry the content in the command, so the edit gates read it"
+                " as they would an edit"
+            ),
         ),
     )
 
 
-def unlocated_write(named: str) -> KernelDecision:
+def unlocated_write(writer: str, path: str) -> KernelDecision:
     """The question a write to an ``unbounded`` path puts, however it is spelled.
 
-    ``named`` is the path as the reason opens on it: a redirection, a write
-    flag and a verb's destination are one unknown each. No capture discharges
+    ``writer`` names the spelling -- the redirection, the write -- and
+    ``path`` is the target as it was placed, the verdict's subject: a
+    redirection, a write flag and a verb's destination are one unknown each. No capture discharges
     it, because the snapshot holds this checkout and nothing says the path
     lands there; binding the path to a literal first is what lets the write be
     judged where it lands.
     """
     return KernelDecision(
         "ask",
-        f"{named} is a path that is only known when the command runs",
+        f"{writer} target is a path that is only known when the command runs",
+        subject=path,
         checkpoint=write_checkpoint("unbounded"),
         purpose="unrecovered_local_mutation",
         recovery=(
-            "bind the path to a literal value first, so the write is judged"
-            " where it lands"
+            step(
+                "bind the path to a literal value first, so the write is judged"
+                " where it lands"
+            ),
         ),
     )
 
@@ -1353,14 +1366,29 @@ def refuses_generated_plugin_target(
     the bytes go. Without the roles nothing is scratch, and every
     plugin-shaped path is refused.
     """
+    relative = repository_relative(word, checkout_root)
+    if (
+        spells_its_path(relative)
+        and path_role(relative, path_roles or []) == "generated"
+    ):
+        return KernelDecision(
+            "deny",
+            GENERATED_ARTIFACT_REFUSAL,
+            cause="deliberate",
+            recovery=GENERATED_ARTIFACT_RECOVERY,
+            subject=word,
+        )
     if not is_generated_plugin_target(word, plugin_roots or []):
         return None
-    if declared_scratch(
-        repository_relative(word, checkout_root), path_roles or []
-    ) and all(row["path"] != word for row in displaced or []):
+    if declared_scratch(relative, path_roles or []) and all(
+        row["path"] != word for row in displaced or []
+    ):
         return None
     return KernelDecision(
-        "deny", GENERATED_PLUGIN_REFUSAL, recovery=GENERATED_PLUGIN_RECOVERY
+        "deny",
+        GENERATED_PLUGIN_REFUSAL,
+        recovery=GENERATED_PLUGIN_RECOVERY,
+        subject=word,
     )
 
 
@@ -1516,6 +1544,7 @@ def protected_write_target(
                 "ask",
                 protected_path_reason(word, matched),
                 recovery=matched["recovery"],
+                subject=word,
             )
     return None
 
@@ -1738,9 +1767,11 @@ def protected_deletion(
         reason = (
             protected_path_reason(operand, matched)
             if path_rule_matches(spelled, True, matched)
-            else f"{operand} would delete {matched['value']}: {matched['reason']}"
+            else f"would delete `{matched['value']}`: {matched['reason']}"
         )
-        return KernelDecision("ask", reason, recovery=matched["recovery"])
+        return KernelDecision(
+            "ask", reason, recovery=matched["recovery"], subject=operand
+        )
     return None
 
 
@@ -1803,6 +1834,7 @@ def protected_placement(
                 "ask",
                 protected_path_reason(posixpath.normpath(word), matched),
                 recovery=matched["recovery"],
+                subject=posixpath.normpath(word),
             )
     lands = PATH_VERBS[executable]["lands"] if executable in PATH_VERBS else "each"
     operands = path_verb_operands(words)["operands"] if lands != "each" else []
@@ -1836,9 +1868,11 @@ def protected_placement(
         reason = (
             protected_path_reason(shown, matched)
             if path_rule_matches(spelled, True, matched)
-            else f"{shown} would {verb} {matched['value']}: {matched['reason']}"
+            else f"would {verb} `{matched['value']}`: {matched['reason']}"
         )
-        return KernelDecision("ask", reason, recovery=matched["recovery"])
+        return KernelDecision(
+            "ask", reason, recovery=matched["recovery"], subject=shown
+        )
     return None
 
 
@@ -2810,7 +2844,8 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
                 return KernelDecision(
                     "deny",
                     "a sed script file is run without anything reading it",
-                    recovery="Inline the script.",
+                    recovery=(step("write the script into the command itself"),),
+                    subject="sed --file",
                 )
             if name == "--sandbox" and not separator:
                 sandbox = True
@@ -2839,7 +2874,8 @@ def sed_invocation(words: list[str]) -> SedInvocation | KernelDecision:
                 return KernelDecision(
                     "deny",
                     "a sed script file is run without anything reading it",
-                    recovery="Inline the script.",
+                    recovery=(step("write the script into the command itself"),),
+                    subject="sed -f",
                 )
             if flags.endswith("e"):
                 script_expected = True

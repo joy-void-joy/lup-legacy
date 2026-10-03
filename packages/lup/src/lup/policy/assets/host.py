@@ -113,7 +113,7 @@ def execution_write_refusal(path_text: str, root: Path | None) -> str:
     if not matches or not min(
         allowed for depth, allowed in matches if depth == max(row[0] for row in matches)
     ):
-        return f"{path} is outside this launch's writable boundary"
+        return "it is outside this launch's writable boundary"
     return ""
 
 
@@ -530,30 +530,23 @@ def unjudged_reason(error: BaseException | None, read: bool) -> str:
     has passed), a payload that is not one (``read`` false), and a failure
     judging a payload that was.
     """
-    if error is None or deadline_passed():
+    if ran_out(error):
         return "the policy could not judge this call in time, so it is refused unjudged"
     if not read:
         return f"the hook input is malformed, so the call is refused unjudged: {error}"
-    return f"Lup could not judge this call ({type(error).__name__}: {error})"
-
-
-def unjudged_recovery(error: BaseException | None) -> str:
-    """What the agent does about a call that went unjudged, given what failed.
-
-    Only time passes on its own, so only a judgement that ran out of it is
-    worth the same call again. Either way the refusal is the policy's defect
-    rather than the call's once it repeats, and this says where that goes.
-    """
-    report = (
-        "report it with `uv run lup-devtools dev report-friction --component"
-        " lup/policy`, naming the call and this refusal."
+    return (
+        "the policy failed on this call, so it is refused unjudged"
+        f" (`{type(error).__name__}: {error}`)"
     )
-    if error is None or deadline_passed():
-        return (
-            "Retry the same call once: a slow moment -- load on the machine, a lock"
-            " another session held -- passes.\nRefused again, " + report
-        )
-    return "If it repeats, " + report
+
+
+def ran_out(error: BaseException | None) -> bool:
+    """Whether a call went unjudged for want of time rather than for a failure.
+
+    ``error`` None is a judgement still running when the hook had to answer;
+    anything failing once the deadline has passed failed for the same reason.
+    """
+    return error is None or deadline_passed()
 
 
 def hook_seconds_left(ceiling: float) -> float:
@@ -653,7 +646,7 @@ def routed_edit_response(
         return None
     row = json.loads(binding)
     request = {
-        "protocol": 1,
+        "protocol": 2,
         "path": path,
         "before": before,
         "after": after,
