@@ -19,7 +19,7 @@ function ReviewBar({ d, state }: { d: Dashboard; state: PageState }) {
   const { row, detail } = entry;
   const asker = d.asker(row, state);
   const parent = d.parentName(row, state);
-  const summary = detail === null ? "" : judgedSummary(judgedOf(detail, row), row, state.narrow ? "the context (ⓘ) lists them" : "gd walks them");
+  const summary = detail === null ? "" : judgedSummary(judgedOf(detail, row), row, state.narrow ? "the context (ⓘ) lists them" : `${d.keymap.spoken("judged")} walks them`);
   const standingNow = asker === undefined ? null : standing(asker, state.now);
   // On a phone the top bar already says the head, the asker and the id: the bar keeps what the policy asks about, folded to two lines.
   if (state.narrow) {
@@ -206,7 +206,9 @@ export function Editor({ d, state }: { d: Dashboard; state: PageState }) {
     const item = judged.find((each) => each.kind === "file" && each.fi === fi);
     return item?.rule || entry?.row.rule || "";
   };
-  const longest = detail === null ? 9 : Math.max(9, ...detail.files.map((file) => Math.max(lineCount(file.before), lineCount(file.after))));
+  const checkout = entry === null ? "" : entry.row.target || (d.roots(state).find((root) => root.id === entry.row.root_id)?.path ?? "");
+  const peeked = [state.peeks[0]?.text ?? null, state.peeks[1]?.text ?? null];
+  const longest = detail === null ? 9 : Math.max(9, ...detail.files.map((file) => Math.max(lineCount(file.before), lineCount(file.after))), ...peeked.map(lineCount));
   const numberWidth = `${Math.max(3, String(longest).length + 1)}ch`;
   const panes: (0 | 1)[] = splitting === "" ? [0] : [0, 1];
   const loading = kind === "review" && detail === null;
@@ -222,7 +224,7 @@ export function Editor({ d, state }: { d: Dashboard; state: PageState }) {
             editing={state.editing} pattern={state.pane === pane ? pattern : null}
             span={state.visual?.pane === pane ? span : null} files={detail?.files ?? []} target={entry?.row.target ?? ""} live={state.live}
             touch={state.narrow} judgedRule={judgedRule} title={splitting === "" ? "" : titles[state.editor[pane].view] ?? ""} numberWidth={numberWidth}
-            unclamped={state.unclamped} now={state.now} />)}
+            unclamped={state.unclamped} now={state.now} review={entry?.row.key ?? ""} checkout={checkout} peek={d.peek(pane, state)} semantic={state.semantic} />)}
     </div>
     {kind === "review" ? <NoteBox d={d} state={state} /> : <MessageBox d={d} state={state} />}
   </section>;

@@ -52,6 +52,7 @@ from lup.devtools.review.thread import ReviewThread
 from lup.policy.relay import PersistentQuestion, QuestionRelay, RelayReading
 from lup.policy.review import ReviewedFile
 from lup.providers.user_config import UserConfigFile
+from lup.tools.lsp.pool import CodeHover, CodeLocations, CodeTokens, ServerPool
 from lup.web import serve as web_serve
 from lup.web.serve import page_app
 from tests.unit.native import bound
@@ -1306,6 +1307,182 @@ def test_a_queue_that_stays_unreadable_says_why(
     queue = dashboard.ReviewQueue.read(tmp_path, relay(tmp_path), pause=0)
 
     assert [error.message for error in queue.errors] == ["the relay is not readable"]
+
+
+BASEDPYRIGHT_ABSENT = not (
+    Path(sys.executable).parent / "basedpyright-langserver"
+).is_file()
+
+
+def proposed_python(root: Path) -> tuple[Path, Path]:
+    """Park a review proposing a new `sample.py` that imports `models.py` beside it; both paths."""
+    (root / "pyproject.toml").write_text(
+        '[project]\nname = "fixture"\n', encoding="utf-8"
+    )
+    models = root / "models.py"
+    models.write_text(
+        'class Record:\n    """A record the proposal reads."""\n\n    name: str = ""\n',
+        encoding="utf-8",
+    )
+    sample = root / "sample.py"
+    before = "x: int = 1\n"
+    sample.write_text(before, encoding="utf-8")
+    after = "from models import Record\n\n\ndef named(value: Record) -> str:\n    return value.name\n"
+    entry = parked(root)
+    operation = entry.operation.model_copy(
+        update={
+            "tool": "Write",
+            "payload": {"file_path": str(sample), "content": after},
+        }
+    )
+    relay(root).record(
+        bound(
+            entry.model_copy(
+                update={
+                    "operation": operation,
+                    "execution_payload": None,
+                    "preconditions": {sample: before},
+                }
+            )
+        )
+    )
+    return sample, models
+
+
+def client_with(root: Path, pool: ServerPool) -> AsyncClient:
+    return AsyncClient(
+        transport=ASGITransport(
+            app=dashboard.dashboard_app(BASE_URL, TOKEN, (root,), code=pool)
+        ),
+        base_url=BASE_URL,
+    )
+
+
+async def test_code_questions_need_the_capability_and_the_page_s_own_origin(
+    tmp_path: Path,
+) -> None:
+    source = {"path": str(tmp_path / "a.py"), "checkout": str(tmp_path)}
+    question = {"source": source, "line": 1, "column": 0}
+    async with client_with(tmp_path, ServerPool([])) as http:
+        anonymous = await http.post(
+            "/api/code/hover", json=question, headers={"Origin": BASE_URL}
+        )
+        elsewhere = await http.post(
+            "/api/code/hover",
+            json=question,
+            headers={**AUTHORIZATION, "Origin": "http://evil.test"},
+        )
+
+    assert anonymous.status_code == 401
+    assert elsewhere.status_code == 403
+
+
+async def test_a_file_outside_every_served_checkout_is_never_read(
+    tmp_path: Path,
+) -> None:
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    secret = tmp_path / "secret.py"
+    secret.write_text("TOKEN = 'kept'\n", encoding="utf-8")
+    async with client_with(checkout, ServerPool([])) as http:
+        outside = await http.post(
+            "/api/code/text",
+            json={"path": str(secret), "checkout": str(checkout)},
+            headers=ANSWER_HEADERS,
+        )
+        climbing = await http.post(
+            "/api/code/text",
+            json={
+                "path": str(checkout / ".." / "secret.py"),
+                "checkout": str(checkout),
+            },
+            headers=ANSWER_HEADERS,
+        )
+        unserved = await http.post(
+            "/api/code/text",
+            json={"path": str(secret), "checkout": str(tmp_path)},
+            headers=ANSWER_HEADERS,
+        )
+
+    assert outside.status_code == 403
+    assert climbing.status_code == 403
+    assert "pointed at" in climbing.json()["detail"]
+    assert unserved.status_code == 404
+
+
+async def test_a_language_no_server_reads_is_answered_unserved_with_why(
+    tmp_path: Path,
+) -> None:
+    notes = tmp_path / "notes.txt"
+    notes.write_text("plain words\n", encoding="utf-8")
+    source = {"path": str(notes), "checkout": str(tmp_path)}
+    async with client_with(tmp_path, ServerPool()) as http:
+        response = await http.post(
+            "/api/code/hover",
+            json={"source": source, "line": 1, "column": 0},
+            headers=ANSWER_HEADERS,
+        )
+
+    assert response.status_code == 200
+    assert CodeHover.model_validate(response.json()) == CodeHover(
+        served=False, why="no language server reads .txt files"
+    )
+
+
+@pytest.mark.skipif(
+    BASEDPYRIGHT_ABSENT, reason="basedpyright is not installed beside this interpreter"
+)
+async def test_a_proposed_after_document_is_hovered_followed_and_coloured_by_a_real_server(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", ".venv")
+    sample, models = proposed_python(tmp_path)
+    pool = ServerPool()
+    on_disk = {"path": str(models), "checkout": str(tmp_path)}
+    try:
+        async with client_with(tmp_path, pool) as http:
+            key = await only_key(http)
+            after = {"path": str(sample), "side": "after", "review": key}
+            at_record = {"source": after, "line": 4, "column": 17}
+            hovered = await http.post(
+                "/api/code/hover", json=at_record, headers=ANSWER_HEADERS
+            )
+            followed = await http.post(
+                "/api/code/definition", json=at_record, headers=ANSWER_HEADERS
+            )
+            used = await http.post(
+                "/api/code/references",
+                json={"source": on_disk, "line": 1, "column": 6},
+                headers=ANSWER_HEADERS,
+            )
+            coloured = await http.post(
+                "/api/code/tokens", json=after, headers=ANSWER_HEADERS
+            )
+            before = await http.post(
+                "/api/code/hover",
+                json={"source": {**after, "side": "before"}, "line": 1, "column": 0},
+                headers=ANSWER_HEADERS,
+            )
+            target = await http.post(
+                "/api/code/text", json=on_disk, headers=ANSWER_HEADERS
+            )
+    finally:
+        await pool.stop()
+
+    hover = CodeHover.model_validate(hovered.json())
+    assert hover.served and hover.server == "basedpyright"
+    assert "class Record" in hover.markdown
+    assert "A record the proposal reads." in hover.markdown
+    definition = CodeLocations.model_validate(followed.json())
+    assert [(Path(each.path), each.line) for each in definition.locations] == [
+        (models, 1)
+    ]
+    assert CodeLocations.model_validate(used.json()).served
+    tokens = CodeTokens.model_validate(coloured.json())
+    assert tokens.served and tokens.data and "class" in tokens.types
+    assert "(variable) x:" in CodeHover.model_validate(before.json()).markdown
+    assert target.json()["text"].startswith("class Record:")
+    assert sample.read_text(encoding="utf-8") == "x: int = 1\n"
 
 
 def test_a_review_parked_while_the_queue_is_read_reaches_all_of_it_or_none(
