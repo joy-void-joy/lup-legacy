@@ -27,6 +27,7 @@ from lup.harness.materialization import held_read_only
 from lup.harness.reconciliation import ReconciliationProposal
 from lup.launch.container import held_lease
 from lup.launch.declaration import LaunchSandbox, OuterContainer
+from lup.providers.claude.composition import claude_generation_recipe
 from lup.providers.claude.launch import claude_held_trees
 from lup.providers.codex.launch import codex_held_trees
 from lup.providers.codex.marketplace import MARKETPLACE_MANIFEST, CodexMarketplace
@@ -225,7 +226,7 @@ def test_generation_refuses_before_writing_anything_where_a_tree_is_held(
         "mounted_read_only",
         lambda path: path == plugin or plugin in path.parents,
     )
-    recipe = generation.claude_generation_recipe(
+    recipe = claude_generation_recipe(
         tmp_path, ProjectContent(harness=portable_harness())
     )
 

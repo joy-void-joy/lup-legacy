@@ -32,6 +32,7 @@ from lup.sandbox.observed import is_mount_point
 from lup.resolver.models import HeldLease
 from lup.resolver.state import live_lease_branches
 from lup.types import StringMap
+from lup.providers.harness import every_runtime
 from lup.workspace.paths import project_root
 from lup.execution.shell import git
 from lup.devtools.utils import (
@@ -567,7 +568,7 @@ def count_source_diff_lines(branch: str, integration: str) -> int:
             integration,
             "--",
             "src/",
-            ".claude/",
+            *(runtime.tree("tree_root") for runtime in every_runtime()),
             "tests/",
             _ok_code=[0, 1],
         )

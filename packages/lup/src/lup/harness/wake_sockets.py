@@ -3,7 +3,7 @@
 Claude Code gives every session a private Unix socket and takes a
 newline-delimited JSON frame written to it, which arrives there as a message
 and starts a turn. That socket is the session's **wake socket**: what
-:mod:`lup.coordination.wake` writes to when a peer is to look, and the only
+:mod:`lup.providers.claude.wake` writes to when a peer is to look, and the only
 thing between a nudge and an idle peer is whether the waking process can open
 the file. It holds no mail -- a message is the coordination store's, read
 whether or not anything woke its reader -- which is why it is not called a

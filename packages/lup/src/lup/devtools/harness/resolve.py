@@ -37,7 +37,8 @@ from lup.mcp import External
 from lup.policy.grants import LeaseGrants, allowance_grants_environment
 from lup.policy.identity import agent_identity_environment
 from lup.harness.environment import inherited, non_interactive_environment
-from lup.harness.ownership import GeneratedArtifacts, generated_artifacts
+from lup.harness.ownership import GeneratedArtifacts
+from lup.providers.harness import runtime_generated
 from lup.execution.git import Repository
 from lup.execution.process import LocalProcessLauncher, ProcessLauncher
 from lup.sandbox.checked import PointerCheckedLauncher
@@ -115,6 +116,7 @@ from lup.launch.container import (
 )
 from lup.harness.generate import NativeHarnessComposition
 from lup.devtools.sync import accessible_roots, granted_devices
+from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.devtools.supervisor.page import SUPERVISOR_PORT
@@ -264,7 +266,7 @@ def scanned_intake(root: Path) -> ResolverIntake:
     decides which of those a generator owns. Both readers pass the project
     root, so the two halves agree for either of them.
     """
-    return resolver_intake(scan_tracked(find_feedback), generated_artifacts(root))
+    return resolver_intake(scan_tracked(find_feedback), runtime_generated(root))
 
 
 def preview_intake() -> None:
@@ -293,7 +295,7 @@ def lease_plugin_dir(root: Path, plugin_name: str) -> Path:
     is whichever tree registered that name last, and a worker is refused an
     edit by a policy kernel generated from another commit.
     """
-    return root / ".claude" / "plugins" / plugin_name
+    return root / ClaudeSpellings().plugin(plugin_name, "root", None)
 
 
 class FeatureWorktreePreparer(WorktreePreparer):

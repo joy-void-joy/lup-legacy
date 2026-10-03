@@ -481,6 +481,11 @@ MIGRATION_STEPS = (
 )
 """Steps enough to pass the size gate a production file would meet."""
 
+FIXTURE_PLUGIN_ROOTS = [
+    root.as_posix() for root in declared_hook_set().generated_plugin_roots
+]
+"""Where every runtime renders its plugin trees, as this repository's hook set says."""
+
 FIXTURE_PATH_RULES = declared_path_rules(declared_hook_set())
 """The protected-path table this repository declares.
 
@@ -3187,6 +3192,7 @@ def test_assembled_kernel_runs_without_site_packages(tmp_path: Path) -> None:
             runner_targets=FIXTURE_RUNNER_TARGETS,
             refused_paths=FIXTURE_REFUSED_PATHS,
             secret_variables=FIXTURE_SECRET_VARIABLES,
+            generated_plugin_roots=FIXTURE_PLUGIN_ROOTS,
             sandbox_excluded_commands=FIXTURE_EXCLUDED_COMMANDS,
             auto_escape_prefixes=[],
             diagnostics_command=[],
@@ -3223,7 +3229,8 @@ def test_assembled_kernel_runs_without_site_packages(tmp_path: Path) -> None:
         "from kernel.shell import decide_shell\n"
         "from policy_data import (\n"
         "    ALLOWED_FETCH_SCOPES, ANTI_PATTERN_ROWS, DENIED_FETCH_SCOPES,\n"
-        "    EDIT_RULES, MAXIMUM_ADDED_LINES, PATH_ROLES, PATH_RULES,\n"
+        "    EDIT_RULES, GENERATED_PLUGIN_ROOTS, MAXIMUM_ADDED_LINES,\n"
+        "    PATH_ROLES, PATH_RULES,\n"
         "    IMPORT_BOUNDARIES,\n"
         "    REFUSED_PATHS, RUNNER_TARGET_TABLES, RUNNER_TARGETS,\n"
         "    SANDBOX_EXCLUDED_COMMANDS, SECRET_VARIABLES, SHELL_RULES,\n"
@@ -3247,6 +3254,7 @@ def test_assembled_kernel_runs_without_site_packages(tmp_path: Path) -> None:
         "        target_tables=RUNNER_TARGET_TABLES,\n"
         "        refused_paths=REFUSED_PATHS,\n"
         "        secret_variables=SECRET_VARIABLES,\n"
+        "        plugin_roots=GENERATED_PLUGIN_ROOTS,\n"
         "    )\n"
         "    assert result.effect == case['effect'], case\n"
         "for case in fixtures['fetch']:\n"
@@ -3266,6 +3274,7 @@ def test_assembled_kernel_runs_without_site_packages(tmp_path: Path) -> None:
         "        python_source=suffix in ('.py', '.pyi'),\n"
         "        suffix=suffix, edit_rules=EDIT_RULES,\n"
         "        import_boundaries=IMPORT_BOUNDARIES,\n"
+        "        plugin_roots=GENERATED_PLUGIN_ROOTS,\n"
         "    )\n"
         "    assert decision.effect == case['effect'], case\n",
         encoding="utf-8",
@@ -4573,6 +4582,7 @@ def test_shell_policy_preserves_golden_compound_and_wrapper_outcomes(
                 runner_targets=FIXTURE_RUNNER_TARGETS,
                 refused_paths=FIXTURE_REFUSED_PATHS,
                 secret_variables=FIXTURE_SECRET_VARIABLES,
+                plugin_roots=FIXTURE_PLUGIN_ROOTS,
             )
         return hosts[shape]
 
@@ -4605,6 +4615,7 @@ def test_shell_policy_preserves_golden_compound_and_wrapper_outcomes(
             target_tables=policy.target_tables,
             refused_paths=policy.refused_paths,
             secret_variables=policy.secret_variables,
+            plugin_roots=FIXTURE_PLUGIN_ROOTS,
         ).effect
         assert bundled_effect == case.effect, case.input
 
@@ -5627,6 +5638,7 @@ def test_the_generated_plugin_refusal_stops_at_this_checkouts_scratch(
             path_roles=FIXTURE_PATH_ROLES,
             foreign=foreign,
             checkout_path=checkout,
+            plugin_roots=FIXTURE_PLUGIN_ROOTS,
         )
         for judge in (decide_edit, bundled.decide_edit)
     ]
@@ -5668,9 +5680,14 @@ def test_a_scratch_spelling_a_link_moves_keeps_the_plugin_refusal(
             path_roles=FIXTURE_PATH_ROLES,
             existing_targets=[],
             displaced_targets=moved,
+            plugin_roots=FIXTURE_PLUGIN_ROOTS,
         )
         unlinked = judge(
-            command, rows, path_roles=FIXTURE_PATH_ROLES, existing_targets=[]
+            command,
+            rows,
+            path_roles=FIXTURE_PATH_ROLES,
+            existing_targets=[],
+            plugin_roots=FIXTURE_PLUGIN_ROOTS,
         )
         assert (linked.effect, unlinked.effect) == ("deny", "allow")
 
@@ -6475,18 +6492,19 @@ def test_editing_a_compiled_plugin_tree_is_refused_by_the_file_gate_too() -> Non
     Both runtimes' trees, because which tree a write lands in is the same
     question whichever one is running.
     """
-    for tree in (".claude", ".codex"):
+    for root in FIXTURE_PLUGIN_ROOTS:
         decision = decide_edit(
-            f"{tree}/plugins/lup/hooks/runtime/policy_data.py",
+            f"{root}/lup/hooks/runtime/policy_data.py",
             "SHELL_RULES = []",
             "SHELL_RULES = [1]",
             path_exists=True,
             path_rules=[],
             antipattern_rows=[],
             python_source=True,
+            plugin_roots=FIXTURE_PLUGIN_ROOTS,
         )
-        assert decision.effect == "deny", tree
-        assert "compiled from source" in decision.reason, tree
+        assert decision.effect == "deny", root
+        assert "compiled from source" in decision.reason, root
 
 
 def test_a_note_whose_words_stay_in_the_file_was_moved_rather_than_deleted() -> None:

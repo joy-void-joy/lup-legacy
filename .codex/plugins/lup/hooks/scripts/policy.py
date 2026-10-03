@@ -112,6 +112,7 @@ from kernel.withheld import (
 )
 from policy_data import (
     ACCEPTANCE_GUARD,
+    GENERATED_PLUGIN_ROOTS,
     ALLOWANCE_GRANTS_ENV,
     ALLOWED_FETCH_SCOPES,
     ANTI_PATTERN_ROWS,
@@ -4843,6 +4844,7 @@ def bash_decision(
         trusted_script_roots=managed_script_roots(managed_root),
         path_roles=[*PATH_ROLES, *sibling_scratch_rows(siblings, PATH_ROLES)],
         path_rules=PATH_RULES,
+        plugin_roots=GENERATED_PLUGIN_ROOTS,
         existing_targets=existing_write_targets(
             [*shell_write_targets(command), *acted_on, *flagged], cwd
         ),
@@ -5756,6 +5758,7 @@ def local_edit_decision(
         path_rules=PATH_RULES,
         antipattern_rows=rows,
         path_roles=PATH_ROLES,
+        plugin_roots=GENERATED_PLUGIN_ROOTS,
         maximum_added_lines=MAXIMUM_ADDED_LINES,
         autonomous=autonomous,
         allowances=(

@@ -26,12 +26,13 @@ import typer
 from pydantic import ConfigDict, TypeAdapter, with_config
 
 from lup.diagnostics import refuse
+from lup.devtools.harness.settings import MARKETPLACE_SOURCE
 from lup.harness.models import Plugin
+from lup.providers.harness import AdapterName, spellings_of
 from lup.workspace.paths import find_project_root
 
-# lup: ignore[constant-declaration] — the marketplace entry a native host reads,
-# spelled the relative way that host requires
-SELF_PATH = "./.claude/plugins"
+CLAUDE = spellings_of(AdapterName.CLAUDE)
+"""Where Claude Code keeps the two files this module rewrites."""
 
 
 @with_config(ConfigDict(extra="allow"))
@@ -65,15 +66,15 @@ SETTINGS_ADAPTER = TypeAdapter(SettingsJson)
 
 
 def plugin_root(root: Path) -> Path:
-    return root / ".claude" / "plugins"
+    return root / CLAUDE.plugins_directory
 
 
 def marketplace_file(root: Path) -> Path:
-    return plugin_root(root) / ".claude-plugin" / "marketplace.json"
+    return root / CLAUDE.tree("marketplace")
 
 
 def settings_file(root: Path) -> Path:
-    return root / ".claude" / "settings.json"
+    return root / CLAUDE.tree("project_settings")
 
 
 def validate_name(name: str) -> str:
@@ -134,11 +135,13 @@ def apply_settings_json(
     for key in [k for k, v in known.items() if k != name and points_at_self(v, root)]:
         del known[key]
         changes.append(f"settings.json: drop extraKnownMarketplaces[{key!r}]")
-    desired: MarketplaceEntry = {"source": {"source": "directory", "path": SELF_PATH}}
+    desired: MarketplaceEntry = {
+        "source": {"source": "directory", "path": MARKETPLACE_SOURCE}
+    }
     if known.get(name) != desired:
         known[name] = desired
         changes.append(
-            f"settings.json: extraKnownMarketplaces[{name!r}] -> {SELF_PATH}"
+            f"settings.json: extraKnownMarketplaces[{name!r}] -> {MARKETPLACE_SOURCE}"
         )
 
     # Exactly one marketplace carrying this plugin is enabled — this repo's

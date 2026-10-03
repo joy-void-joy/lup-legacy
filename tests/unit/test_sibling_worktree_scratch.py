@@ -100,6 +100,9 @@ def judged(command: str) -> KernelDecision:
         SHELL_ROWS,
         path_roles=[*PATH_ROLES, *sibling_scratch_rows([SIBLING], PATH_ROLES)],
         checkout_root=CHECKOUT,
+        plugin_roots=[
+            root.as_posix() for root in declared_hook_set().generated_plugin_roots
+        ],
     )
 
 

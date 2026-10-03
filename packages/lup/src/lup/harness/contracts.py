@@ -173,6 +173,17 @@ class NativeSpellings(SkillInvocationRenderer, ABC):  # lup: ignore[abc-capabili
     # lup: ignore[abc-capability] — NativeSpellings owns one runtime's whole vocabulary, deliberately wider than the three-method shape; the class docstring carries the argument
     @property
     @abstractmethod
+    def plugins_directory(self) -> Atom:
+        """Where this runtime's plugin trees sit, each under its own name.
+
+        Every plugin location this runtime spells is under it, and what the
+        harness renders there is a build product: the policy refuses a hand
+        edit in it, for every supported runtime alike.
+        """
+
+    # lup: ignore[abc-capability] — NativeSpellings owns one runtime's whole vocabulary, deliberately wider than the three-method shape; the class docstring carries the argument
+    @property
+    @abstractmethod
     def protected_tree(self) -> ProtectedRoot:
         """This runtime's own tree, as a protected root, with what it holds in plain words.
 

@@ -28,10 +28,12 @@ from lup.harness.models import (
     ResolveSpec,
     SkillInvocation,
 )
-from lup.providers.claude.harness import ClaudeSpellings
 from lup.providers.claude.login import CLAUDE_LOGIN
-from lup.providers.codex.harness import CodexSpellings
-from lup.providers.harness import runtime_trees
+from lup.providers.harness import (
+    every_runtime,
+    runtime_plugin_directories,
+    runtime_trees,
+)
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.policy.bundle import compilation_sources
 from lup.policy.kernel.diagnostic import devtools, step
@@ -455,7 +457,7 @@ repository is the one that ships. The tag it publishes on is the one the
 release writes, read from that declaration rather than spelled twice."""
 
 
-NATIVE_RUNTIMES: list[NativeSpellings] = [ClaudeSpellings(), CodexSpellings()]
+NATIVE_RUNTIMES: list[NativeSpellings] = every_runtime()
 """Every runtime this project generates a tree for."""
 
 
@@ -511,6 +513,7 @@ def application_roots(plugin_names: list[str] | None = None) -> ApplicationRoots
         ],
         portable_prose=[f"{harness}content/"],
         native_dependencies=["tests/", "packages/lup/tests/", "examples/"],
+        runtime_trees=[runtime.tree("tree_root") for runtime in NATIVE_RUNTIMES],
         source_roots=[f"{Path(package).parent.as_posix()}/"],
     )
 
@@ -762,6 +765,9 @@ def portable_harness(
             # permission system rather than asked about here, by every route
             # that reads one: a web fetch, `curl` and `wget` alike.
             unscoped_fetch="defer",
+            # Where every supported runtime renders its plugins, as each
+            # adapter states it: a hand edit there is refused on every runtime.
+            generated_plugin_roots=runtime_plugin_directories(),
             # lup: template: which trees this domain will not let an agent edit
             # without a question. What is here answers for a framework that
             # generates its own plugin trees and carries its own policy; a

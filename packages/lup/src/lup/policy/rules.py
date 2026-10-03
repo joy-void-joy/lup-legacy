@@ -262,8 +262,10 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
         refused_paths: list[RefusedPaths] | None = None,
         secret_variables: list[str] | None = None,
         unjudged_ambient: UnjudgedAmbient = "ask",
+        plugin_roots: list[str] | None = None,
     ) -> None:
         self.unscoped_fetch: UnjudgedAmbient | None = unscoped_fetch
+        self.plugin_roots = plugin_roots or []
         # What legible work nothing judged answers in an uncontained session:
         # a launched session's measured posture where a caller read one --
         # `dev policy` reading its own session -- and the question otherwise.
@@ -506,6 +508,7 @@ class ShellPolicy(DecisionPolicy[ShellCommand]):
                     *sibling_scratch_rows(siblings, self.path_roles),
                 ],
                 path_rules=self.path_rules,
+                plugin_roots=self.plugin_roots,
                 interactive=self.interactive,
                 existing_targets=[
                     target
@@ -924,8 +927,10 @@ class EditPolicy(DecisionPolicy[EditBatch]):
         peer_policy: PeerPolicyRow | None = None,
         rules: RuleSet | None = None,
         refused_paths: list[RefusedPaths] | None = None,
+        plugin_roots: list[str] | None = None,
     ) -> None:
         self.acceptance_guard = acceptance_guard
+        self.plugin_roots = plugin_roots or []
         # The key and login files every command's words are refused, which a
         # file tool writing one names as surely as `cp` would.
         self.refused_paths = [paths.erased() for paths in refused_paths or []]
@@ -1032,6 +1037,7 @@ class EditPolicy(DecisionPolicy[EditBatch]):
             path_rules=[path_rule_row(rule) for rule in self.protected],
             antipattern_rows=antipattern_rows(change, self.rules),
             path_roles=self.path_roles,
+            plugin_roots=self.plugin_roots,
             maximum_added_lines=self.maximum_added_lines,
             autonomous=self.autonomous,
             allowances=self.grants.granted(),

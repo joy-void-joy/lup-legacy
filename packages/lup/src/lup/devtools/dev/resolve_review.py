@@ -231,7 +231,7 @@ def build_review(manifest_path: Path, base: str, out: Path, intro: Path | None) 
         else ""
     )
     header = (
-        f"<h1>/lup:resolve review — base <code>{html.escape(base[:7])}</code></h1>"
+        f"<h1>lup:resolve review — base <code>{html.escape(base[:7])}</code></h1>"
         f'<div class="meta-box"><p><strong>{len(entries)} concerns</strong>: '
         f"{committed} committed, {accepted} verifier-accepted. Nothing is merged "
         "yet — approval at the gate merges a concern's branch and thereby clears "

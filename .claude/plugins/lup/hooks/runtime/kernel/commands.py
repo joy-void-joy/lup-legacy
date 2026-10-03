@@ -289,6 +289,7 @@ class SedContext(TypedDict):
 
     path_roles: list[PathRoleRow]
     path_rules: list[PathRuleRow]
+    plugin_roots: list[str]
     antipattern_rows: dict[str, list[AntiPatternRow]]
     """The anti-pattern table by file suffix, as the edit gate reads it."""
 
@@ -1836,6 +1837,7 @@ def rewrite_verdict(
         outside_project=document["outside_project"],
         checkout_path=document["checkout_path"],
         import_boundaries=context["import_boundaries"],
+        plugin_roots=context["plugin_roots"],
     )
     if verdict.effect == "allow":
         return verdict

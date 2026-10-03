@@ -8,7 +8,6 @@ bodies live in ``drift`` and ``reconcile``; ``composition`` maps target names
 to concrete recipes.
 """
 
-import json
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -16,16 +15,8 @@ from pathlib import Path
 from pydantic import BaseModel, ValidationError
 from pydantic_core import ErrorDetails
 
-from lup.providers.harness import (
-    claude_prompt_renderer,
-    codex_prompt_renderer,
-    compile_claude,
-    compile_codex,
-)
 from lup.formats.banner import (
-    COMMENT_FREE,
     REGENERATE_COMMAND,
-    VERBATIM_COPY,
     GeneratedBanner,
 )
 from lup.harness.evidence import WireContract
@@ -46,11 +37,9 @@ from lup.harness.models import (
 )
 from lup.mcp import ServeLaunch, ToolServer
 from lup.types import JsonObject
-from lup.workspace.paths import declared_project_root
 from lup.harness.ownership import (
     OwnershipManifest,
     build_manifest,
-    load_manifest,
     save_manifest,
 )
 from lup.harness.reconciliation import (
@@ -65,7 +54,6 @@ from lup.harness.contracts import (
     Reconciler,
     SkillInvocationRenderer,
 )
-from lup.harness.validation import validated_tree
 from lup.harness.clipboard import ClipboardTransport
 from lup.providers.login import ProviderLogin
 
@@ -431,108 +419,6 @@ def current_reader(
         prior,
         sensitive_local_only=sensitive_local_only,
         managed_paths=managed_paths(desired, prior),
-    )
-
-
-# Compiler, prompt renderers, ownership reader, and reconciler in one place.
-def claude_generation_recipe(
-    root: Path, content: ProjectContent, guidance: PromptDocument | None = None
-) -> GenerationRecipe:
-    """Compose the complete Claude tree from canonical typed declarations."""
-    source = content.harness
-    compiled = compile_claude(source)
-    prompts = claude_prompt_renderer()
-    plugin = Path(".claude/plugins") / source.plugins[0].name
-
-    def copied_from(asset: Path) -> str:
-        """Where the asset sits, named from the project that holds it.
-
-        The bytes are read from wherever the declaring package was imported,
-        which is not always the checkout being written: generating into a
-        sibling worktree leaves the two apart. Anchoring on ``root`` there
-        names the asset by an absolute path into somebody else's tree, and
-        that path is committed — so the map a reader opens points at a
-        checkout they may not have, and the same source compiles to different
-        bytes depending on where the command ran. The asset's own project
-        answers the same in every checkout, which is what the row means.
-        """
-        anchor = declared_project_root(asset.parent) or root
-        inside = asset.relative_to(anchor) if asset.is_relative_to(anchor) else asset
-        return inside.as_posix()
-
-    verbatim = [
-        Artifact(
-            path=plugin / "scripts" / asset.name,
-            content=asset.read_text(encoding="utf-8"),
-            semantic_id="harness.file-suggestion",
-            executable=True,
-            banner=VERBATIM_COPY.compiled_from(copied_from(asset)),
-        )
-        for asset in content.assets
-    ]
-    support_artifacts = [
-        *published_documents(prompts, content.documents),
-        *installer_guidance(
-            path=plugin / "TEMPLATE_CLAUDE.md", document=guidance, prompts=prompts
-        ),
-        *verbatim,
-        Artifact(
-            path=Path(".claude/settings.json"),
-            content=json.dumps(content.settings, indent=2, sort_keys=True),
-            semantic_id="harness.project-settings",
-            banner=COMMENT_FREE.compiled_from(content.settings_source),
-        ),
-    ]
-    desired = validated_tree([*compiled.artifacts, *support_artifacts])
-    manifest_path = root / ".claude" / ".lup-ownership.json"
-    prior = load_manifest(manifest_path)
-    reader = current_reader(
-        prior,
-        desired,
-        sensitive_local_only=[Path(".claude/settings.local.json")],
-    )
-    return GenerationRecipe(
-        label="claude",
-        root=root,
-        source=source,
-        desired=desired,
-        manifest_path=manifest_path,
-        prior=prior,
-        reader=reader,
-        reconciler=DeterministicReconciler(),
-        target_requirements=["claude-code"],
-    )
-
-
-def codex_generation_recipe(
-    root: Path, content: ProjectContent, guidance: PromptDocument | None = None
-) -> GenerationRecipe:
-    """Compose the Codex renderers, reader, and ownership location."""
-    source = content.harness
-    prompts = codex_prompt_renderer()
-    support_artifacts = installer_guidance(
-        path=Path(".codex/plugins") / source.plugins[0].name / "TEMPLATE_AGENTS.md",
-        document=guidance,
-        prompts=prompts,
-    )
-    compiled = compile_codex(source)
-    desired = validated_tree([*compiled.artifacts, *support_artifacts])
-    manifest_path = root / ".codex" / ".lup-ownership.json"
-    prior = load_manifest(manifest_path)
-    return GenerationRecipe(
-        label="codex",
-        root=root,
-        source=source,
-        desired=desired,
-        manifest_path=manifest_path,
-        prior=prior,
-        reader=current_reader(
-            prior,
-            desired,
-            sensitive_local_only=[Path(".codex/config.local.toml")],
-        ),
-        reconciler=DeterministicReconciler(),
-        target_requirements=["codex-cli>=0.144"],
     )
 
 

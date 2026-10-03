@@ -417,6 +417,7 @@ def candidate_readings(
                 for rule in rules.for_suffix(path.suffix.lower()) or []
             ],
             path_roles=declared_role_rows(hooks.path_roles),
+            plugin_roots=[root.as_posix() for root in hooks.generated_plugin_roots],
             python_source=path.suffix.lower() in {".py", ".pyi"},
             acceptance_guard=hooks.acceptance_guard.erased()
             if hooks.acceptance_guard

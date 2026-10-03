@@ -14,11 +14,12 @@ from unittest.mock import Mock
 import pytest
 
 import lup.coordination.bare.arrival as arrival
-import lup.coordination.wake as routing
+import lup.providers.codex.wake as routing
 from lup.coordination.identity import member_ref
 from lup.coordination.relay import MailboxRelay
 from lup.coordination.repository import RepositoryPeers
-from lup.coordination.wake import WakePath, wake
+from lup.coordination.wake import WakePath
+from lup.providers.wake import wake
 
 
 @pytest.fixture(autouse=True)

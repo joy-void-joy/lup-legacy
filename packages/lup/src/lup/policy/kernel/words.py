@@ -1349,6 +1349,7 @@ def refuses_generated_plugin_target(
     path_roles: list[PathRoleRow] | None = None,
     checkout_root: str = "",
     displaced: list[DisplacedTargetRow] | None = None,
+    plugin_roots: list[str] | None = None,
 ) -> KernelDecision | None:
     """Refuse one path that would write inside a generated plugin tree.
 
@@ -1377,7 +1378,7 @@ def refuses_generated_plugin_target(
             recovery=GENERATED_ARTIFACT_RECOVERY,
             subject=word,
         )
-    if not is_generated_plugin_target(word):
+    if not is_generated_plugin_target(word, plugin_roots or []):
         return None
     if declared_scratch(relative, path_roles or []) and all(
         row["path"] != word for row in displaced or []
@@ -1396,6 +1397,7 @@ def refuses_generated_plugin_write(
     path_roles: list[PathRoleRow] | None = None,
     checkout_root: str = "",
     displaced: list[DisplacedTargetRow] | None = None,
+    plugin_roots: list[str] | None = None,
 ) -> KernelDecision | None:
     """Refuse a verb that would write inside a generated plugin tree.
 
@@ -1408,7 +1410,7 @@ def refuses_generated_plugin_write(
     if archived is not None:
         for word in archive_targets(archived):
             refused = refuses_generated_plugin_target(
-                word, path_roles, checkout_root, displaced
+                word, path_roles, checkout_root, displaced, plugin_roots
             )
             if refused is not None:
                 return refused
@@ -1421,7 +1423,7 @@ def refuses_generated_plugin_write(
     targets = written_operands(executable, operands) if inert else operands
     for word in targets:
         refused = refuses_generated_plugin_target(
-            word, path_roles, checkout_root, displaced
+            word, path_roles, checkout_root, displaced, plugin_roots
         )
         if refused is not None:
             return refused

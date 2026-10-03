@@ -25,8 +25,6 @@ from .diagnostic import devtools, step
 from .rows import PathRoleKind, PathRoleName, PathRoleRow, DisplacedTargetRow
 from .syntax import VerbatimText, expands, verbatim_piece
 
-# lup: ignore[library-default] — the native runtimes' own plugin directory names
-GENERATED_PLUGIN_ROOTS = (".claude/plugins", ".codex/plugins")
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
 GENERATED_PLUGIN_REFUSAL = (
     "is in a generated plugin tree, which is compiled from source and already loaded"
@@ -98,7 +96,7 @@ def spells_its_path(word: str) -> bool:
     return not any(marker in word for marker in ("$", "~", "`", SUBSTITUTION_SENTINEL))
 
 
-def is_generated_plugin_target(word: str) -> bool:
+def is_generated_plugin_target(word: str, plugin_roots: list[str]) -> bool:
     """Recognize a path confined to a native plugin tree the harness renders.
 
     Every file there is compiled from typed source, so writing one by hand
@@ -113,9 +111,11 @@ def is_generated_plugin_target(word: str) -> bool:
     place; a refusal that only knew the repo-relative spelling would instead
     fail open on the one form that reaches past this worktree.
 
-    Both runtimes' roots are named and both gates read this one answer: which
-    tree a write lands in is the same question whichever runtime is running,
-    and a refusal knowing one spelling would leave the other open.
+    ``plugin_roots`` are every supported runtime's, as each adapter states
+    them, and both gates read this one answer: which tree a write lands in is
+    the same question whichever runtime is running, and a refusal knowing one
+    spelling would leave the other open. Handed none, nothing is refused here
+    and the protected-path rows still ask about the trees around them.
     """
     # lup: ignore[string-split] — segment comparison on an already-normalized
     # posix path, which is what the roots are declared as
@@ -123,7 +123,7 @@ def is_generated_plugin_target(word: str) -> bool:
     return any(
         segments[index : index + len(parts)] == parts
         # lup: ignore[string-split] — the declared roots, in the same terms
-        for parts in [root.split("/") for root in GENERATED_PLUGIN_ROOTS]
+        for parts in [root.split("/") for root in plugin_roots]
         for index in range(len(segments))
     )
 

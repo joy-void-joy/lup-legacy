@@ -4040,6 +4040,7 @@ def decide_edit(
     checkout_path: str = "",
     displaced: DisplacedTargetRow | None = None,
     import_boundaries: list[ImportBoundaryRow] | None = None,
+    plugin_roots: list[str] | None = None,
 ) -> KernelDecision:
     """Apply anti-pattern, path, marker, full-write, deletion, and size gates.
 
@@ -4146,7 +4147,7 @@ def decide_edit(
     # build product. The checkout's spelling is of where the file lands, the
     # host having resolved it, so a link planted in scratch reaches no
     # generated tree through this.
-    if is_generated_plugin_target(path) and not scratch_here:
+    if is_generated_plugin_target(path, plugin_roots or []) and not scratch_here:
         return KernelDecision(
             "deny",
             GENERATED_PLUGIN_REFUSAL,
