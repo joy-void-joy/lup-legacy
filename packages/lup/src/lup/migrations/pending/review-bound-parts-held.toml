@@ -1,0 +1,12 @@
+subjects = ["PersistentQuestion.bound_parts"]
+reason = """
+a parked review is hashed as its record holds it, through the hook's own \
+recorded_fingerprint, so the question model no longer rebuilds the parts \
+its fingerprint binds from its current fields"""
+
+[[steps]]
+instruction = """
+Read what a question's fingerprint binds with \
+lup.policy.assets.host.bound_parts(question.held()), and the digest it hashes \
+to with question.native_fingerprint(), where you called \
+question.bound_parts()."""

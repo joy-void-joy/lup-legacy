@@ -93,11 +93,8 @@ class ReviewThread:
             raise ValueError("a remark says something: a note or a line comment")
         if unverifiable := question.unverifiable():
             raise ValueError(f"review {question.id!r}: {unverifiable}")
-        if not question.bound():
-            raise ValueError(
-                f"review {question.id!r} changed after it was parked: what it "
-                "shows is not what its fingerprint covers"
-            )
+        if unbound := question.unbound():
+            raise ValueError(f"review {question.id!r}: {unbound}")
         recorded = RecordedRemark(
             question=question.id,
             fingerprint=question.fingerprint,
@@ -116,8 +113,9 @@ class ReviewThread:
         ).reply
 
     def said(self, question: QuestionRecord) -> list[ThreadEntry]:
-        """Everything said on one review, read from this relay and its answers."""
-        return spoken_on(question, self.remarks(), self.replies())
+        """Everything said on one review, from one read of this relay and its answers."""
+        threads = self.relay.threads()
+        return spoken_on(question, threads.remarks, threads.replies)
 
 
 def spoken_on(

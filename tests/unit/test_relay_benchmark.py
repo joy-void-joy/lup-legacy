@@ -10,7 +10,8 @@ What goes wrong at this scale is work done once per review: a question
 reading the log again, a review reading a file for each of the others, a
 page carrying a row for every review. Each multiplies something countable
 by about a thousand, so what is bounded is counted -- bytes kept, and files
-opened -- and each bound is about three times what is measured:
+opened -- and each bound is about three times what is measured, but the
+log's, which each action opens once:
 
 - the log holds 2.3 KB a review, bounded at 8 KB, where the same reviews
   with both documents copied into each of their three records come to about
@@ -21,13 +22,12 @@ opened -- and each bound is about three times what is measured:
   files: the log, once, and the host's answers. It is bounded at six, the
   log exactly once; a fold that opens the log again for each question opens
   it 1001 times and 2002 files in all;
-- the first snapshot opens 169 files: the two documents of each of the 70
+- the first snapshot opens 165 files: the two documents of each of the 70
   rows it hands the page (20 waiting, History's first 50), the file each
   waiting review rewrites, the archive, the boot id twice, and the log and
-  the host's answers three times each -- once for each of the queue's
-  questions, remarks and replies, the second and third reading only what
-  was appended since the first. It is bounded at 500, the log at nine; one
-  carrying a row for every review opens 2029.
+  the host's answers once each, the queue's questions, remarks and replies
+  all made from that one read. It is bounded at 500, the log at once; one
+  carrying a row for every review opens 2025.
 
 The counts are the same on every run and under any load, which time is not:
 under shared cores and caches even the measuring thread's own CPU time
@@ -72,8 +72,8 @@ FOLD_OPENS = 6
 SNAPSHOT_OPENS = 500
 """Files the first snapshot of the fixture's queue opens, from a store that has read none of it."""
 
-SNAPSHOT_LOG_OPENS = 9
-"""Times the first snapshot of the fixture's queue opens the log."""
+SNAPSHOT_LOG_OPENS = 1
+"""Times the first snapshot of the fixture's queue opens the log: once, as a fold does."""
 
 FOLD_SECONDS = 15.0
 """A fold of the whole fixture's log, in the measuring thread's CPU seconds: a backstop load cannot reach."""
@@ -135,7 +135,7 @@ def fold_within_bounds(fold: Measured, log: Path) -> bool:
 
 
 def snapshot_within_bounds(first: Measured, log: Path) -> bool:
-    """Whether the first snapshot of the fixture's queue opened few files, the log among them a few times."""
+    """Whether the first snapshot of the fixture's queue opened few files, the log among them once."""
     return (
         first.opens(log) <= SNAPSHOT_LOG_OPENS and len(first.opened) <= SNAPSHOT_OPENS
     )
