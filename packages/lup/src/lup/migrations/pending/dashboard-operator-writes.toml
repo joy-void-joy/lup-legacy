@@ -1,4 +1,4 @@
-subjects = ["reply", "ReplyRequest", "ReplyOutcome"]
+subjects = ["reply", "ReplyRequest", "ReplyRequest.text", "ReplyOutcome"]
 reason = """
 everything the operator does to an agent from the dashboard — write to it, \
 wake it, rename it, stop it, and act as a peer among them — is one module's, \
