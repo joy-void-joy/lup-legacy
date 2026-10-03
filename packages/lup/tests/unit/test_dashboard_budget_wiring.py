@@ -106,8 +106,10 @@ def test_the_stream_carries_the_budget_when_it_moves(tmp_path: Path) -> None:
 
 
 def test_the_status_line_shows_the_turtle_while_it_is_on() -> None:
-    pulse = DashboardPulse(url="http://127.0.0.1:8767", pid=1, beat=NOW, turtle=True)
+    pulse = DashboardPulse(
+        url="http://127.0.0.1:8767", pid=1, beat=NOW, turtle=True, held=2
+    )
     line = LineFacts.of(pulse, StatusInput(), NOW).fitted(0).plain()
-    assert "🐢 turtle" in line
+    assert "🐢 turtle" in line and line.index("⏸2") < line.index("🐢 turtle")
     calm = pulse.model_copy(update={"turtle": False})
     assert "🐢" not in LineFacts.of(calm, StatusInput(), NOW).fitted(0).plain()

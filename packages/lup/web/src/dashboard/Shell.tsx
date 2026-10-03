@@ -8,8 +8,9 @@ import { commandInput, completions } from "./commands";
 import { basename, checkoutLabel, plural, stateClass, stateLabel, stateSign } from "./review";
 import { VIEW_NAMES, VIEWS, type PageState } from "./state";
 import type { AccountMeter, MeteredWindow } from "../generated/views";
-import { clears, clock, fullest, GLYPH, kindWords, metered, standing, unreadCount, windowAt } from "./supervision";
+import { clears, clock, fullest, GLYPH, heldCount, heldWord, kindWords, metered, standing, unreadCount, windowAt } from "./supervision";
 import { rowHere } from "./editor";
+import { HANDLERS } from "./actions";
 
 export function Tabline({ d, state }: { d: Dashboard; state: PageState }) {
   const live = state.live;
@@ -154,7 +155,7 @@ export function Statusline({ d, state }: { d: Dashboard; state: PageState }) {
     }
   } else if (kind === "member") {
     const session = live?.sessions.get(state.sel.key);
-    if (session !== undefined) parts.push(<span key="member" className="seg"><span className={`g-${standing(session, state.now)}`}>{GLYPH[standing(session, state.now)]}</span> {session.name || session.id} <span className="muted">{kindWords(session)}</span></span>);
+    if (session !== undefined) parts.push(<span key="member" className="seg"><span className={`g-${standing(session, state.now)}`}>{GLYPH[standing(session, state.now)]}</span> {session.name || session.id} <span className="muted">{kindWords(session)}</span>{session.running && heldWord(session) !== "" && <span className="warn"> ⏸ {heldWord(session)}</span>}</span>);
   } else if (kind === "you") parts.push(<span key="you" className="seg info">◆ you · {live?.repositories.get(state.sel.key)?.name}</span>);
   else if (kind === "repo") parts.push(<span key="repo" className="seg">{live?.repositories.get(state.sel.key)?.name}</span>);
   else if (kind === "thread") parts.push(<span key="thread" className="seg">» {d.discussion(state)?.title}</span>);
@@ -165,6 +166,7 @@ export function Statusline({ d, state }: { d: Dashboard; state: PageState }) {
   const draft = entry === null ? null : d.draft(entry.row.key, state);
   const unsent = draft === null || entry?.row.state !== "pending" ? 0 : draft.comments.filter((comment) => comment.note.trim() !== "").length + (draft.note.trim() !== "" ? 1 : 0);
   const unread = live === null ? 0 : unreadCount(live);
+  const held = live === null ? 0 : heldCount(live);
   const waiting = d.pending(state).length;
   const current = d.queueCurrent(state);
   return <footer id="statusline" aria-label="Status">
@@ -176,6 +178,7 @@ export function Statusline({ d, state }: { d: Dashboard; state: PageState }) {
     {state.armed && mode === "insert" && <span className="seg info" title="the box navigates until you type">j/k move on · type to write</span>}
     <span className="seg fill" />
     {unsent > 0 && <span className="seg warn">✎ {unsent} unsent</span>}
+    {held > 0 && <button type="button" className="seg warn" title="agents held at their next tool call; the tree shows the agents that need you (Space t t)" onClick={() => { d.setView("supervise"); HANDLERS["tree.attention"]?.(d, 1, false); }}>⏸{held} held</button>}
     {unread > 0 && <button type="button" className="seg warn" title="gi" onClick={() => d.setView("inbox")}>✉ {unread} to you</button>}
     <button type="button" className={`seg ${waiting > 0 ? "warn" : "ok"}`} onClick={() => d.setView("supervise")}>{d.counted(waiting, state)} wait on you</button>
     <button type="button" className={`seg wrap ${current ? "ok" : state.connection === "Live" ? "warn" : "err"}`} title="Reconnect" onClick={() => d.reconnect()}>{current ? "● live" : state.connection === "Live" ? "◐ some queues unavailable" : `◌ ${state.connection}`}</button>

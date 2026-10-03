@@ -33,6 +33,7 @@ from lup.coordination.repository import launched_member
 from lup.launch.companions import CompanionLaunch, Joined, held_around
 from lup.launch.compilation import (
     allowance_environment,
+    held_hooks,
     inherited_environment,
     kept_record,
     semantic_hooks,
@@ -1407,8 +1408,21 @@ class CodexSessionOpener:
             }
         )
         policy = declared.enforced_policy()
+        launched = (
+            launched_member(declared.workspace(), declared.identity.name)
+            if declared.identity is not None
+            else None
+        )
         if policy is not None:
             judged = semantic_hooks(policy, declared.sandbox, CODEX_SEMANTICS)
+            # A session on the roster is held before anything judges its call:
+            # the app-server waits on an approval without limit, so holding
+            # one is answering it later.
+            if launched is not None:
+                judged = merge_hooks(
+                    held_hooks(policy, declared.workspace(), launched.member_id),
+                    judged,
+                )
             hooks = (
                 judged if config.hooks is None else merge_hooks(judged, config.hooks)
             )
@@ -1419,13 +1433,10 @@ class CodexSessionOpener:
                     or codex_hook_approval_policy(hooks),
                 }
             )
-        if declared.identity is None:
+        if launched is None:
             return config
-        member = launched_member(
-            declared.workspace(), declared.identity.name
-        ).environment()
         return config.model_copy(
-            update={"environment": {**config.environment, **member}}
+            update={"environment": {**config.environment, **launched.environment()}}
         )
 
 

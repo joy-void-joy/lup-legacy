@@ -322,10 +322,23 @@ def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     return previous
 
 
+def judgement_opened() -> None:
+    """Start the judgement's own window now, as a hold lets a call go.
+
+    A judgement is bounded from the moment it may begin. A held call was
+    never being judged, so the hold's minutes are no part of the judgement's
+    seconds: every deadline after this counts from this stamp, as it counts
+    from the guard's where nothing held the call.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    environ["LUP_HOOK_STARTED"] = repr(time.time())
+
+
 def answered_in_time(
     seconds: float,
     judged: Callable[[bytes], None],
     unanswered: Callable[[bytes, BaseException | None], None],
+    held: Callable[[bytes], bool | None],
 ) -> None:
     """Answer within ``seconds`` of the hook starting, whatever the judgement does.
 
@@ -353,6 +366,15 @@ def answered_in_time(
     event reads, in the words :func:`unjudged_reason` and
     :func:`unjudged_recovery` give it. The input is whatever arrived, which
     is nothing where it did not all arrive in time.
+
+    ``held`` comes first, before anything is judged: it keeps the call
+    waiting for as long as a hold covers its caller, and says how that
+    ended. True is a call it refused itself, still held at the hold's own
+    limit, and nothing more is written; False is a call a hold kept waiting
+    and then let go, whose judgement gets its whole ``seconds`` from that
+    moment -- which is how a call the operator held for an hour is never
+    refused as one nobody judged in time; None is a call nothing held, or
+    an event no hold reaches, whose bound stays where the guard started it.
     """
     limit = hook_started() + seconds
 
@@ -396,6 +418,14 @@ def answered_in_time(
     except TimeoutError:
         unanswered(b"", None)
         return
+    match held(given):
+        case True:
+            return
+        case False:
+            judgement_opened()
+            limit = hook_started() + seconds
+        case None:
+            pass
     sys.stdout.flush()
     sys.stderr.flush()
     said_out, said_in = os.pipe()
@@ -989,25 +1019,27 @@ def script_run_nudge(
     )
 
 
-def referral_noted(
+def noted_once(
     root: Path,
-    session: str,
-    repository: str,
-    ledger: str = ".lup/referrals.json",
+    conversation: str,
+    subject: str,
+    ledger: str = ".lup/notices.json",
     kept_days: int = 7,
 ) -> bool:
-    """Whether this session was already referred to that repository, noting it if not.
+    """Whether this conversation was already told about *subject*, noting it if not.
 
-    Kept per session under the checkout, for *kept_days*, so the ledger holds
-    what a live session could still ask about and nothing older. A ledger that
-    cannot be read or written answers no, which errs toward saying a referral
-    again rather than never.
+    What a notice says once is true for the rest of the conversation and news
+    only the first time: another repository's referral, the habit of naming a
+    spawn. Kept per conversation under the checkout, for *kept_days*, so the
+    ledger holds what a live conversation could still be told and nothing
+    older. A ledger that cannot be read or written answers no, which errs
+    toward saying a notice again rather than never.
     """
     path = root / ledger
     now = datetime.now(UTC)
 
     def recent(entry: dict) -> bool:
-        if "repositories" not in entry:
+        if "subjects" not in entry:
             return False
         try:
             stamped = datetime.fromisoformat(str(entry["at"]))
@@ -1025,8 +1057,8 @@ def referral_noted(
         for name, entry in held.items()
         if isinstance(entry, dict) and recent(entry)
     }
-    seen = kept[session]["repositories"] if session in kept else []
-    if repository in seen:
+    seen = kept[conversation]["subjects"] if conversation in kept else []
+    if subject in seen:
         return True
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1034,9 +1066,9 @@ def referral_noted(
             json.dumps(
                 {
                     **kept,
-                    session: {
+                    conversation: {
                         "at": now.isoformat(),
-                        "repositories": [*seen, repository],
+                        "subjects": [*seen, subject],
                     },
                 },
                 indent=2,
@@ -1809,12 +1841,12 @@ def bound_parts(
     A record keeps its scheme -- the parts it bound, in order -- so a reader
     on other code tells a record it cannot check from one that changed:
     ``None`` where the scheme names a part this code does not know. A record
-    keeping no scheme binds the parts it carries; one it holds as null, which
-    a relay writes for a part it never had, it does not.
+    keeping no scheme, or a null one, binds the parts it carries; one it
+    holds as null, which a relay writes for a part it never had, it does not.
     """
     scheme = (
         entry["scheme"]
-        if "scheme" in entry
+        if "scheme" in entry and entry["scheme"] is not None
         else [name for name in known if name in entry and entry[name] is not None]
     )
     if not isinstance(scheme, list) or not all(
@@ -1831,6 +1863,10 @@ def recorded_fingerprint(entry: dict) -> str:
     a record whose fields hash to another digest shows one call and carries
     another's authority, and nothing may answer or spend it. A retry's
     payload recorded as null is the operation's own, as it was hashed.
+
+    Hashed from what the record holds, so a field a later model adds never
+    enters a record parked before it. A hook checks a record it would spend
+    with this, and every reader checks a record it shows with this too.
     """
     match entry:
         case {

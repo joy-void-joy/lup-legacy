@@ -12,20 +12,26 @@ import { click, mount, one, until, type Mounted } from "../testing";
 const originalFetch = globalThis.fetch;
 
 /** Every piece of supervising the dashboard's server serves, as its stream names them. */
-const SERVED_ALL = ["reply-thread", "redirect", "interrupt", "bare-wake", "rename", "stop", "transcript", "notices", "describe", "claims", "inbox-read", "thread-post"];
+const SERVED_ALL = ["reply-thread", "redirect", "interrupt", "bare-wake", "rename", "stop", "transcript", "notices", "describe", "claims", "inbox-read", "thread-post", "pause"];
 
 const outcome = (member: string, detail: string, fields: object = {}) =>
   ({ session: `r1/${member}`, queued: true, woken: true, interrupted: false, post: "p9", thread: "p9", detail, ...fields });
 
+/** What one pause or resume did, as the dashboard's server answers it. */
+const pauseOutcome = (detail: string, fields: object = {}) => ({ repositories: ["r1"], held: 0, frozen: [], unfrozen: [], continued: 0, woken: [], detail, ...fields });
+
 /** What the fixture's server answers on each supervising route, as the dashboard's own does. */
 function supervised(path: string, method: string, body: unknown): Response | null {
-  const asked = (body ?? {}) as { name?: string; path?: string; ids?: string[]; text?: string };
-  const agent = path.match(/^api\/repositories\/r1\/sessions\/([^/]+)\/(wake|name|stop|transcript)/);
+  const asked = (body ?? {}) as { name?: string; path?: string; ids?: string[]; text?: string; tree?: boolean; freeze?: boolean };
+  const agent = path.match(/^api\/repositories\/r1\/sessions\/([^/]+)\/(wake|name|stop|transcript|pause|resume)/);
   if (agent !== null) {
     const [, member = "", verb] = agent;
     if (verb === "wake") return Response.json(outcome(member, "Woken: nothing waited, so it was asked to look.", { queued: false }));
     if (verb === "name") return Response.json({ session: `r1/${member}`, name: asked.name });
     if (verb === "stop") return Response.json({ session: `r1/${member}`, pid: 4242, detail: "Sent SIGTERM to pid 4242, the runtime its row recorded." });
+    if (verb === "pause") return Response.json(pauseOutcome(`Paused ${member}: 2 agent(s) are held at their next tool call.${asked.freeze === true ? " Froze 1 session(s), stopping 1 command group(s)." : ""}`, { held: 2 }));
+    if (verb === "resume" && member === "lead-a1") return Response.json({ detail: "nothing to resume: no pause stands on it over that scope; it is held by the tree pause of lead" }, { status: 409 });
+    if (verb === "resume") return Response.json(pauseOutcome(`Resumed ${member}.`));
     return Response.json({ session: `r1/${member}`, entries: [{ at: 0, block: 0, kind: "text", role: "assistant", text: "Reading the roster.", tool: "", call: "", arguments: {}, error: false, time: "2026-09-24T10:00:00Z" }], earlier: 0, end: 120 });
   }
   if (path === "api/budget/turtle") return Response.json({ on: (body as { on: boolean }).on });
@@ -47,6 +53,8 @@ function supervised(path: string, method: string, body: unknown): Response | nul
   if (path === "api/user/description") return Response.json({ repositories: ["r1"] });
   if (path === "api/repositories/r1/claims") return Response.json({ path: asked.path, holders: method === "POST" ? ["user"] : [] });
   if (path === "api/repositories/r1/inbox/read") return Response.json({ read: asked.ids });
+  if (path === "api/repositories/r1/pause" || path === "api/pause") return Response.json(pauseOutcome(`Paused the whole repository: 3 agent(s) are held at their next tool call.`, { held: 3 }));
+  if (path === "api/repositories/r1/resume" || path === "api/resume") return Response.json(pauseOutcome("Resumed the whole repository."));
   const thread = path.match(/^api\/repositories\/r1\/threads\/([^/]+)\/posts$/);
   if (thread !== null) return Response.json({ post: "p9", thread: thread[1], deliveries: [outcome("lead", "Queued."), outcome("lead-a1", "Queued.")], refused: [] });
   return null;
@@ -101,7 +109,7 @@ function session(id: string, fields: object = {}) {
     key: `r1/${id}`, repository: "r1", id, parent: "", kind: "session", name: id, doing: `${id} is doing its part`, task: "", running: true,
     worktree: "/project/lup.git/tree/feature", holding: [], contested: [], delivery: "hook", wake: "claude", arrived: null, heard: new Date().toISOString(),
     summary: "", error: "", waiting: 0, activity: { said: `${id} said something`, calling: "", arguments: {}, at: new Date().toISOString(), transcript: "", recent: [] },
-    runtime: "claude", spawned_by: "", process: null,
+    runtime: "claude", spawned_by: "", process: null, holds: [], held_since: null,
     ...fields,
   };
 }
@@ -281,6 +289,31 @@ describe("dashboard page", () => {
     expect(one(page.root, "#context").textContent).toContain("agent's note");
     expect(one(page.root, "#context").textContent).toContain("Replace the file whole, so the old helper goes.");
     expect([...page.root.querySelectorAll(".pane .r.del .tx, .pane .r.add .tx")].map((line) => line.textContent?.slice(0, 5))).toEqual(["befor", "after"]);
+  });
+
+  test("a resolution of a conflicted file colours each side as its own, bars it, and names each marker's side and branch", async () => {
+    const [opening, split, closing] = ["<", "=", ">"].map((char) => char.repeat(7));
+    const lines = ["export function greet(name: string): string {", `${opening} HEAD`, "  /* kept short", split, "  const message = `Hey ${name}`;", `${closing} feat-x`, "     closed here */", "  return name;", "}"];
+    const kept = [0, 2, 6, 7, 8];
+    const resolution = review();
+    const [base] = resolution.files;
+    if (base === undefined) throw new Error("the fixture review has a file");
+    resolution.files = [{
+      ...base, path: "/project/greet.ts", before: `${lines.join("\n")}\n`, after: `${kept.map((at) => lines[at]).join("\n")}\n`, additions: 0, deletions: 4,
+      hunks: [{ header: "@@ -1,9 +1,5 @@", old_start: 1, old_end: 9, new_start: 1, new_end: 5, lines: lines.map((text, at) => ({
+        kind: kept.includes(at) ? "context" : "remove", text: `${text}\n`, old_line: at + 1 as number | null, new_line: kept.includes(at) ? kept.indexOf(at) + 1 as number | null : null, suppression: false,
+      })) }],
+    }];
+    details.set("tree-q1", resolution);
+    const page = await landed();
+    const markers = [...page.root.querySelectorAll(".pane .r.cf-at")];
+    expect(markers.map((row) => row.querySelector(".vt[class*='cfs-']")?.textContent)).toEqual(["◂ ours · HEAD", "◂ theirs · feat-x", "◂ end of theirs · feat-x"]);
+    expect(markers.every((row) => row.classList.contains("del"))).toBe(true);
+    const theirs = one(page.root, ".pane .r.cf-theirs:not(.cf-at)");
+    expect(theirs.querySelector(".hljs-keyword")?.textContent).toBe("const");
+    const shared = [...page.root.querySelectorAll(".pane .r.ctx")].find((row) => row.textContent?.includes("kept short"));
+    expect(shared?.classList.contains("cf")).toBe(false);
+    expect(shared?.querySelector(".hljs-comment")?.textContent).toContain("kept short");
   });
 
   test("Ctrl+Enter approves exactly what the page showed, comments included, and the next review opens in its box", async () => {
@@ -470,7 +503,7 @@ describe("dashboard page", () => {
 
   test("messages older than the stream carries are read back a page at a time", async () => {
     extents = [{ repository: "r1", earlier: 900 }];
-    olderMail = [{ before: 900, page: { messages: [{ key: "r1/m0", repository: "r1", id: "m0", at: 10, sender: "lead", recipient: "lead-a1", recipient_kind: "subagent", text: "The first word.", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T09:00:00Z", waiting: false, post: "m0", thread: "m0" }], earlier: 0 } }];
+    olderMail = [{ before: 900, page: { messages: [{ key: "r1/m0", repository: "r1", id: "m0", at: 10, sender: "lead", recipient: "lead-a1", recipient_kind: "subagent", text: "The first word.", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T09:00:00Z", waiting: false, post: "m0", thread: "m0", prompt: false }], earlier: 0 } }];
     const page = await landed();
     await key("Escape", {}, note());
     await command("agent lead");
@@ -483,7 +516,7 @@ describe("dashboard page", () => {
   test("Threads reads the mail as discussions; r answers a post, and a server that does not serve posting is named", async () => {
     served = [];
     const mail = (id: string, sender: string, recipient: string, text: string, sentAt: string, fields: object = {}) =>
-      ({ key: `r1/${id}`, repository: "r1", id, at: Number(id.slice(1)) * 100, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: sentAt, waiting: false, post: id, thread: id, ...fields });
+      ({ key: `r1/${id}`, repository: "r1", id, at: Number(id.slice(1)) * 100, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: sentAt, waiting: false, post: id, thread: id, prompt: false, ...fields });
     messages = [
       mail("m1", "lead", "lead-a1", "Which sources disagree?", "2026-09-24T10:00:00Z"),
       mail("m2", "lead-a1", "lead", "Three of them.", "2026-09-24T10:01:00Z", { in_reply_to: "m1" }),
@@ -546,7 +579,7 @@ describe("dashboard page", () => {
         limits: { pace: "even", ceilings: null, tolerance: null, reserve: 10, max_active: 2 }, said: ["even pace", "keep 10%", "≤2 at once"], agents: 1, held: 1, exhausted: "5-hour window used up until 14:20" }],
       agents: [{ session: "r1/lead", account: "claude:work", hour: { usd: 0.42, tokens: 9000 }, total: { usd: 3.1, tokens: 80000 }, priority: "low",
         caps: { rate_usd: null, rate_tokens: null, total_usd: 5, total_tokens: null }, exempt: false, held: { key: "r1/lead", cause: "window", said: "5-hour window used up until 14:20", until: resets } }],
-      turtle: false, telemetry: true, refused: "", holds: true,
+      turtle: false, telemetry: true, refused: "", holds: false,
     };
     const page = await landed();
     const meter = one(page.root, "#meter");
@@ -557,7 +590,8 @@ describe("dashboard page", () => {
     await until(() => said().includes("claude:work: 5-hour window used up until 14:20"), "the window's notice");
     const row = [...page.root.querySelectorAll(".tr.member")].find((each) => (each.textContent ?? "").includes("lead"));
     expect(row?.textContent).toContain("$0.42/h · $3.10");
-    expect(row?.textContent).toContain("⏸ 5-hour window used up until 14:20");
+    expect(row?.textContent).toContain("would hold: 5-hour window used up until 14:20");
+    expect(meter.textContent).toContain("not holding");
     await click(one(page.root, "#meter .turtle"));
     await key("Escape", {}, note());
     await command("priority lead high");
@@ -581,7 +615,7 @@ describe("dashboard page", () => {
   });
 
   test("Space a r answers the last message between the agent and you, in its thread", async () => {
-    messages = [{ key: "r1/m3", repository: "r1", id: "m3", at: 300, sender: "lead", recipient: "user", recipient_kind: "user", text: "Rebase or merge?", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T10:02:00Z", waiting: true, post: "p3", thread: "p3" }];
+    messages = [{ key: "r1/m3", repository: "r1", id: "m3", at: 300, sender: "lead", recipient: "user", recipient_kind: "user", text: "Rebase or merge?", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T10:02:00Z", waiting: true, post: "p3", thread: "p3", prompt: false }];
     const page = await landed();
     await key("Escape", {}, note());
     await command("agent lead");
@@ -616,8 +650,8 @@ describe("dashboard page", () => {
 
   test("X in the inbox takes every message to you out of your mailbox, as read", async () => {
     messages = [
-      { key: "r1/m3", repository: "r1", id: "m3", at: 300, sender: "lead", recipient: "user", recipient_kind: "user", text: "Rebase or merge?", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T10:02:00Z", waiting: true, post: "p3", thread: "p3" },
-      { key: "r1/m4", repository: "r1", id: "m4", at: 400, sender: "lead-a1", recipient: "user", recipient_kind: "user", text: "Done.", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T10:03:00Z", waiting: true, post: "p4", thread: "p4" },
+      { key: "r1/m3", repository: "r1", id: "m3", at: 300, sender: "lead", recipient: "user", recipient_kind: "user", text: "Rebase or merge?", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T10:02:00Z", waiting: true, post: "p3", thread: "p3", prompt: false },
+      { key: "r1/m4", repository: "r1", id: "m4", at: 400, sender: "lead-a1", recipient: "user", recipient_kind: "user", text: "Done.", door: "agent", redirect: false, in_reply_to: "", sent_at: "2026-09-24T10:03:00Z", waiting: true, post: "p4", thread: "p4", prompt: false },
     ];
     await landed();
     await key("Escape", {}, note());
@@ -631,7 +665,7 @@ describe("dashboard page", () => {
 
   test("a post into a discussion goes to its thread's route, answering the post r chose", async () => {
     const mail = (id: string, sender: string, recipient: string, text: string, sentAt: string, fields: object = {}) =>
-      ({ key: `r1/${id}`, repository: "r1", id, at: Number(id.slice(1)) * 100, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: sentAt, waiting: false, post: id, thread: "m1", ...fields });
+      ({ key: `r1/${id}`, repository: "r1", id, at: Number(id.slice(1)) * 100, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: sentAt, waiting: false, post: id, thread: "m1", prompt: false, ...fields });
     messages = [
       mail("m1", "lead", "lead-a1", "Which sources disagree?", "2026-09-24T10:00:00Z"),
       mail("m2", "lead-a1", "lead", "Three of them.", "2026-09-24T10:01:00Z", { in_reply_to: "m1" }),
@@ -672,6 +706,121 @@ describe("dashboard page", () => {
     for (const each of [" ", "a", "w"]) await key(each, {}, document.body);
     await until(() => said().includes("POST …/sessions/<member>/wake"), "the refusal");
     expect(supervisedPosts()).toEqual([]);
+  });
+
+  /** The operator's freeze over lead and everything it spawned, as the stream carries it on each row it covers. */
+  const frozenTree = { reason: "paused", owner: "operator", scope: "tree", on: "lead", said: "paused by the operator", since: new Date(Date.now() - 180_000).toISOString(), until: null, freeze: true };
+
+  test("an agent is paused, frozen and resumed from its keys and the command line, each through its route, its answer said", async () => {
+    const page = await landed();
+    await key("Escape", {}, note());
+    await command("agent lead");
+    await until(() => (page.root.querySelector("#ebar")?.textContent ?? "").includes("lead"), "the agent");
+    for (const sequence of [[" ", "a", "z"], [" ", "a", "Z"], [" ", "a", "u"]]) {
+      for (const each of sequence) await key(each, {}, document.body);
+    }
+    await until(() => supervisedPosts().length === 3, "the pause, the freeze and the resume");
+    await until(() => (page.root.querySelector("#notify")?.textContent ?? "").includes("Froze 1 session(s)"), "what the freeze did");
+    for (const line of ["pause scout tree", "freeze repo", "resume repo", "pause all", "resume all"]) await command(line);
+    await until(() => supervisedPosts().length === 8, "every reach");
+    expect(supervisedPosts().map((request) => [request.path, request.body])).toEqual([
+      ["api/repositories/r1/sessions/lead/pause", { tree: false, freeze: false }],
+      ["api/repositories/r1/sessions/lead/pause", { tree: false, freeze: true }],
+      ["api/repositories/r1/sessions/lead/resume", { tree: false }],
+      ["api/repositories/r1/sessions/lead-a1/pause", { tree: true, freeze: false }],
+      ["api/repositories/r1/pause", { tree: false, freeze: true }],
+      ["api/repositories/r1/resume", {}],
+      ["api/pause", { tree: false, freeze: false }],
+      ["api/resume", {}],
+    ]);
+    expect(one(page.root, "#notify").textContent).toContain("Paused lead: 2 agent(s) are held at their next tool call.");
+  });
+
+  test("a resume on an agent another pause covers is refused in the server's words, naming that pause", async () => {
+    sessions = [session("lead", { holds: [frozenTree] }), session("lead-a1", { parent: "lead", kind: "subagent", name: "scout", holds: [frozenTree] })];
+    const page = await landed();
+    await key("Escape", {}, note());
+    await command("resume scout");
+    await until(() => (page.root.querySelector("#notify")?.textContent ?? "").includes("held by the tree pause of lead"), "the refusal");
+    expect(supervisedPosts().map((request) => [request.path, request.body])).toEqual([["api/repositories/r1/sessions/lead-a1/resume", { tree: false }]]);
+    await command("agent lead");
+    for (const each of [" ", "a", "u"]) await key(each, {}, document.body);
+    await until(() => supervisedPosts().length === 2, "the resume of the pause placed on lead");
+    expect(supervisedPosts()[1]?.body).toEqual({ tree: true });
+  });
+
+  test("a pause this dashboard's server does not serve is refused naming its route, and the page marks it not served", async () => {
+    served = SERVED_ALL.filter((feature) => feature !== "pause");
+    const page = await landed();
+    await key("Escape", {}, note());
+    await command("agent lead");
+    await until(() => (page.root.querySelector("#context")?.textContent ?? "").includes("pause it at its next tool call"), "the agent's actions");
+    const pausing = [...page.root.querySelectorAll("#context .it")].find((item) => (item.textContent ?? "").includes("pause it at its next tool call"));
+    expect(pausing?.textContent).toContain("not served here");
+    for (const each of [" ", "a", "z"]) await key(each, {}, document.body);
+    await until(() => said().includes("POST …/sessions/<member>/pause"), "the refusal naming the route");
+    await command("resume all");
+    await until(() => said().includes("resuming every agent of every repository"), "the second refusal");
+    expect(supervisedPosts()).toEqual([]);
+  });
+
+  test("a held agent's row says ⏸ and why; the tree, the statusline and its context count and name each hold", async () => {
+    sessions = [
+      session("lead", { holds: [frozenTree] }),
+      session("lead-a1", { parent: "lead", kind: "subagent", name: "scout", holds: [frozenTree], held_since: new Date(Date.now() - 60_000).toISOString() }),
+      session("old", { running: false, summary: "Handed back." }),
+    ];
+    const page = await landed();
+    const row = (name: string) => [...page.root.querySelectorAll<HTMLElement>("#queue .tr.member")].find((each) => each.querySelector("b")?.textContent === name);
+    expect(row("lead")?.querySelector(".held")?.textContent).toBe("⏸ frozen ");
+    expect(row("lead")?.querySelector(".held")?.getAttribute("title")).toContain("paused by the operator · your freeze of it and everything it spawned · since");
+    expect(row("scout")?.querySelector(".held")?.getAttribute("title")).toContain("your freeze of lead and everything it spawned");
+    expect(one(page.root, "#qbar").textContent).toContain("⏸2 held");
+    expect(status()).toContain("⏸2 held");
+    await key("Escape", {}, note());
+    await command("agent scout");
+    await until(() => (page.root.querySelector("#context")?.textContent ?? "").includes("held at its next call · 1"), "the held section");
+    const context = one(page.root, "#context").textContent ?? "";
+    expect(context).toContain("⏸ paused by the operator · frozen");
+    expect(context).toContain("your freeze of lead and everything it spawned");
+    expect(context).toContain("its hook holds the call it made at");
+    expect(one(page.root, ".pane").textContent).toContain("⏸ paused by the operator: your freeze of lead and everything it spawned");
+    expect(status()).toContain("⏸ frozen");
+  });
+
+  test("a resume's bare prompt reads as the prompt it was, not as a message from you", async () => {
+    messages = [{ key: "r1/m5", repository: "r1", id: "m5", at: 500, sender: "user", recipient: "lead", recipient_kind: "session", text: "continue", door: "page", redirect: false, in_reply_to: "", sent_at: "2026-09-24T10:05:00Z", waiting: false, post: "p5", thread: "p5", prompt: true }];
+    const page = await landed();
+    await key("Escape", {}, note());
+    await command("agent lead");
+    await until(() => (page.root.querySelector(".pane")?.textContent ?? "").includes("prompt → lead"), "the prompt");
+    const mail = one(page.root, ".pane .r.mail");
+    expect(mail.classList.contains("prompt")).toBe(true);
+    expect(mail.textContent).toContain("the prompt its runtime was woken with, never in its mailbox");
+    expect(mail.textContent).toContain("continue");
+    expect(one(page.root, ".pane").textContent).not.toContain("you → lead");
+  });
+
+  test("on a phone the agent's Act sheet pauses, freezes and resumes it, and says what holds it", async () => {
+    Object.defineProperty(window, "innerWidth", { value: 390, configurable: true });
+    sessions = [session("lead", { holds: [frozenTree] }), session("lead-a1", { parent: "lead", kind: "subagent", name: "scout" })];
+    shown = mount(<App />);
+    const page = shown;
+    await until(() => page.root.querySelector("#tabbar") !== null && (page.root.querySelector("#tabbar")?.textContent ?? "").includes("⏸1"), "the tab bar counting the held agent");
+    await command("agent lead");
+    await until(() => (page.root.querySelector("#t-title")?.textContent ?? "").includes("⏸ frozen"), "the top bar saying it is held");
+    for (const label of ["Pause it at its next tool call", "Freeze it: stop its commands, interrupt its turn", "Resume it"]) {
+      await click([...page.root.querySelectorAll<HTMLElement>("#actionbar button")].find((button) => button.textContent === "Act") ?? one(page.root, "#actionbar"));
+      await until(() => page.root.querySelector("#sheet") !== null, "the Act sheet");
+      expect(one(page.root, "#sheet").textContent).toContain("⏸ paused by the operator for 3m · frozen");
+      await click([...page.root.querySelectorAll<HTMLElement>("#sheet button")].find((button) => button.textContent === label) ?? one(page.root, "#sheet"));
+    }
+    await until(() => supervisedPosts().length === 3, "the three acts");
+    expect(supervisedPosts().map((request) => [request.path, request.body])).toEqual([
+      ["api/repositories/r1/sessions/lead/pause", { tree: false, freeze: false }],
+      ["api/repositories/r1/sessions/lead/pause", { tree: false, freeze: true }],
+      ["api/repositories/r1/sessions/lead/resume", { tree: true }],
+    ]);
   });
 
   test("the setup view lists each repository's pane and shows the one chosen", async () => {

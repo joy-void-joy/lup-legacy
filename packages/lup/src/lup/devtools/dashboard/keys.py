@@ -253,6 +253,9 @@ class KeymapCatalog(BaseModel, frozen=True):
         action("budget.turtle", "<leader>bt", "the turtle: every account under its slower limits, or back under its usual ones (:turtle)", "budget", needs="budgets"),
         action("budget.priority", "<leader>bp", "its priority under its account's limits: high, normal or low (:priority)", "budget", needs="budgets"),
         action("budget.cap", "<leader>bc", "its caps: a rate per hour and a total, in dollars or tokens (:cap)", "budget", needs="budgets"),
+        action("agent.pause", "<leader>az", "pause it at its next tool call, its subagents with it (:pause)", "agent", needs="pause"),
+        action("agent.freeze", "<leader>aZ", "freeze it: pause, stop its running commands and interrupt its turn (:freeze)", "agent", needs="pause"),
+        action("agent.resume", "<leader>au", "resume it: let its next call go, continue what a freeze stopped (:resume)", "agent", needs="pause"),
         action("message.reply", "r", "reply in the thread of the message under the cursor", "agent", scope="buffer", needs="reply-thread"),
         action("messages.earlier", "E", "load earlier messages (an older page of the mail record)", "agent", scope="buffer", stands="changed", note="was the Load earlier messages button"),
         # the operator as a peer

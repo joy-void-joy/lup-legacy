@@ -1159,6 +1159,7 @@ def resolve_redirection(
     tracked_targets: list[str] | None = None,
     displaced_targets: list[DisplacedTargetRow] | None = None,
     directory: str | None = "",
+    plugin_roots: list[str] | None = None,
 ) -> KernelDecision | None:
     """Classify one redirection, or ``None`` where it is safe.
 
@@ -1212,6 +1213,7 @@ def resolve_redirection(
         placed in (landing or []),
         tracked_targets,
         displaced_targets,
+        plugin_roots=plugin_roots,
     )
 
 
@@ -1226,6 +1228,7 @@ def written_path_verdict(
     carried: bool = False,
     tracked_targets: list[str] | None = None,
     displaced_targets: list[DisplacedTargetRow] | None = None,
+    plugin_roots: list[str] | None = None,
 ) -> KernelDecision | None:
     """Classify one path a command opens and writes whole, or ``None`` where safe.
 
@@ -1256,7 +1259,7 @@ def written_path_verdict(
     target the host found landing elsewhere is not exempted by its spelling.
     """
     refused = refuses_generated_plugin_target(
-        spelled, path_roles, checkout_root, displaced_targets
+        spelled, path_roles, checkout_root, displaced_targets, plugin_roots
     )
     if refused is not None:
         return refused
@@ -1347,6 +1350,7 @@ def named_write_verdict(
     checkout_root: str = "",
     tracked_targets: list[str] | None = None,
     displaced_targets: list[DisplacedTargetRow] | None = None,
+    plugin_roots: list[str] | None = None,
 ) -> KernelDecision | None:
     """The first file this line opens and writes whole that is not safe.
 
@@ -1374,6 +1378,7 @@ def named_write_verdict(
             tracked_targets,
             displaced_targets,
             carried["directory"],
+            plugin_roots=plugin_roots,
         )
         for carried in placed_redirects(script)
     ]
@@ -1389,6 +1394,7 @@ def named_write_verdict(
             path in landing,
             tracked_targets,
             displaced_targets,
+            plugin_roots=plugin_roots,
         )
         for path in tee_targets(script)
     ]

@@ -14,7 +14,8 @@ import pytest
 from lup.coordination.refs import ActorRef
 from lup.coordination.rendering import USER_HOLDER, render, user_tasks
 from lup.coordination.tasks import Blocks, Task
-from lup.coordination.wake import WakePath, Woken, wake
+from lup.coordination.wake import WakePath, Woken
+from lup.providers.wake import wake
 from lup.ledger.journal import LedgerStore
 from lup.ledger.models import LedgerNode
 

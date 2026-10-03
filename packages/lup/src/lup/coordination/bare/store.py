@@ -114,6 +114,44 @@ the file from the byte it last stopped at, and reads what came before a
 byte a page at a time from there back, never the whole record at once.
 """
 
+HOLDS_DIR = "holds"
+WAITING_DIR = "waiting"
+"""What keeps a member's next tool call waiting, one file per hold, and who waits.
+
+Beside the mailboxes rather than on a member's row, because a member never
+writes its own: the operator and the budget governor place them, and the hook
+of the member they cover only reads them. ``waiting/`` beneath it is the one
+place that hook writes, one file for each call it is holding.
+"""
+
+SELF_SCOPE = "self"
+AGENT_SCOPE = "agent"
+TREE_SCOPE = "tree"
+REPOSITORY_SCOPE = "repository"
+"""Whom a hold covers, as a hold file spells it.
+
+The conversation named alone; it and the native subagents inside its runtime;
+it and everything its spawning reaches; or every member of the store.
+"""
+
+OPERATOR_OWNER = "operator"
+BUDGET_OWNER = "budget"
+"""Who placed a hold, and so who alone may lift it."""
+
+PAUSED_REASON = "paused"
+PAUSED_SAID = "paused by the operator"
+"""The operator's pause, as its file names it and as an agent and a row read it."""
+
+UNTRIED = "this call didn't run; retry it"
+"""What follows a hold's words when a call is refused at its hook's limit.
+
+The call did not run, and the same call made again is held afresh; nothing
+more is said, because a held agent has nothing to do but ask again.
+"""
+
+WHOLE_REPOSITORY = "_"
+"""The member part of a repository hold's file name, which names nobody."""
+
 LOOKS_DIR = "looks"
 WINDOWS_DIR = "windows"
 TITLES_DIR = "titles"

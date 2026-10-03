@@ -15,7 +15,7 @@ import { HANDLERS } from "./actions";
 import { Meter } from "./Shell";
 import type { Feature } from "./served";
 import { VIEW_NAMES, VIEWS, type NavKind, type PageState } from "./state";
-import { GLYPH, inboxOf, kindWords, standing, unreadCount } from "./supervision";
+import { attention, GLYPH, heldCount, heldWord, inboxOf, kindWords, standing, unreadCount } from "./supervision";
 import { memberName } from "./threads";
 
 export function TopBar({ d, state }: { d: Dashboard; state: PageState }) {
@@ -31,7 +31,7 @@ export function TopBar({ d, state }: { d: Dashboard; state: PageState }) {
     }
     case "member": {
       const session = live?.sessions.get(state.sel.key);
-      if (session !== undefined) { title = `${GLYPH[standing(session, state.now)]} ${session.name || session.id}`; sub = `${kindWords(session)} · ${standing(session, state.now)}`; }
+      if (session !== undefined) { title = `${GLYPH[standing(session, state.now)]} ${session.name || session.id}`; sub = `${session.running && heldWord(session) !== "" ? `⏸ ${heldWord(session)} · ` : ""}${kindWords(session)} · ${standing(session, state.now)}`; }
       break;
     }
     case "you": title = "◆ you"; sub = live?.repositories.get(state.sel.key)?.name ?? ""; break;
@@ -123,8 +123,10 @@ export function TabBar({ d, state }: { d: Dashboard; state: PageState }) {
     supervise: d.pending(state).length, history: 0, inbox: live === null ? 0 : unreadCount(live),
     threads: d.discussions(state).reduce((total, each) => total + each.unread, 0), setup: 0,
   };
+  const held = live === null ? 0 : heldCount(live);
   return <nav id="tabbar" aria-label="Views">
-    {VIEWS.map((view) => <button key={view} type="button" role="tab" aria-selected={state.view === view} onClick={() => d.setView(view)}>{VIEW_NAMES[view]}{(badges[view] ?? 0) > 0 && <span className="badge">{badges[view]}</span>}</button>)}
+    {VIEWS.map((view) => <button key={view} type="button" role="tab" aria-selected={state.view === view} onClick={() => d.setView(view)}>{VIEW_NAMES[view]}{(badges[view] ?? 0) > 0 && <span className="badge">{badges[view]}</span>}
+      {view === "supervise" && held > 0 && <span className="badge held" title="agents held at their next tool call">⏸{held}</span>}</button>)}
   </nav>;
 }
 
@@ -135,6 +137,9 @@ const AGENT_ACTS: { action: string; label: string; needs?: Feature }[] = [
   { action: "agent.wake", label: "Wake it", needs: "bare-wake" },
   { action: "agent.nudge", label: "Interrupt its turn (the box's words, or the standard ones)", needs: "interrupt" },
   { action: "agent.reply", label: "Reply to its last message, in its thread", needs: "reply-thread" },
+  { action: "agent.pause", label: "Pause it at its next tool call", needs: "pause" },
+  { action: "agent.freeze", label: "Freeze it: stop its commands, interrupt its turn", needs: "pause" },
+  { action: "agent.resume", label: "Resume it", needs: "pause" },
   { action: "peer.redirect", label: "Redirect its next call…", needs: "redirect" },
   { action: "agent.rename", label: "Rename it…", needs: "rename" },
   { action: "agent.stop", label: "Stop its runtime (tap twice)", needs: "stop" },
@@ -152,6 +157,7 @@ export function Sheet({ d, state }: { d: Dashboard; state: PageState }) {
     const lacking = (needs: Feature) => d.lacks(needs) !== "";
     return <div id="sheet" role="dialog" aria-modal="true" aria-label="Act on the agent">
       <h3>{session === undefined ? "Act on the agent" : `Act on ${session.name || session.id}`}</h3>
+      {session !== undefined && session.running && state.live !== null && session.holds.length > 0 && <p className="warn">{attention(state.live, d.roots(state), d.pending(state), session, state.now).find((flag) => flag.key === "held")?.text}</p>}
       <div className="list">
         {AGENT_ACTS.map(({ action, label, needs }) => <button key={action} type="button" disabled={needs !== undefined && lacking(needs)} title={needs === undefined ? "" : d.lacks(needs)} onClick={act(action)}>{label}</button>)}
       </div>

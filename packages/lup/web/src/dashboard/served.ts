@@ -24,6 +24,7 @@ export const NEEDS: Record<Feature, string> = {
   "thread-post": "POST …/repositories/<key>/threads/<thread>/posts",
   budgets: "POST /api/budget/turtle, POST …/sessions/<member>/budget and budget frames on the stream",
   profiles: "POST …/repositories/<key>/profile",
+  pause: "POST …/sessions/<member>/pause and …/resume, and a repository's …/pause and …/resume",
 };
 
 /** Why an action cannot run against a server serving *served*, or nothing where it serves what the action needs. */

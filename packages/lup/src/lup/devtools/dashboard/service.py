@@ -537,6 +537,7 @@ class Herald:
             turtle=self.governor.current().turtle
             if self.governor is not None
             else False,
+            held=sum(each.held for each in needs),
         )
         last = self.published
         if (

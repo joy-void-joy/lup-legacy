@@ -26,7 +26,8 @@ from lup.devtools.review import wait as waiter
 from lup.devtools.review.wait import ReviewWaiters
 from lup.policy.assets.host import review_records
 from lup.policy.identity import DASHBOARD_URL_ENV
-from lup.policy.relay import QuestionRelay, RecordedQuestion
+from lup.devtools.review.thread import ReviewThread
+from lup.policy.relay import QuestionRelay, RecordedQuestion, RelaySignature
 from lup.providers.claude.identity import CLAUDE_SESSION_ENV
 from lup.types import JsonObject
 from tests.unit.native import claude_effect
@@ -157,6 +158,42 @@ def test_a_declined_review_reports_the_operator_s_note(root: Path) -> None:
     assert f"review {question.id} — declined:" in waited.output
     assert "operator note: use the other branch" in waited.output
     assert not (root / "marker.txt").exists()
+
+
+def test_a_remark_appended_with_the_approval_reports_the_approval(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The waiter reads a review's state and the remarks on it at once, so a remark sent with an approval does not end the wait as a comment on a review still waiting."""
+    asked(root, "Bash", {"command": f"{ESCALATED}echo carried > marker.txt"})
+    question = only(root)
+    signature, refreshed = QuestionRelay.signature, QuestionRelay.refreshed
+    looking: list[QuestionRelay] = []
+    answered: list[str] = []
+
+    def looked(relay: QuestionRelay) -> RelaySignature:
+        looking.append(relay)
+        return signature(relay)
+
+    def then_answered(relay: QuestionRelay) -> None:
+        refreshed(relay)
+        if relay in looking and not answered:
+            answered.append(question.id)
+            operator = relay_of(root)
+            entry = operator.question(question.id)
+            assert entry is not None
+            ReviewThread.of(operator).remark(entry, "operator", "looks right")
+            operator.answer(question.id, "operator", True)
+
+    monkeypatch.setattr(QuestionRelay, "signature", looked)
+    monkeypatch.setattr(QuestionRelay, "refreshed", then_answered)
+
+    waited = RUNNER.invoke(create_review_app(root), ["wait", question.id])
+
+    assert answered == [question.id]
+    assert waited.exit_code == 0, waited.output
+    assert "commented" not in waited.output
+    assert f"review {question.id} — ran:" in waited.output
+    assert (root / "marker.txt").read_text() == "carried\n"
 
 
 def test_a_review_another_session_asked_is_carried_out_by_none_other(

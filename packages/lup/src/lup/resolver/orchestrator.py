@@ -7,7 +7,8 @@ from pathlib import Path
 from lup.harness.codescan.symbols import DefinedSymbol, defined_symbols, symbols_lost
 from lup.execution.git import GitError, Repository
 from lup.execution.writability import diagnose_git_admin
-from lup.harness.ownership import GeneratedArtifacts, generated_artifacts
+from lup.harness.ownership import GeneratedArtifacts
+from lup.providers.harness import runtime_generated
 from lup.execution.process import ExitStatus, LaunchRequest, ProcessLauncher
 from lup.resolver.contracts import WorktreePreparer
 from lup.resolver.declaration import declaration_delta, inspect_changes
@@ -109,7 +110,7 @@ class WorktreeOrchestrator:
         self.launcher = launcher
         self.workspace = workspace
         self.preparer = preparer
-        self.generated = generated or generated_artifacts(workspace)
+        self.generated = generated or runtime_generated(workspace)
 
     def config_lock_note(self, root: Path) -> str:
         """What a failed step's mount state says that git's words cannot.

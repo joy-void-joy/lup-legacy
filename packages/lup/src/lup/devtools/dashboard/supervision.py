@@ -17,7 +17,8 @@ the verb cannot be done to it.
 import asyncio
 import os
 import signal
-from collections.abc import Callable
+import uuid
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -27,13 +28,16 @@ from lup.channels.models import Door
 from lup.coordination.bare.mail import new_post_id
 from lup.coordination.bare.runtime import process_scope
 from lup.coordination.bare.scope import execution_scope
+from lup.coordination.holds import HoldScope
 from lup.coordination.identity import NameTakenError
 from lup.coordination.mail import ActorDelivery, Posting
 from lup.coordination.peers import USER_ADDRESS, join_user
 from lup.coordination.repository import NotReached, PeerDepartedError, RepositoryPeers
 from lup.coordination.roster import Delivery, RosterMember
-from lup.coordination.wake import WakePriority, wake
+from lup.coordination.wake import WakePriority
+from lup.providers.wake import wake
 from lup.coordination.watch import roused
+from lup.devtools.coordination.pausing import Paused, Resumed, pause, resume
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import (
     TRANSCRIPT_PAGE,
@@ -60,6 +64,7 @@ SUPERVISED: tuple[Feature, ...] = (
     "claims",
     "inbox-read",
     "thread-post",
+    "pause",
 )
 """Every piece of supervision these routes serve, which the stream tells the page."""
 
@@ -188,6 +193,53 @@ class Released(BaseModel, frozen=True):
 class InboxRead(BaseModel, frozen=True):
     read: list[str]
     """The messages taken out of the person's mailbox; one already taken is not."""
+
+
+class PauseRequest(BaseModel, frozen=True, extra="forbid"):
+    """How far a pause reaches, and whether it stops what is running too."""
+
+    tree: bool = False
+    """The agent and everything it spawned, at any remove; else the agent
+    and its native subagents. Names nothing for a repository's pause."""
+
+    freeze: bool = False
+    """Also stop the commands its tools are running and interrupt its turn now."""
+
+
+class ResumeRequest(BaseModel, frozen=True, extra="forbid"):
+    """Which pause a resume lifts: the agent's own, or the one over its tree."""
+
+    tree: bool = False
+
+
+class NotFrozenSession(BaseModel, frozen=True):
+    """One session a freeze could not reach, by its session key, and why; it is paused."""
+
+    session: str
+    why: str
+
+
+class PauseOutcome(BaseModel, frozen=True):
+    """What one pause or resume did, in every repository it reached."""
+
+    repositories: list[str]
+    """The keys of the repositories it acted in."""
+
+    held: int = 0
+    """How many live agents a pause holds now; nothing for a resume."""
+
+    frozen: list[str] = []
+    """The sessions a freeze stopped, as session keys."""
+
+    unfrozen: list[NotFrozenSession] = []
+
+    continued: int = 0
+    """The command groups a resume continued."""
+
+    woken: list[str] = []
+    """The sessions a resume woke with a bare "continue", as session keys."""
+
+    detail: str
 
 
 class PostOutcome(BaseModel, frozen=True):
@@ -590,6 +642,106 @@ def post(known: KnownRepository, thread: str, said: PostRequest) -> PostOutcome:
     )
 
 
+def paused_in(known: KnownRepository, outcome: Paused) -> PauseOutcome:
+    """One repository's pause, as the page reads it."""
+    return PauseOutcome(
+        repositories=[known.key()],
+        held=len(outcome.held),
+        frozen=[f"{known.key()}/{member}" for member in outcome.frozen],
+        unfrozen=[
+            NotFrozenSession(session=f"{known.key()}/{each.member}", why=each.why)
+            for each in outcome.unfrozen
+        ],
+        detail=outcome.detail,
+    )
+
+
+def resumed_in(known: KnownRepository, outcome: Resumed) -> PauseOutcome:
+    """One repository's resume, as the page reads it."""
+    return PauseOutcome(
+        repositories=[known.key()],
+        continued=len(outcome.continued),
+        woken=[f"{known.key()}/{member}" for member in outcome.woken],
+        detail=outcome.detail,
+    )
+
+
+def pause_member(
+    known: KnownRepository, member_id: str, asked: PauseRequest
+) -> PauseOutcome:
+    """Hold one agent -- with its subagents, or with everything it spawned -- at its next call."""
+    peers = RepositoryPeers(known.checkout)
+    standing(peers, known, member_id)
+    scope = HoldScope.TREE if asked.tree else HoldScope.AGENT
+    return paused_in(known, pause(peers, scope, member_id, freeze=asked.freeze))
+
+
+def resume_member(
+    known: KnownRepository, member_id: str, asked: ResumeRequest
+) -> PauseOutcome:
+    """Lift the pause on one agent, or on its tree, and wake it where it stopped."""
+    peers = RepositoryPeers(known.checkout)
+    scope = HoldScope.TREE if asked.tree else HoldScope.AGENT
+    try:
+        return resumed_in(known, resume(peers, scope, member_id))
+    except LookupError as nothing:
+        raise Refused(str(nothing)) from nothing
+
+
+def pause_repositories(
+    served: list[KnownRepository], asked: PauseRequest
+) -> PauseOutcome:
+    """Hold every agent of each repository named at its next call, as one pause."""
+    if asked.tree:
+        raise Refused("a repository's pause names no tree: it holds every agent there")
+    group = uuid.uuid4().hex[:12]
+    outcomes = [
+        paused_in(
+            known,
+            pause(
+                RepositoryPeers(known.checkout),
+                HoldScope.REPOSITORY,
+                freeze=asked.freeze,
+                group=group,
+            ),
+        )
+        for known in served
+    ]
+    return PauseOutcome(
+        repositories=[key for each in outcomes for key in each.repositories],
+        held=sum(each.held for each in outcomes),
+        frozen=[key for each in outcomes for key in each.frozen],
+        unfrozen=[missed for each in outcomes for missed in each.unfrozen],
+        detail=" ".join(each.detail for each in outcomes),
+    )
+
+
+def resume_repositories(served: list[KnownRepository]) -> PauseOutcome:
+    """Lift the pause over each repository named; one that stood unpaused is passed over.
+
+    Asked of one repository, one that stood unpaused is refused, saying so.
+    """
+
+    def lifted() -> Iterator[PauseOutcome]:
+        for known in served:
+            try:
+                yield resumed_in(
+                    known, resume(RepositoryPeers(known.checkout), HoldScope.REPOSITORY)
+                )
+            except LookupError as nothing:
+                if len(served) == 1:
+                    raise Refused(str(nothing)) from nothing
+
+    outcomes = list(lifted())
+    return PauseOutcome(
+        repositories=[key for each in outcomes for key in each.repositories],
+        continued=sum(each.continued for each in outcomes),
+        woken=[key for each in outcomes for key in each.woken],
+        detail=" ".join(each.detail for each in outcomes)
+        or "Nothing to resume: no repository stood paused.",
+    )
+
+
 def supervision_models() -> list[type[BaseModel]]:
     """Every model the routes below read and answer with, which the page is typed against."""
     return [
@@ -612,6 +764,10 @@ def supervision_models() -> list[type[BaseModel]]:
         InboxRead,
         PostRequest,
         PostOutcome,
+        PauseRequest,
+        ResumeRequest,
+        NotFrozenSession,
+        PauseOutcome,
         TranscriptPage,
         FollowRequest,
         FollowOutcome,
@@ -732,3 +888,41 @@ def supervision_routes(
         """Post into one discussion, to everyone in it."""
         known = known_by(repository)
         return answered(lambda: post(known, thread, said))
+
+    @app.post("/api/repositories/{repository}/sessions/{member}/pause")
+    def pause_route(repository: str, member: str, asked: PauseRequest) -> PauseOutcome:
+        """Hold one agent at its next tool call, freezing it where asked."""
+        known = known_by(repository)
+        return answered(lambda: pause_member(known, member, asked))
+
+    @app.post("/api/repositories/{repository}/sessions/{member}/resume")
+    def resume_route(
+        repository: str, member: str, asked: ResumeRequest
+    ) -> PauseOutcome:
+        """Let one paused agent go on."""
+        known = known_by(repository)
+        return answered(lambda: resume_member(known, member, asked))
+
+    @app.post("/api/repositories/{repository}/pause")
+    def pause_repository_route(repository: str, asked: PauseRequest) -> PauseOutcome:
+        """Hold every agent of one repository at its next tool call."""
+        known = known_by(repository)
+        return answered(lambda: pause_repositories([known], asked))
+
+    @app.post("/api/repositories/{repository}/resume")
+    def resume_repository_route(repository: str, asked: Nothing) -> PauseOutcome:
+        """Lift one repository's pause."""
+        del asked
+        known = known_by(repository)
+        return answered(lambda: resume_repositories([known]))
+
+    @app.post("/api/pause")
+    def pause_everything_route(asked: PauseRequest) -> PauseOutcome:
+        """Hold every agent of every repository served at its next tool call."""
+        return answered(lambda: pause_repositories(feed.served(), asked))
+
+    @app.post("/api/resume")
+    def resume_everything_route(asked: Nothing) -> PauseOutcome:
+        """Lift every repository's pause."""
+        del asked
+        return answered(lambda: resume_repositories(feed.served()))

@@ -239,16 +239,20 @@ compiler proves rather than trusts.
 JUDGEMENT = "judged"
 WARDEN = "answered_in_time"
 UNANSWERED = "unanswered"
+HELD = "held"
 ANSWER_LIMIT = "HOOK_ANSWER_SECONDS"
 """What one hook input is judged by, what answers in time around it, the
-refusal written when the judgement does not answer, and when that is.
+refusal written when the judgement does not answer, what keeps a call
+waiting before any of that while a hold covers its caller, and when the
+judgement's time is up.
 
 The judgement holds the failure handler, and the refusal it writes is the
-one the warden writes, in the same shape."""
+one the warden writes, in the same shape. The hold comes first and its time
+is its own: the judgement's bound starts as the hold lets the call go."""
 
 DISPATCHER_INVOCATION = (
     'if __name__ == "__main__":\n'
-    f"    {WARDEN}({ANSWER_LIMIT}, {JUDGEMENT}, {UNANSWERED})"
+    f"    {WARDEN}({ANSWER_LIMIT}, {JUDGEMENT}, {UNANSWERED}, {HELD})"
 )
 """A dispatcher's entry point, which the compiler writes rather than a half.
 
@@ -341,10 +345,10 @@ class DispatcherDeclaration(BaseModel, frozen=True):
     The tools are declared apart because the two are registered for
     different sets: a deciding event covers everything the dispatcher
     routes, since a call it is not registered for is a call nobody judged,
-    while the watching event covers the editing tools alone. It exists only
-    to record where editing is happening, and a matcher wide enough for the
-    deciding set would spawn the script after every shell command to find
-    nothing worth recording.
+    while the watching event covers only the calls that leave something to
+    read afterwards — a write, from an editing tool or the shell, and the
+    name a spawn went out under. A matcher wide enough for the deciding set
+    would spawn the script after every fetch to find nothing worth reading.
     """
 
     runtime_name: str
@@ -749,7 +753,7 @@ def declaration_breaches(
         ],
         *[
             f"declares {name} but defines no such function"
-            for name in (ROUTER, JUDGEMENT, UNANSWERED)
+            for name in (ROUTER, JUDGEMENT, UNANSWERED, HELD)
             if runtime.function(name) is None
         ],
         *breach(

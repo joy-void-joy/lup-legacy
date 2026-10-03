@@ -77,6 +77,17 @@ permission policy: the native runtime determines which files are visible,
 and the delegated role receives no write facility. Hosted web search is
 separate from network access for sandboxed commands.
 
+**Name every spawn after its work.** The name a spawn carries is what the
+runtime lists, what a message and a stop address, and what the roster row
+the subagent joins under is called, so the caller chooses it: the task in two
+or three words, a letter or digit first, then letters, digits and
+underscores. Where the hook set declares `spawn_names` — on by default — a
+spawn given no name still goes out named, read out of its description, and
+its caller is told once in that conversation to choose its own next time;
+the tool schema one runtime shows lists no such argument, and the runtime
+takes it regardless. [platform-differentiation.md](platform-differentiation.md)
+records what each runtime does with the name and what was measured.
+
 ---
 
 ## Nested Agent Pattern

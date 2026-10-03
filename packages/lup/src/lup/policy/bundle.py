@@ -205,6 +205,17 @@ def hook_deadline(hook_timeout: float, verdict_reserve: float = 5.0) -> float:
     return hook_timeout - verdict_reserve
 
 
+def held_hook_timeout(hook_timeout: int, hold_seconds: int) -> int:
+    """The timeout declared for a hook that may hold a call before judging it.
+
+    The hold's own time and then the judgement's whole timeout after it, so
+    a call let go at the last moment of its hold is still judged inside what
+    the runtime gives the hook, and a call still held at the hold's limit is
+    refused well before the runtime would let it run.
+    """
+    return hold_seconds + hook_timeout
+
+
 def hook_answer_limit(hook_timeout: float, exit_reserve: float = 2.0) -> float:
     """When the hook answers with whatever it has, given what the runtime gives it.
 
@@ -452,6 +463,7 @@ def spawn_names_literal(row: SpawnNameRow | None) -> str:
         f'"recovery": {json.dumps(row["recovery"])}',
         f'"punctuation": {json.dumps(row["punctuation"])}',
         f'"limit": {json.dumps(row["limit"])}',
+        f'"notice": {json.dumps(row["notice"])}',
     ]
     return "{\n" + "".join(f"    {entry},\n" for entry in entries) + "}"
 
@@ -724,7 +736,9 @@ def render_policy_data(
     unscoped_fetch: UnjudgedAmbient | None = None,
     refused_paths: list[RefusedPaths] | None = None,
     secret_variables: list[str] | None = None,
+    generated_plugin_roots: list[str] | None = None,
     hook_timeout: int = 30,
+    hold_seconds: int = 86400,
 ) -> str:
     """Render one plugin's canonical policy rows without executable logic.
 
@@ -740,6 +754,10 @@ def render_policy_data(
     its hooks file declares, and the hook's deadline and the moment it answers
     whatever it has are derived from it rather than restated beside it, by
     :func:`hook_deadline` and :func:`hook_answer_limit`.
+
+    ``hold_seconds`` is how long a hook keeps a call waiting while a hold
+    covers its caller before refusing it, the same value the hooks file's
+    timeout for a holding hook is derived from by :func:`held_hook_timeout`.
     """
     body = "\n\n".join(
         [
@@ -777,6 +795,8 @@ def render_policy_data(
             ),
             "SECRET_VARIABLES: list[str] = "
             + string_rows_literal(secret_variables or []),
+            "GENERATED_PLUGIN_ROOTS: list[str] = "
+            + string_rows_literal(generated_plugin_roots or []),
             "PEER_POLICY: PeerPolicyRow | None = "
             + peer_policy_literal(erase_peer_policy(peer_policy)),
             "AUTONOMOUS_AGENT_IDENTITIES: list[str] = "
@@ -804,6 +824,7 @@ def render_policy_data(
             "REPAIR_COMMAND: list[str] = " + string_rows_literal(repair_command),
             "HOOK_DEADLINE_SECONDS = " + json.dumps(hook_deadline(hook_timeout)),
             "HOOK_ANSWER_SECONDS = " + json.dumps(hook_answer_limit(hook_timeout)),
+            "HOLD_SECONDS = " + json.dumps(hold_seconds),
         ]
     )
     return (

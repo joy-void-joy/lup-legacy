@@ -9,7 +9,7 @@ import { keyName, type Bound } from "./keys";
 import { commandKey, openCommand } from "./commands";
 import { openFinder } from "./finder";
 import { VIEWS, type Float } from "./state";
-import { inboxOf, parentOf, standing } from "./supervision";
+import { inboxOf, ownPause, parentOf, standing } from "./supervision";
 
 /** What one action does, given the count typed before its keys and whether one was. */
 export type Handler = (d: Dashboard, count: number, counted: boolean) => void;
@@ -26,7 +26,7 @@ function replyToLast(d: Dashboard): void {
   withAgent(d, (session) => {
     const live = d.state.live;
     const last = live === null ? undefined : [...live.messages.values()]
-      .filter((message) => message.repository === session.repository && [message.sender, message.recipient].includes(session.id))
+      .filter((message) => message.repository === session.repository && !message.prompt && [message.sender, message.recipient].includes(session.id))
       .sort((left, right) => left.at - right.at).at(-1);
     if (last === undefined) { d.say(`nothing between you and ${session.name || session.id} to reply to; c writes a new message`); return; }
     replyToMessage(d, last);
@@ -130,6 +130,9 @@ export const HANDLERS: Record<string, Handler> = {
   "budget.turtle": (d) => void d.turtle(),
   "budget.priority": (d) => withAgent(d, (session) => openCommand(d, `priority ${session.name || session.id} `)),
   "budget.cap": (d) => withAgent(d, (session) => openCommand(d, `cap ${session.name || session.id} `)),
+  "agent.pause": (d) => withAgent(d, (session) => void d.pause({ kind: "agent", repository: session.repository, member: session.id, tree: false }, false)),
+  "agent.freeze": (d) => withAgent(d, (session) => void d.pause({ kind: "agent", repository: session.repository, member: session.id, tree: false }, true)),
+  "agent.resume": (d) => withAgent(d, (session) => void d.resume(ownPause(session))),
   "message.reply": (d) => replyHere(d),
   "messages.earlier": (d) => { const repository = repositoryHere(d); void d.loadEarlier(repository); },
   "peer.describe": (d) => openCommand(d, "describe "),

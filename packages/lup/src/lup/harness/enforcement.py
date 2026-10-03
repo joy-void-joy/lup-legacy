@@ -125,6 +125,7 @@ def semantic_policy_for(
     allowed = list(hooks.allowed_fetch)
     denied = list(hooks.denied_fetch)
     roles = declared_role_rows(list(hooks.path_roles))
+    plugin_roots = [root.as_posix() for root in hooks.generated_plugin_roots]
     # One instance, given to both families. A shell write carrying its own
     # content reaches the edit gates, and it has to reach the same ones an
     # `Edit` reaches: a second instance would be a second table to keep in
@@ -147,6 +148,7 @@ def semantic_policy_for(
         # composition inside that session judges with what the session meets.
         rules=rule_set_for(NO_RUNTIME_READER, hooks.rules, hooks.anti_patterns),
         refused_paths=list(hooks.refused_paths),
+        plugin_roots=plugin_roots,
     )
     return SemanticToolPolicy(
         fetch=FetchPolicy(
@@ -178,6 +180,7 @@ def semantic_policy_for(
             relayed=autonomous,
             path_roles=roles,
             path_rules=declared_path_rules(hooks),
+            plugin_roots=plugin_roots,
             recoverable_target_limit=hooks.recoverable_target_limit,
             runner_targets=list(hooks.runner_targets),
             authored=edits,

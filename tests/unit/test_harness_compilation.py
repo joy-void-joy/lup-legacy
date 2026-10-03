@@ -182,6 +182,7 @@ from lup_template.harness.content.template_claude import (
 from lup_template.harness.content.template_codex import (
     DOCUMENT as TEMPLATE_CODEX,
 )
+from lup_template.harness.catalog import declared_hook_set
 from lup_template.harness.composition import (
     claude_target,
     codex_target,
@@ -695,7 +696,10 @@ def test_peer_delivery_is_registered_for_every_tool_and_refuses_nothing() -> Non
     hooks = json.loads(artifacts[Path(".claude/plugins/lup/hooks/hooks.json")].content)
 
     delivering = [
-        group for group in hooks["hooks"]["PreToolUse"] if group["matcher"] == ""
+        group
+        for group in hooks["hooks"]["PreToolUse"]
+        if group["matcher"] == ""
+        and "coordination_delivery.sh" in group["hooks"][0]["command"]
     ]
 
     assert len(delivering) == 1
@@ -706,6 +710,41 @@ def test_peer_delivery_is_registered_for_every_tool_and_refuses_nothing() -> Non
     assert artifacts[guard].executable
     runtime = Path(".claude/plugins/lup/hooks/runtime/coordination_delivery.py")
     assert runtime in artifacts
+
+
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
+def test_the_hold_is_registered_for_every_tool_and_refuses_where_it_cannot_tell(
+    runtime: str,
+) -> None:
+    """The hold's group: every tool, a guard that refuses on failure, the hold's timeout.
+
+    Its matcher is empty, because a paused agent is held at its next call
+    whatever the tool. Unlike delivery, its command refuses on failure, since
+    the guard reaches the reader only while some hold stands and a call that
+    might be held must not run unheld. And it is given the hold's time and
+    the judgement's, which is what the hold refuses short of.
+    """
+    target = claude_target if runtime == "claude" else codex_target
+    recipe = target(Path.cwd()).recipe
+    artifacts = {artifact.path: artifact for artifact in recipe.desired.artifacts}
+    plugin = Path(f".{runtime}/plugins/lup/hooks")
+    hooks = json.loads(artifacts[plugin / "hooks.json"].content)
+    declared = declared_hook_set()
+
+    holding = [
+        entry
+        for group in hooks["hooks"]["PreToolUse"]
+        if group["matcher"] == ""
+        for entry in group["hooks"]
+        if "coordination_hold.sh" in entry["command"]
+    ]
+
+    assert len(holding) == 1
+    assert holding[0]["command"].endswith("|| exit 2")
+    assert holding[0]["timeout"] == declared.hold_seconds + declared.policy_timeout
+    assert artifacts[plugin / "scripts/coordination_hold.sh"].executable
+    assert plugin / "runtime/coordination_hold.py" in artifacts
+    assert plugin / "runtime/coordination/holds.py" in artifacts
 
 
 def test_codex_recipe_registers_semantic_permission_approval() -> None:
@@ -725,14 +764,17 @@ def test_codex_recipe_registers_semantic_permission_approval() -> None:
     assert artifacts[Path(".codex/plugins/lup/hooks/scripts/policy.sh")].executable
 
 
-def test_the_watching_event_is_registered_for_what_leaves_writes_behind() -> None:
+def test_the_watching_event_is_registered_for_what_leaves_something_to_read() -> None:
     """A narrow matcher, because this event records rather than judges.
 
-    Narrow means *what leaves a write behind*, not *what names a file*. The
-    editing tools and the shell tool both do, and both have a reading
-    afterwards — an edited file to check, a command's result to review and
-    attribute — while a fetch leaves nothing, so sharing the deciding events'
-    registration would spawn the script to find no write at all.
+    Narrow means *what leaves something to read afterwards*, not *what names
+    a file*. The editing tools and the shell tool leave a write — an edited
+    file to check, a command's result to review and attribute — and Claude
+    Code's spawn leaves the name it went out under, whose caller is told
+    once to choose its own when it chose none. A fetch leaves nothing, so
+    sharing the deciding events' registration would spawn the script to find
+    nothing at all. Codex's spawn is not watched: its schema requires the
+    name, so no spawn there goes out under one its caller did not choose.
 
     The shell tool is pinned here because leaving it out fails silently: the
     review of what a command wrote is wired into both dispatchers and
@@ -740,7 +782,7 @@ def test_the_watching_event_is_registered_for_what_leaves_writes_behind() -> Non
     the tools that carry a file path.
     """
     for target, plugin_root, edits in (
-        (claude_target, ".claude", "Edit|Write|Bash"),
+        (claude_target, ".claude", "Edit|Write|Bash|Agent"),
         (codex_target, ".codex", "apply_patch|Bash"),
     ):
         artifacts = {
@@ -2661,16 +2703,19 @@ def test_every_compiled_dispatcher_is_entered_through_its_warden(
 
     entered = runtime.text + "\n\ndef main():\n    judged(b'')\n"
     unrefusing = runtime.text.replace("def unanswered(", "def refused(")
+    unholding = runtime.text.replace("def held(", "def holding(")
 
     assert ast.unparse(script.body[-1]) == (
         "if __name__ == '__main__':\n"
-        "    answered_in_time(HOOK_ANSWER_SECONDS, judged, unanswered)"
+        "    answered_in_time(HOOK_ANSWER_SECONDS, judged, unanswered, held)"
     )
     assert breaches(entered) == [
         "defines main, where the compiler writes the entry point"
     ]
     assert unrefusing != runtime.text
     assert breaches(unrefusing) == ["declares unanswered but defines no such function"]
+    assert unholding != runtime.text
+    assert breaches(unholding) == ["declares held but defines no such function"]
 
 
 AUTONOMY_PROBE = "".join(f"VALUE_{index} = {index}\n" for index in range(8))
@@ -2956,7 +3001,7 @@ def test_the_generator_owns_the_proof_it_writes_and_never_lists(
     # lookup names it, or every consumer asking who owns the proof is told
     # "the repository" about the one file materialization always writes.
     assert not [item for item in manifest.files if "ownership" in str(item.path)]
-    owned = generated_artifacts(tmp_path, homes=[".claude"])
+    owned = generated_artifacts(tmp_path, manifests=[".claude/.lup-ownership.json"])
     assert owned.owning(".claude/.lup-ownership.json") is not None
     assert owned.owning("packages/lup/src/lup/harness/ownership.py") is None
 

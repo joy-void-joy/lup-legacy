@@ -8,7 +8,7 @@ function row(id: string, fields: Partial<LiveSession> = {}): LiveSession {
   return {
     key: `r1/${id}`, repository: "r1", id, parent: "", kind: "session", name: id, doing: "", task: "", running: true,
     worktree: "", holding: [], contested: [], delivery: "hook", wake: "claude", runtime: "claude", spawned_by: "",
-    process: null, arrived: null, heard: null, summary: "", error: "", waiting: 0,
+    process: null, arrived: null, heard: null, summary: "", error: "", waiting: 0, holds: [], held_since: null,
     activity: { said: "", calling: "", arguments: {}, at: null, transcript: "", recent: [] },
     ...fields,
   };
@@ -17,7 +17,7 @@ function row(id: string, fields: Partial<LiveSession> = {}): LiveSession {
 function message(id: string, fields: Partial<LiveMessage> = {}): LiveMessage {
   return {
     key: `r1/${id}`, repository: "r1", id, at: 0, sender: "", recipient: "lead", recipient_kind: "session",
-    text: id, door: "agent", redirect: false, in_reply_to: "", post: id, thread: id, sent_at: "2026-09-29T10:00:00Z", waiting: true,
+    text: id, door: "agent", redirect: false, in_reply_to: "", post: id, thread: id, sent_at: "2026-09-29T10:00:00Z", waiting: true, prompt: false,
     ...fields,
   };
 }
@@ -99,6 +99,17 @@ describe("live state", () => {
     expect(moved(state, posted).map((line) => line.text)).toEqual(["lead → other: hello"]);
     expect(moved(state, frame({ type: "review", review: review("q2", "2026-09-29T11:00:00Z") }))[0]?.text).toContain("review q2 parked by lead");
     expect(moved(state, frame({ type: "review", review: review("q1", "2026-09-29T09:00:00Z") }))).toEqual([]);
+  });
+
+  test("the live log says when an agent is held and let go, and a resume's prompt as a prompt", () => {
+    const state = snapshot();
+    const hold = { reason: "paused", owner: "operator", scope: "agent", on: "lead", said: "paused by the operator", since: "2026-09-29T10:00:00Z", until: null, freeze: true };
+    const paused = frame({ type: "session", session: row("lead", { holds: [hold] }) });
+    expect(moved(state, paused).map((line) => line.text)).toEqual(["lead is held at its next tool call: paused by the operator, frozen"]);
+    const held = applied(state, paused);
+    expect(moved(held, frame({ type: "session", session: row("lead") })).map((line) => line.text)).toEqual(["lead is held no longer"]);
+    const prompted = frame({ type: "message", message: message("m9", { sender: "user", recipient: "lead", text: "continue", door: "page", prompt: true }) });
+    expect(moved(state, prompted).map((line) => line.text)).toEqual(["prompt → lead: continue"]);
   });
 
   test("a session's conversation is what it was sent and what it sent, oldest first", () => {

@@ -428,3 +428,9 @@ button.seg { cursor: pointer; }
 .clamp.open { display: inline; -webkit-line-clamp: unset; overflow: visible; }
 p.clamp.open { display: block; }
 .more { display: block; min-height: 44px; min-width: 64px; margin: 2px 0; border: 1px solid var(--border); background: none; color: var(--link); font: inherit; cursor: pointer; }
+/* A conflict a merge left: each side barred in the line number's padding, so its text keeps its column, in the side's colour and line — ours solid, the ancestor dotted, theirs double. */
+.r.cf .tx { margin-left: -3px; }
+.r.cf-ours .tx { border-left: 3px solid var(--ok); } .r.cf-base .tx { border-left: 3px dotted var(--purple); } .r.cf-theirs .tx { border-left: 3px double var(--orange); }
+/* Each marker line bold in its side's colour, and what it names after it in the same colour. */
+.cfm { font-weight: 700; font-style: normal; }
+.cfs-ours { color: var(--ok); } .cfs-base { color: var(--purple); } .cfs-theirs { color: var(--orange); }

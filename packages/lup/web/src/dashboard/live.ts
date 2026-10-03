@@ -56,6 +56,9 @@ export function moved(previous: LiveState | null, frame: StreamFrame): Moved[] {
       const who = session.name || session.id;
       if (before === undefined) return [{ repository: session.repository, text: `${who} arrived` }];
       if (before.running && !session.running) return [{ repository: session.repository, text: `${who} stopped${session.summary || session.error ? `: ${session.summary || session.error}` : ""}` }];
+      const held = session.holds[0];
+      if (before.holds.length === 0 && held !== undefined) return [{ repository: session.repository, text: `${who} is held at its next tool call: ${held.said}${held.freeze ? ", frozen" : ""}` }];
+      if (before.holds.length > 0 && held === undefined) return [{ repository: session.repository, text: `${who} is held no longer` }];
       if (session.activity.calling !== "" && session.activity.calling !== before.activity.calling) return [{ repository: session.repository, text: `${who} calling ${session.activity.calling}` }];
       if (session.doing !== before.doing && session.doing !== "") return [{ repository: session.repository, text: `${who} is on: ${session.doing}` }];
       return [];
@@ -63,7 +66,8 @@ export function moved(previous: LiveState | null, frame: StreamFrame): Moved[] {
     case "message": {
       if (previous?.messages.has(event.message.key) === true) return [];
       const message = event.message;
-      return [{ repository: message.repository, text: `${message.sender === "" ? message.door : name(message.repository, message.sender)} → ${name(message.repository, message.recipient)}: ${message.text}` }];
+      const from = message.prompt ? "prompt" : message.sender === "" ? message.door : name(message.repository, message.sender);
+      return [{ repository: message.repository, text: `${from} → ${name(message.repository, message.recipient)}: ${message.text}` }];
     }
     case "review": {
       const was = previous?.reviews.reviews.find((row) => row.key === event.review.key);

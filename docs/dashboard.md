@@ -254,8 +254,9 @@ instead: stopped, and started from that checkout for the sessions holding it.
 
 `uv run lup-devtools dashboard status` says whether it serves, where, for how
 many sessions, over which repositories, how many reviews wait, how many
-messages agents sent the operator wait unread, how many agents are quiet and
-how many paths are held twice (as the status line counts them, below), how
+messages agents sent the operator wait unread, how many agents are quiet, how
+many paths are held twice and how many agents are held (as the status line
+counts them, below), how
 many tabs follow it, which code it runs, and how many times the sessions holding it
 started it again; from the operator's terminal it also gives the last exit
 (`exited`: when, how, and its last lines of output), the last stop lup made
@@ -324,6 +325,9 @@ to right:
   Nothing takes a message out of that mailbox yet: the page shows each, and
   nothing marks one read, so `✉` counts every message an agent sent the
   operator in a repository the dashboard serves;
+- **the agents held**, only while one is: `⏸2`, the running agents the
+  operator paused or a budget holds at their next tool call, across every
+  repository the dashboard serves;
 - **what other agents need**, only while one does: `⚠ 1 quiet`, an agent
   with a call outstanding and nothing new in its transcript for ten minutes,
   none of whose subagents runs (a session waiting on its subagent is waiting
@@ -530,7 +534,8 @@ standing — `●` working, `◌` idle, `◷` quiet (a call running ten minutes 
 nothing new), `○` stopped — its name, and what needs the operator: `?n`
 reviews waiting, `✎n` unread messages it sent the operator, `✉n` messages
 waiting in its own mailbox, `⌂n` paths its calls hold and `!n` paths another
-agent holds too, then how long since it was heard. Its second line is what it
+agent holds too, `⏸` where the operator paused it or a budget holds it — why
+on its hover — then how long since it was heard. Its second line is what it
 is doing: the call nothing has answered yet in one line, or what it last said.
 A repository's stopped agents fold into one row at the end of its tree, unless
 something under one still runs, waits on the operator, or wrote to them
@@ -690,6 +695,59 @@ cannot be done to it.
   ends with its session; both are refused saying so.
 - **Broadcast** (`POST /api/repositories/<key>/broadcast`, `{text}`): one post
   to every working agent of a repository, each woken as a message is.
+- **Pause** (`POST …/sessions/<member-id>/pause`, `{tree, freeze}`;
+  `POST /api/repositories/<key>/pause` and `POST /api/pause`, `{freeze}`):
+  holds an agent, a repository or everything at its next tool call (Pausing,
+  below).
+- **Resume** (`POST …/sessions/<member-id>/resume`, `{tree}`;
+  `POST /api/repositories/<key>/resume` and `POST /api/resume`, `{}`): lifts
+  the pause named. Lifting a pause nobody placed there is refused, naming
+  the pause that does hold the agent.
+
+## Pausing
+
+`Space a z` (`:pause`), on an agent's row, its context, or the phone's
+**Act**, holds it at its next tool call until it is resumed: its hook says
+nothing while the pause stands, so to the agent the call only takes long, and
+a call already running finishes. A session's subagents are paused with it;
+`:pause tree` takes everything it spawned too, `:pause repo` every agent of
+its repository, and `:pause all` every agent of every repository served. The
+row shows `⏸`, its hover and context say why and since when, and the
+statusline counts `⏸N`. While paused, a message to the agent waits in its
+mailbox and wakes nothing, its reviews stay parked, `coordination_peers`
+says "paused by the operator" on its row, and the commands it started in the
+background keep running. A pause is a file in the repository's coordination
+store, so it outlives a restart of the dashboard and lasts until it is
+resumed or the agent leaves. A pause
+lasting a day refuses the call it holds with "paused by the operator; this
+call didn't run; retry it", and the retry is held again.
+
+`Space a Z` (`:freeze`) is the second level: the pause, and the agent's
+running commands stopped too — every process group its runtime's tools run
+in, never the runtime itself — and a turn that is generating interrupted
+with one line telling it it is paused. Measured on Claude Code 2.1.285: a
+Bash command frozen inside its tool timeout finishes once continued; one
+frozen past it is moved to the background by the runtime, which stops a
+background command still running thirty minutes on, so a long freeze can
+cost a command but never the session; and an interrupt meeting a command
+already frozen is taken after the command ends, so the agent reads it once
+resumed and goes on at the "continue" that follows. What a freeze cannot
+reach is paused all the same, and the answer says why: a subagent, whose
+commands run in its session's runtime beside the session's own; a runtime in
+another pid namespace than the dashboard's; a Codex session, whose commands
+run under the app-server daemon every session of its configuration home
+shares, so stopping them could stop another session's.
+
+`Space a u` (`:resume`) lifts the pause placed on that agent — `:resume
+tree`, `:resume repo` and `:resume all` the others — continues what a freeze
+stopped, and wakes with a bare "continue" a session that stopped because of
+the pause: one frozen, or one whose call was refused at the day's end and
+has not asked again. The page shows that "continue" on the agent as the
+prompt it was. A hold a budget placed is not lifted by a resume, and an
+agent paused through its session is resumed there, which the refusal names.
+Only the operator pauses and resumes: from here, or with
+`lup-devtools coordination pause` and `resume` from a terminal outside every
+agent session, which refuse an agent's shell.
 
 ## Discussions
 
@@ -1011,7 +1069,11 @@ diff, its syntax highlighted by the file's extension; `Space v` shows the file
 before or after instead, or the unified diff as text, and `Space w v` splits
 before | after side by side. The lines a diff leaves out fold into one row per
 gap, which `Enter` or `za` opens, and `f` shows the whole file with the
-changes marked in place.
+changes marked in place. A file a merge left conflicted is highlighted one
+version at a time — ours, theirs, and the common ancestor where diff3 records
+it — so a string or comment opened on one side never runs into the other, each
+side barred in its own colour and line (ours solid, the ancestor dotted,
+theirs double) and each marker naming the side and branch it opens or closes.
 
 Every `# lup:` marker is marked where it stands, in its own colour and
 labelled with its kind: an open note, parked work (`defer:`, and
@@ -1076,7 +1138,13 @@ lends its session read-only and no session writes, under one lock with the
 terminal, so a browser and terminal answering concurrently cannot replace
 each other's answer. An answer is given against the fingerprint the page
 displayed, and a review whose record no longer hashes to its fingerprint is
-refused an answer, the page saying so before Approve is reached for.
+refused an answer, the page saying so before Approve is reached for. It
+names the compiled hook script that parked the review where the record
+says, offers the terminal commands of the checkout keeping it only where
+they run other code than the dashboard's own, and otherwise the
+`review cancel` that lets the session that asked ask again. A review parked
+before a later version added a field to its record still hashes as it was
+parked, and stays answerable (`docs/permissions.md`).
 Notifying the requester follows the saved answer, and a missing route or
 failed delivery does not erase it. Each browser answer retains a separate
 notification outcome in `.lup/review-notifications/`, bound to its question,
