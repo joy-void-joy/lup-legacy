@@ -760,6 +760,26 @@ class Answering(BaseModel, frozen=True):
     """Its roster id, its runtime's ids for it, and each running subagent's own."""
 
 
+class RunningAgent(BaseModel, frozen=True):
+    """One running session or subagent as the budget reads it: who, in which runtime, doing what."""
+
+    id: str
+    parent: str = ""
+    spawned_by: str = ""
+    runtime: str = ""
+    """The runtime it runs in — a subagent in its session's — empty where nothing says."""
+
+    answers: list[str] = []
+    """The runtime's ids for its conversation, or for a subagent the runtime's id for it."""
+
+    transcript: str = ""
+    calling: str = ""
+    """The call it made and has had no answer to, empty between calls."""
+
+    at: datetime | None = None
+    """When its transcript last recorded anything."""
+
+
 class RepositoryNeeds(BaseModel, frozen=True):
     """What one repository's running sessions need of the operator, as every status line says it."""
 
@@ -776,6 +796,9 @@ class RepositoryNeeds(BaseModel, frozen=True):
 
     unread: int = 0
     """Messages its agents sent the operator that still wait in its mailbox."""
+
+    agents: list[RunningAgent] = []
+    """Every running session and subagent, as the budget governor reads them."""
 
     def asker(self, question: QuestionRecord) -> str:
         """The running session here that parked *question*, by its roster id; empty where none did.
@@ -1037,8 +1060,30 @@ class RepositoryWatch:
                 ],
             ]
 
+        rows = {view.member.actor.id: view.member for view in views}
+
+        def agent(view: PeerView) -> RunningAgent:
+            member = view.member
+            doing = activity[member.actor.id] if member.actor.id in activity else None
+            session = rows[member.parent] if member.parent in rows else member
+            return RunningAgent(
+                id=member.actor.id,
+                parent=member.parent,
+                spawned_by=member.spawned_by,
+                runtime=session.wake.runtime,
+                answers=(
+                    [store.agent_of(member.actor.id, member.parent)]
+                    if member.parent
+                    else runtime(view)
+                ),
+                transcript=doing.transcript if doing is not None else "",
+                calling=doing.calling if doing is not None else "",
+                at=doing.at if doing is not None else None,
+            )
+
         held = {path for view in views for path in view.contested}
         return RepositoryNeeds(
+            agents=[agent(view) for view in views],
             sessions=[
                 Answering(
                     session=PulseSession(
