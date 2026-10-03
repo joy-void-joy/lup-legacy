@@ -135,14 +135,44 @@ def terminal_answer(root: Path, question: str, principal: str) -> str:
     return f"`{approve}` or `{decline}`, from a terminal outside every session"
 
 
-def newer_code(restarting: bool) -> str:
-    """What a reader about to restart onto newer code adds to a review it cannot read."""
-    return (
-        " The dashboard restarts onto its checkout's newer code shortly, which "
-        "may answer it here."
-        if restarting
-        else ""
+def runs_this_code(root: Path) -> bool:
+    """Whether *root*'s review commands run the lup this process imported, which lives in that checkout."""
+    return Path(__file__).resolve().is_relative_to(root.resolve())
+
+
+def way_out(
+    root: Path, question: str, principal: str, restarting: bool, elsewhere: str
+) -> str:
+    """How a review this code cannot answer may be answered anyway, and how it is asked again where nothing can.
+
+    *elsewhere* opens the sentence offering the code of the checkout keeping
+    the review, which parks its reviews there: offered only where its
+    commands run other code than this, since this code would refuse it
+    again. A dashboard about to restart onto newer code says so. Past both,
+    the review is cancelled, and the session that asked asks again.
+    """
+    cancel = (
+        f"cancel it with `{review_command(root, ['cancel', question])}` and the "
+        "session that asked asks again"
     )
+    ways = [
+        *(
+            []
+            if runs_this_code(root)
+            else [f"{elsewhere}: {terminal_answer(root, question, principal)}."]
+        ),
+        *(
+            [
+                "The dashboard restarts onto its checkout's newer code shortly, "
+                "which may answer it here."
+            ]
+            if restarting
+            else []
+        ),
+    ]
+    if not ways:
+        return f"It has to be asked again: {cancel}."
+    return " ".join([*ways, f"Otherwise {cancel}."])
 
 
 class ReviewSummary(BaseModel, frozen=True):
@@ -266,18 +296,21 @@ class ReviewSummary(BaseModel, frozen=True):
                     else "."
                 )
             if unverifiable := question.unverifiable():
-                return (
-                    f"{unverifiable.capitalize()}. The code that parked it can "
-                    f"answer it: {terminal_answer(root, question.id, principal)}."
-                    + newer_code(restarting)
+                return f"{unverifiable.capitalize()}. " + way_out(
+                    root,
+                    question.id,
+                    principal,
+                    restarting,
+                    "The code that parked it can answer it",
                 )
-            if not question.bound():
-                return (
-                    "Its record changed after it was parked: what it shows is not "
-                    "what its fingerprint covers, so nothing here may answer it. "
-                    "Where newer code parked it, that code can: "
-                    f"{terminal_answer(root, question.id, principal)}."
-                    + newer_code(restarting)
+            if unbound := question.unbound():
+                return f"Nothing here may answer it: {unbound}. " + way_out(
+                    root,
+                    question.id,
+                    principal,
+                    restarting,
+                    "The code of the checkout keeping it, which parks its reviews "
+                    "there, may answer it",
                 )
             return ""
 
