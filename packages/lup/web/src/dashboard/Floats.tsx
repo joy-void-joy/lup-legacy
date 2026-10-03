@@ -3,6 +3,7 @@
 // one closes the same way: `q`, `Esc` or `Ctrl+[`, its ✕, or the key that
 // opened it. Floats have a border and no shadow, as the high-contrast themes do.
 import { useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import type { TranscriptEntry } from "../generated/views";
 import type { Dashboard } from "./dashboard";
 import { COMMANDS, openCommand, runCommand } from "./commands";
 import { rowHere } from "./editor";
@@ -11,7 +12,7 @@ import { highlightedLines } from "./highlight";
 import { CATALOG, prettyKeys } from "./keys";
 import { MODE_TEXT, PALETTE, worst } from "./palette";
 import { exceptionRules, headOf, headText, judgedOf, markerLabel, plural, reviewLabel, sentComments } from "./review";
-import { unserved } from "./served";
+import type { Feature } from "./served";
 import type { PageState } from "./state";
 import { activityBrief, attention, clock, kindWords, mailHeads, standing, stamp } from "./supervision";
 import { memberName } from "./threads";
@@ -19,7 +20,7 @@ import { memberName } from "./threads";
 /** A value as pretty-printed JSON, coloured, every string's `\n` followed by a real line break so a document reads by its lines and stays exact JSON. */
 export function Json({ value }: { value: unknown }) {
   const lines = useMemo(() => highlightedLines(JSON.stringify(value, null, 2) ?? "null", "json"), [value]);
-  return <pre className="json">{lines.map((tokens, index) => <span key={index}>{tokens.map((token, at) => <span key={at} className={token.classes === "" ? undefined : token.classes}>{token.text.replaceAll("\\n", "\\n\n")}</span>)}{"\n"}</span>)}</pre>;
+  return <pre className="json">{lines.map((line, index) => <span key={index}>{line.tokens.map((token, at) => <span key={at} className={token.classes === "" ? undefined : token.classes}>{token.text.replaceAll("\\n", "\\n\n")}</span>)}{"\n"}</span>)}</pre>;
 }
 
 function Shell({ d, title, hint, label, children }: { d: Dashboard; title: string; hint: string; label: string; children: ReactNode }) {
@@ -36,10 +37,16 @@ function Shell({ d, title, hint, label, children }: { d: Dashboard; title: strin
   </div>;
 }
 
+/** Whether this dashboard's server serves what an action needs: nothing to say where it does. */
+function servedTag(d: Dashboard, needs: Feature | null) {
+  const refused = needs === null ? "" : d.lacks(needs);
+  return <i className={`srv ${refused === "" ? "today" : "new"}`} title={refused}>{refused === "" ? "works" : "not served here"}</i>;
+}
+
 function Help({ d }: { d: Dashboard }) {
   const keymap = d.keymap;
   return <Shell d={d} title="keys · every binding the page answers" hint="? q or Esc closes" label="Keys">
-    <p>The triage loop: a review opens in its note box. While the box is empty, <b>j</b>/<b>k</b> move to the next and previous review (and <b>↓</b>/<b>↑</b>, <b>Ctrl+d</b>/<b>Ctrl+u</b> scroll the diff); the first letter you type makes it yours, and from then on every key types. <b>Ctrl+Enter</b> approves, <b>Alt+Delete</b> declines and <b>Alt+Enter</b> sends without deciding, from anywhere; <b>Alt+↑</b>/<b>Alt+↓</b> move on while you type, and your draft stays with its review. Focus decides where keys act, and the statusline says where you are: in the tree <b>j</b>/<b>k</b> walk its rows, opening each; in the buffer the cursor moves like an editor's (<b>h j k l</b>, <b>w b e</b>, <b>0 ^ $</b>, counts, <b>gg</b>/<b>G</b>, <b>/</b> with <b>;</b> and <b>,</b>, <b>{"{"}</b>/<b>{"}"}</b>); in the context they walk its items. <b>Esc</b> leaves the box for the buffer; <b>Tab</b> and <b>Shift+Tab</b> move between the tree, the buffer, the box and the context, and a click moves there too. Every row names its action: your <code>[dashboard.keys]</code> rebinds it by that name, and <b>:map</b> shows what yours changed. Tags: <span className="ok">yours</span> is a binding you changed; <span className="ok">decided</span> one you chose; <span className="warn">changed</span> differs from the page before; <span className="info">new</span> is new. The last column says whether the dashboard's server supports it today or it needs new work.</p>
+    <p>The triage loop: a review opens in its note box. While the box is empty, <b>j</b>/<b>k</b> move to the next and previous review (and <b>↓</b>/<b>↑</b>, <b>Ctrl+d</b>/<b>Ctrl+u</b> scroll the diff); the first letter you type makes it yours, and from then on every key types. <b>Ctrl+Enter</b> approves, <b>Alt+Delete</b> declines and <b>Alt+Enter</b> sends without deciding, from anywhere; <b>Alt+↑</b>/<b>Alt+↓</b> move on while you type, and your draft stays with its review. Focus decides where keys act, and the statusline says where you are: in the tree <b>j</b>/<b>k</b> walk its rows, opening each; in the buffer the cursor moves like an editor's (<b>h j k l</b>, <b>w b e</b>, <b>0 ^ $</b>, counts, <b>gg</b>/<b>G</b>, <b>/</b> with <b>;</b> and <b>,</b>, <b>{"{"}</b>/<b>{"}"}</b>); in the context they walk its items. <b>Esc</b> leaves the box for the buffer; <b>Tab</b> and <b>Shift+Tab</b> move between the tree, the buffer, the box and the context, and a click moves there too. Every row names its action: your <code>[dashboard.keys]</code> rebinds it by that name, and <b>:map</b> shows what yours changed. Tags: <span className="ok">yours</span> is a binding you changed; <span className="ok">decided</span> one you chose; <span className="warn">changed</span> differs from the page before; <span className="info">new</span> is new. The last column says whether this dashboard's server serves what it needs.</p>
     <div className="cols">
       {CATALOG.groups.map((group) => <section key={group.id}><h4>{group.title}</h4>
         {CATALOG.actions.filter((action) => action.group === group.id && !action.hidden).map((action) => {
@@ -49,13 +56,13 @@ function Help({ d }: { d: Dashboard }) {
             <span className="ks">{keymap.row(action)}</span>
             <span>{action.description} <span className="muted">· {action.name}</span>{action.focus === "buffer" && <span className="muted"> · in the buffer</span>}{yours && <span className="ok"> · yours; lup's is {lups}</span>}{action.was !== "" && <span className="muted"> · was {action.was}</span>}{action.note !== "" && <span className="muted"> · {action.note}</span>}</span>
             <span className={`tag ${yours ? "yours" : action.stands}`}>{yours ? "yours" : action.stands}</span>
-            <i className={`srv ${action.server}`}>{action.server === "new" ? "new server" : "works today"}</i>
+            {servedTag(d, action.needs)}
           </div>;
         })}
       </section>)}
       <section><h4>command line (:)</h4>
         {COMMANDS.map((command) => <div key={command.name} className="kr"><span className="ks">:{command.name}{command.args !== undefined || command.takes === true ? " …" : ""}</span><span>{command.description}</span><span />
-          <i className={`srv ${command.needs === undefined ? "today" : "new"}`}>{command.needs === undefined ? "works today" : "new server"}</i></div>)}
+          {servedTag(d, command.needs ?? null)}</div>)}
       </section>
       <section><h4>mouse and touch</h4>
         <div className="kr"><span className="ks">click a line number</span><span>comment on that line</span><span className="tag decided">decided</span><i /></div>
@@ -75,7 +82,7 @@ function FullContext({ d, state }: { d: Dashboard; state: PageState }) {
   if (session !== undefined) {
     return <Shell d={d} title={`full context · ${session.name || session.id}`} hint="I q or Esc closes" label="Full context">
       <section className="cx"><h3>its row on the stream <span className="k">LiveSession</span></h3><Json value={session} /></section>
-      <section className="cx"><h3>what new server work adds</h3><p className="muted">{unserved("transcript")}</p></section>
+      <section className="cx"><h3>its transcript <span className="k">T</span></h3>{d.lacks("transcript") === "" ? <p className="it" role="button" tabIndex={-1} onClick={() => void d.openTranscript(session)}>▸ read it whole, live</p> : <p className="muted">{d.lacks("transcript")}</p>}</section>
     </Shell>;
   }
   const entry = d.current(state);
@@ -96,6 +103,29 @@ function FullContext({ d, state }: { d: Dashboard; state: PageState }) {
     <section className="cx"><h3>tool input <span className="k">{question.operation.tool}</span></h3><Json value={question.operation.payload} /></section>
     {detail.preview_notice !== "" && <section className="cx"><h3>how these documents were worked out</h3><p>{detail.preview_notice}</p></section>}
     <section className="cx"><h3>the complete record</h3><Json value={question} /></section>
+  </Shell>;
+}
+
+/** One transcript entry as the float reads it: what was said, a call with its arguments, or what a call returned. */
+function TranscriptLine({ entry }: { entry: TranscriptEntry }) {
+  const when = entry.time === null ? "" : clock(entry.time);
+  switch (entry.kind) {
+    case "call": return <div className="tr call"><span className="muted">{when}</span> <span className="orange">{entry.tool}</span> <code>{JSON.stringify(entry.arguments)}</code></div>;
+    case "result": return <div className={`tr result${entry.error ? " err" : ""}`}><span className="muted">{when} {entry.error ? "✗" : "↳"}</span> <pre>{entry.text}</pre></div>;
+    default: return <div className={`tr said ${entry.role}`}><span className="muted">{when} {entry.role}</span> <span className="prose">{entry.text}</span></div>;
+  }
+}
+
+/** An agent's whole transcript: the pages read from its end, and what the stream carries on with while it shows. */
+function Transcript({ d, state }: { d: Dashboard; state: PageState }) {
+  const shown = state.transcript;
+  if (shown === null) return null;
+  return <Shell d={d} title={`transcript · ${shown.name} · live`} hint="q or Esc closes · follows while open" label="Transcript">
+    {shown.earlier > 0 && <p className="it" role="button" tabIndex={-1} onClick={() => void d.transcriptEarlier()}>▴ load the page before (from byte {shown.earlier.toLocaleString("en")})</p>}
+    {shown.loading && <p className="muted" role="status">Reading its transcript…</p>}
+    {shown.error !== "" && <p className="err" role="status">{shown.error}</p>}
+    {!shown.loading && shown.entries.length === 0 && shown.error === "" && <p className="muted">Nothing recorded yet.</p>}
+    {shown.entries.map((entry) => <TranscriptLine key={`${entry.at}:${entry.block}`} entry={entry} />)}
   </Shell>;
 }
 
@@ -238,7 +268,7 @@ function Finder({ d, state, picker, query, cur }: { d: Dashboard; state: PageSta
     return () => { d.elements.float = null; };
   }, [d]);
   const commands: FinderItem[] = COMMANDS.map((command) => ({
-    text: `:${command.name} · ${command.description}${command.needs !== undefined ? " · new server work" : ""}`,
+    text: `:${command.name} · ${command.description}${command.needs !== undefined && d.lacks(command.needs) !== "" ? " · not served here" : ""}`,
     run: (dashboard) => command.args !== undefined || command.takes === true ? openCommand(dashboard, `${command.name} `) : runCommand(dashboard, command.name),
   }));
   const shown = found(d, picker, query, commands);
@@ -295,5 +325,6 @@ export function Floats({ d, state }: { d: Dashboard; state: PageState }) {
     {float?.kind === "checkouts" && <Checkouts d={d} state={state} />}
     {float?.kind === "hover" && <Hover d={d} state={state} top={float.top} left={float.left} />}
     {float?.kind === "finder" && <Finder d={d} state={state} picker={float.picker} query={float.query} cur={float.cur} />}
+    {float?.kind === "transcript" && <Transcript d={d} state={state} />}
   </>;
 }

@@ -36,6 +36,7 @@ from decisions import (
     claim_window_closed,
     claim_window_opened,
     edit_claim_decision,
+    family_hold_report,
     fetch_decision,
     merged,
     named_claim_recorded,
@@ -53,6 +54,7 @@ from decisions import (
     shell_preimages,
     spawn_decision,
     spawn_named,
+    spawn_notice_report,
     written_review,
 )
 from host import (
@@ -659,15 +661,34 @@ def observe(payload):
     before the fact, so the gates an edit passes on the way in are put to a
     command's result on the way out — which is what lets the verdict before
     it ran answer from the path alone and stay generous about the content.
+
+    A spawn is the third, and leaves a name behind rather than a write: the
+    call arrives as it ran, its `PreToolUse` rewrite included (measured on
+    2.1.285), so a spawn that went out under its description's name is one
+    whose caller chose none, and is told once to choose its own.
     """
     tool_input = payload["tool_input"] if "tool_input" in payload else {}
+    if "tool_name" in payload and payload["tool_name"] == "Agent":
+        return spawn_notice_report(
+            tool_input["name"] if "name" in tool_input else "",
+            tool_input["description"] if "description" in tool_input else "",
+            "name",
+            session_root(payload),
+            payload["session_id"] if "session_id" in payload else "",
+            caller_of(payload),
+        )
     path = tool_input["file_path"] if "file_path" in tool_input else ""
     if path:
         publish_edition(path, str(session_root(payload) or ""))
         # The tier that needs no comparison: the call said which file, so the
         # claim it leaves is one another session can act on unqualified.
         named_claim_recorded(path, session_root(payload), caller_of(payload))
-        return reviewed_writes([path], session_root(payload))
+        return merged(
+            [
+                family_hold_report([path], session_root(payload), caller_of(payload)),
+                reviewed_writes([path], session_root(payload)),
+            ]
+        )
     command = tool_input["command"] if "command" in tool_input else ""
     if not command:
         return PostToolReport(blocking=[], context=[])
@@ -676,6 +697,7 @@ def observe(payload):
     changed = claim_window_closed(session_root(payload), caller_of(payload))
     return merged(
         [
+            family_hold_report(changed, session_root(payload), caller_of(payload)),
             written_review(
                 command,
                 session_root(payload) or Path.cwd(),

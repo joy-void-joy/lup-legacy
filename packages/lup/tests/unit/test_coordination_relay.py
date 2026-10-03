@@ -244,6 +244,22 @@ def test_a_hand_over_that_fails_after_acceptance_repeats_the_nudge(
     assert peers.waiting("recipient").messages == []
 
 
+def test_a_redirect_the_queue_took_waits_for_the_hook_and_is_queued_once(
+    relay: MailboxRelay, native_queue: Mock
+) -> None:
+    peers = RepositoryPeers(relay.root)
+    peers.send("recipient", "stop: that branch is closed", redirect=True)
+
+    first = relay.tick()
+    again = relay.tick()
+
+    assert first is not None and first.reached
+    assert again is None
+    native_queue.assert_called_once()
+    [left] = peers.waiting("recipient").messages
+    assert left.redirect and left.carried
+
+
 async def test_cancellation_joins_the_inflight_queue_before_server_shutdown(
     relay: MailboxRelay, native_queue: Mock
 ) -> None:

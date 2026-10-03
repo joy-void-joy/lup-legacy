@@ -145,7 +145,7 @@ function MessageBox({ d, state }: { d: Dashboard; state: PageState }) {
     const live = state.live;
     const discussion = target.discussion;
     const reach = live === null ? [] : reaches(live, discussion);
-    const answering = discussion.posts.find((post) => post.copies.some((copy) => copy.id === state.threadReply));
+    const answering = discussion.posts.find((post) => post.id === state.threadReply);
     return <div id="composer">
       <div className="wb"><span className="t">post</span><span className="muted">reaches</span><b>{reach.join(", ") || "nobody yet"}</b>
         {answering !== undefined && live !== null && <span className="muted">· answering {memberName(live, discussion.repository, answering.sender)}: {answering.text.split("\n")[0]}</span>}</div>
@@ -153,13 +153,13 @@ function MessageBox({ d, state }: { d: Dashboard; state: PageState }) {
         placeholder="c writes here · Alt+Enter posts to everyone in the discussion · Esc leaves" onChange={(event) => typed(event.target.value)}
         onClick={(event) => { if (document.activeElement !== event.currentTarget) event.currentTarget.focus(); }} />
       <div className="acts"><button type="button" className="btn approve" onClick={() => d.sendBox()}>Post <kbd>Alt+Enter</kbd></button>
-        <span className="muted">one message to each of them, replying to {answering !== undefined ? "the post r chose" : "the last post"}</span>{said}</div>
+        <span className="muted">one post to each of them, each woken, replying to {answering !== undefined ? "the post r chose" : "the last post"}</span>{said}</div>
     </div>;
   }
   if (target.kind === "repo") {
     const working = [...(state.live?.sessions.values() ?? [])].filter((each) => each.repository === target.repository && each.running).length;
     return <div id="composer">
-      <div className="wb"><span className="t">broadcast</span><span className="muted">to every working member of {state.live?.repositories.get(target.repository)?.name} ({working}), one message each</span></div>
+      <div className="wb"><span className="t">broadcast</span><span className="muted">to every working member of {state.live?.repositories.get(target.repository)?.name} ({working}), one post between them, each woken</span></div>
       <textarea id="reply" ref={box} aria-label="Broadcast" value={draft} placeholder="c writes here · Alt+Enter sends to every working member · Esc leaves" onChange={(event) => typed(event.target.value)}
         onClick={(event) => { if (document.activeElement !== event.currentTarget) event.currentTarget.focus(); }} />
       <div className="acts"><button type="button" className="btn approve" onClick={() => d.sendBox()}>Broadcast <kbd>Alt+Enter</kbd></button>{said}</div>
@@ -171,12 +171,22 @@ function MessageBox({ d, state }: { d: Dashboard; state: PageState }) {
     const parent = live === null ? undefined : parentOf(live, session);
     return <div id="composer"><div className="notice">{session.name || session.id} has stopped; nothing would read a message to it.{parent !== undefined ? ` Its session ${parent.name || parent.id} is ${standing(parent, state.now)}: Space a p asks it.` : ""}</div></div>;
   }
+  const answering = live === null || (state.replyTo[target.key] ?? "") === "" ? undefined
+    : [...live.messages.values()].find((message) => message.repository === session.repository && (message.post || message.id) === state.replyTo[target.key]);
+  const interrupting = d.lacks("interrupt");
+  const redirecting = d.lacks("redirect");
   return <div id="composer">
-    <div className="wb"><span className="t">message</span><span className="muted">to</span><b>{session.name || session.id}</b><span className="muted">· reaches {reached(session)}</span></div>
+    <div className="wb"><span className="t">message</span><span className="muted">to</span><b>{session.name || session.id}</b><span className="muted">· reaches {reached(session)}</span>
+      {answering !== undefined && <span className="muted">· answering {answering.sender === "user" ? "you" : session.name || session.id}: {answering.text.split("\n")[0]}{" "}
+        <span className="it" role="button" tabIndex={-1} onClick={() => d.set((now) => ({ replyTo: { ...now.replyTo, [target.key]: "" } }))}>✕</span></span>}</div>
     <textarea id="reply" ref={box} aria-label={`Write to ${session.name || session.id}`} value={draft} placeholder="c writes here · Alt+Enter sends · Esc leaves · it reads this as a message from user"
       onChange={(event) => typed(event.target.value)} onClick={(event) => { if (document.activeElement !== event.currentTarget) event.currentTarget.focus(); }} />
     <div className="acts"><button type="button" className="btn approve" onClick={() => d.sendBox()}>Send <kbd>Alt+Enter</kbd></button>
-      <span className="muted">{kindWords(session) === "subagent" ? "a subagent reads it before its next tool call" : "interrupting its turn needs new server work"}</span>{said}</div>
+      <button type="button" className="btn" disabled={interrupting !== ""} title={interrupting || "a Claude turn that is generating ends at once, and a tool call already running finishes first; a Codex turn is stopped and the message taken next"}
+        onClick={() => void d.interrupt(session, draft)}>Interrupt <kbd>Space a n</kbd></button>
+      <button type="button" className="btn" disabled={redirecting !== "" || draft.trim() === ""} title={redirecting || "refuses its next tool call with these words"}
+        onClick={() => void d.sendTo(session, draft, { redirect: true })}>Redirect</button>
+      <span className="muted">{kindWords(session) === "subagent" ? "a subagent reads it before its next tool call; an interrupt stops its session's turn" : "it reads this before its next tool call, or at once where it idles"}</span>{said}</div>
   </div>;
 }
 

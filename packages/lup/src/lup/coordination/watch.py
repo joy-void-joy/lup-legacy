@@ -34,7 +34,7 @@ from lup.channels.models import utc_now
 from lup.coordination.mail import ActorDelivery, ActorMessage
 from lup.coordination.repository import PeerView, RepositoryPeers
 from lup.coordination.roster import RosterMember
-from lup.coordination.wake import Woken
+from lup.coordination.wake import WakePriority, Woken
 from lup.providers.wake import wake
 
 
@@ -124,21 +124,17 @@ def nudge_text(fresh: list[ActorMessage]) -> str:
     reader needs *after* deciding the mail matters, and a line repeated on
     every nudge ahead of the content is a line that stops being read.
 
-    Each message names who sent it where it was signed — a peer's id, or
-    `user` for the person — since that is the address a reply goes to.
+    Each message is headed as the delivery hook heads it — who signed it, the
+    post a reply names, and the discussion it was posted into — since that is
+    what a reply is addressed by.
     """
-
-    def said_by(message: ActorMessage) -> str:
-        signed = f"{message.sender} by " if message.sender else ""
-        return f"from {signed}{message.door} —\n{message.text}"
-
     return "\n\n".join(
         [
             (
                 f"{len(fresh)} message(s) waiting for you are on this"
                 " repository's coordination record, copied here in full:"
             ),
-            *[said_by(message) for message in fresh],
+            *[f"{message.heading()}\n{message.text}" for message in fresh],
             (
                 "This is a nudge on top of the record, not instead of it —"
                 " these are handed over with it, and `coordination_mailbox`"
@@ -154,8 +150,12 @@ def roused(
     fresh: list[ActorMessage],
     cwd: Path | None = None,
     queue_timeout_seconds: float = 20.0,
+    priority: WakePriority = "next",
 ) -> Woken:
     """Make one member look at *fresh*, and hand over what the wake carried.
+
+    *priority* is when the member takes it: `now` interrupts a Claude turn
+    that is generating.
 
     The wake carries the mail whole — :func:`nudge_text` — so a wake the
     member's runtime accepted has put it in front of the member, and it is
@@ -164,18 +164,40 @@ def roused(
     what no wake carried. A wake that did not reach leaves every message
     waiting for it.
 
+    A redirect is read in the wake and stays waiting all the same, marked as
+    carried so no wake carries it again: what it asks is that the member's
+    next tool call be refused, and only the hook, handing it over at that
+    call, can refuse it.
+
     Accepted is the most a runtime says: a frame its wake socket took, or a
     queue that took the message. Neither proves the turn it starts has read
     it, which is the same promise the hook's own hand-over makes.
     """
+    fresh = [message for message in fresh if not message.carried]
+    if not fresh:
+        return Woken(
+            reached=False,
+            reason="what waits was carried by an earlier wake, and waits for the "
+            "member's hook",
+        )
     outcome = wake(
         member.wake,
         nudge_text(fresh),
         cwd,
         queue_timeout_seconds=queue_timeout_seconds,
+        priority=priority,
     )
     if outcome.reached:
-        peers.delivered(member.actor.id, ActorDelivery(messages=fresh))
+        peers.delivered(
+            member.actor.id,
+            ActorDelivery(
+                messages=[message for message in fresh if not message.redirect]
+            ),
+        )
+        peers.carried(
+            member.actor.id,
+            ActorDelivery(messages=[message for message in fresh if message.redirect]),
+        )
     return outcome
 
 

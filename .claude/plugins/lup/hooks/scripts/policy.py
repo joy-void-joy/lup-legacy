@@ -94,7 +94,7 @@ from kernel.rows import (
     landing_rows,
 )
 from kernel.review import Reviewed
-from kernel.spawns import decide_spawn, spawn_name
+from kernel.spawns import decide_spawn, spawn_name, spawn_notice
 from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows, unscratched
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
@@ -1091,25 +1091,27 @@ def script_run_nudge(
     )
 
 
-def referral_noted(
+def noted_once(
     root: Path,
-    session: str,
-    repository: str,
-    ledger: str = ".lup/referrals.json",
+    conversation: str,
+    subject: str,
+    ledger: str = ".lup/notices.json",
     kept_days: int = 7,
 ) -> bool:
-    """Whether this session was already referred to that repository, noting it if not.
+    """Whether this conversation was already told about *subject*, noting it if not.
 
-    Kept per session under the checkout, for *kept_days*, so the ledger holds
-    what a live session could still ask about and nothing older. A ledger that
-    cannot be read or written answers no, which errs toward saying a referral
-    again rather than never.
+    What a notice says once is true for the rest of the conversation and news
+    only the first time: another repository's referral, the habit of naming a
+    spawn. Kept per conversation under the checkout, for *kept_days*, so the
+    ledger holds what a live conversation could still be told and nothing
+    older. A ledger that cannot be read or written answers no, which errs
+    toward saying a notice again rather than never.
     """
     path = root / ledger
     now = datetime.now(UTC)
 
     def recent(entry: dict) -> bool:
-        if "repositories" not in entry:
+        if "subjects" not in entry:
             return False
         try:
             stamped = datetime.fromisoformat(str(entry["at"]))
@@ -1127,8 +1129,8 @@ def referral_noted(
         for name, entry in held.items()
         if isinstance(entry, dict) and recent(entry)
     }
-    seen = kept[session]["repositories"] if session in kept else []
-    if repository in seen:
+    seen = kept[conversation]["subjects"] if conversation in kept else []
+    if subject in seen:
         return True
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1136,9 +1138,9 @@ def referral_noted(
             json.dumps(
                 {
                     **kept,
-                    session: {
+                    conversation: {
                         "at": now.isoformat(),
-                        "repositories": [*seen, repository],
+                        "subjects": [*seen, subject],
                     },
                 },
                 indent=2,
@@ -5440,6 +5442,32 @@ def spawn_named(name: str, description: str) -> str:
     return spawn_name(name, description, SPAWN_NAMES)
 
 
+def spawn_notice_report(
+    name: str,
+    description: str,
+    field: str,
+    cwd: Path | None,
+    session: str,
+    caller: store.Caller,
+) -> PostToolReport:
+    """What a finished spawn's caller is told about its name, the first time in its conversation.
+
+    The notice teaches a habit rather than correcting one call, so once is
+    what it is worth. Kept per conversation rather than per session, because
+    a subagent spawning one of its own never read what its session was told.
+    Nothing is noted for a spawn the notice is silent about, so a caller who
+    names its spawns never touches the ledger.
+    """
+    notice = spawn_notice(name, description, SPAWN_NAMES, field)
+    said = (
+        bool(notice)
+        and bool(session)
+        and cwd is not None
+        and noted_once(cwd, store.acting_id(session, caller), "spawn names")
+    )
+    return PostToolReport(blocking=[], context=[notice] if notice and not said else [])
+
+
 def peer_listing_attachment(cwd: Path | None) -> str:
     """This repository's roster, as a listing carries it, or nothing to carry.
 
@@ -6017,12 +6045,12 @@ def referred_once(
     every file in that repository and news only the first time. Printed on
     every edit, one agent reads it about 150 times in a session, which is the noise
     this project's own "say it once" refuses. So the verdict stands on every
-    edit and its recovery goes with the first (:func:`referral_noted`).
+    edit and its recovery goes with the first (:func:`noted_once`).
     """
     if verdict.rule != "edit:foreign-repository" or not session or cwd is None:
         return verdict
     repository = worktree_root(str((cwd / path_text).resolve())) or path_text
-    if referral_noted(cwd, session, repository):
+    if noted_once(cwd, session, repository):
         return verdict.revised(recovery="")
     return verdict
 
@@ -6118,6 +6146,31 @@ def named_claim_recorded(
         directory,
         store.acting(directory, answering_member(directory), caller),
         [str(Path(path_text).resolve())],
+    )
+
+
+def family_hold_report(
+    paths: list[str], cwd: Path | None, caller: store.Caller
+) -> PostToolReport:
+    """What the writer is told of its own descendants' holds over the files it wrote.
+
+    A member writes what a subagent it spawned holds without being asked —
+    the edit gate let it through — and is told so with the call's result,
+    one line a hold: whose it is, and whether that one is still running. The
+    same words on both runtimes, in the post-tool context each adds beside
+    the result.
+    """
+    directory = peer_directory(cwd)
+    if PEER_POLICY is None or directory is None:
+        return PostToolReport(blocking=[], context=[])
+    mine = store.acting_id(answering_member(directory), caller)
+    return PostToolReport(
+        blocking=[],
+        context=[
+            f"{worktree_path(str(Path(path).resolve()))}: {note}"
+            for path in paths
+            for note in store.family_holds(directory, path, mine)
+        ],
     )
 
 
@@ -6707,15 +6760,34 @@ def observe(payload):
     before the fact, so the gates an edit passes on the way in are put to a
     command's result on the way out — which is what lets the verdict before
     it ran answer from the path alone and stay generous about the content.
+
+    A spawn is the third, and leaves a name behind rather than a write: the
+    call arrives as it ran, its `PreToolUse` rewrite included (measured on
+    2.1.285), so a spawn that went out under its description's name is one
+    whose caller chose none, and is told once to choose its own.
     """
     tool_input = payload["tool_input"] if "tool_input" in payload else {}
+    if "tool_name" in payload and payload["tool_name"] == "Agent":
+        return spawn_notice_report(
+            tool_input["name"] if "name" in tool_input else "",
+            tool_input["description"] if "description" in tool_input else "",
+            "name",
+            session_root(payload),
+            payload["session_id"] if "session_id" in payload else "",
+            caller_of(payload),
+        )
     path = tool_input["file_path"] if "file_path" in tool_input else ""
     if path:
         publish_edition(path, str(session_root(payload) or ""))
         # The tier that needs no comparison: the call said which file, so the
         # claim it leaves is one another session can act on unqualified.
         named_claim_recorded(path, session_root(payload), caller_of(payload))
-        return reviewed_writes([path], session_root(payload))
+        return merged(
+            [
+                family_hold_report([path], session_root(payload), caller_of(payload)),
+                reviewed_writes([path], session_root(payload)),
+            ]
+        )
     command = tool_input["command"] if "command" in tool_input else ""
     if not command:
         return PostToolReport(blocking=[], context=[])
@@ -6724,6 +6796,7 @@ def observe(payload):
     changed = claim_window_closed(session_root(payload), caller_of(payload))
     return merged(
         [
+            family_hold_report(changed, session_root(payload), caller_of(payload)),
             written_review(
                 command,
                 session_root(payload) or Path.cwd(),

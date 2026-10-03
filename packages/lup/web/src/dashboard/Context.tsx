@@ -8,7 +8,8 @@ import type { LiveSession } from "../generated/views";
 import type { Dashboard } from "./dashboard";
 import { gotoJudged, moveException, moveMarker, reveal, jumpTo, rowsOf } from "./editor";
 import { askedBy, basename, checkoutLabel, EFFECT_SIGN, exceptionRules, exceptionStops, exceptionsOf, headOf, headText, judgedOf, lineSummary, MARKER_LETTER, markerLabel, markerStops, needsReview, plural, relative, SOURCES, staleSentences, stateClass, stateLabel, stateSign } from "./review";
-import { unserved, type Feature } from "./served";
+import { HANDLERS } from "./actions";
+import type { Feature } from "./served";
 import type { PageState } from "./state";
 import { activityBrief, ago, attention, childrenOf, clock, GLYPH, heldOthers, holdersOf, inboxOf, inRepository, kindWords, parentOf, reached, reviewsOf, stamp, standing, unreadCount } from "./supervision";
 import { claimPath } from "./review";
@@ -112,18 +113,29 @@ function ReviewContext({ d, state }: { d: Dashboard; state: PageState }) {
   </>;
 }
 
-/** What can be done to an agent, with its key, and whether today's server serves it. */
-const ACTIONS: { id: string; keys: string; label: string; needs?: Feature }[] = [
-  { id: "write", keys: "c", label: "write to it" },
-  { id: "parent", keys: "Space a p", label: "ask its parent session about it" },
-  { id: "wake", keys: "Space a w", label: "wake it: today a message wakes it" },
-  { id: "reply", keys: "r on a message", label: "reply in the thread of one of its messages", needs: "reply-thread" },
-  { id: "nudge", keys: "Space a n", label: "interrupt its turn with a message", needs: "interrupt" },
-  { id: "transcript", keys: "T", label: "read its whole transcript, live", needs: "transcript" },
-  { id: "redirect", keys: ":redirect", label: "refuse its next tool call with your words", needs: "redirect" },
-  { id: "rename", keys: "Space a R", label: "rename it", needs: "rename" },
-  { id: "stop", keys: "Space a x", label: "stop it", needs: "stop" },
+/** What can be done to an agent: the catalog action it runs, its key, and the supervision it needs from the server. */
+const ACTIONS: { action: string; keys: string; label: string; needs?: Feature }[] = [
+  { action: "agent.write", keys: "c", label: "write to it" },
+  { action: "agent.parent", keys: "Space a p", label: "ask its parent session about it" },
+  { action: "agent.wake", keys: "Space a w", label: "wake it to read its mailbox, or to look", needs: "bare-wake" },
+  { action: "agent.reply", keys: "Space a r · r on a message", label: "reply in the thread of its last message, or the one under the cursor", needs: "reply-thread" },
+  { action: "agent.nudge", keys: "Space a n", label: "interrupt its turn with the box's words, or the standard ones", needs: "interrupt" },
+  { action: "agent.transcript", keys: "T", label: "read its whole transcript, live", needs: "transcript" },
+  { action: "peer.redirect", keys: "Space p r", label: "refuse its next tool call with your words", needs: "redirect" },
+  { action: "agent.rename", keys: "Space a R", label: "rename it", needs: "rename" },
+  { action: "agent.stop", keys: "Space a x", label: "stop its runtime (twice confirms)", needs: "stop" },
 ];
+
+/** Where an agent runs: its runtime, who spawned it, and the process the dashboard could stop, or why not. */
+function runsIn(live: NonNullable<PageState["live"]>, session: LiveSession): string {
+  const spawner = session.spawned_by === "" ? undefined : [...live.sessions.values()].find((each) => each.repository === session.repository && each.id === session.spawned_by);
+  const process = session.process;
+  return [
+    session.runtime || "runtime not recorded",
+    ...(session.spawned_by === "" ? [] : [`spawned by ${spawner?.name || session.spawned_by}`]),
+    process === null ? "no runtime process recorded" : `pid ${process.pid}${process.stoppable ? ", which the dashboard can stop" : ` · ${process.why}`}`,
+  ].join(" · ");
+}
 
 function MemberContext({ d, state, session }: { d: Dashboard; state: PageState; session: LiveSession }) {
   const live = state.live;
@@ -136,15 +148,16 @@ function MemberContext({ d, state, session }: { d: Dashboard; state: PageState; 
   const parked = reviewsOf(live, d.roots(state), d.rows(state), session, false);
   const children = childrenOf(live, session);
   const home = live.repositories.get(session.repository);
-  const act = (id: string) => () => {
-    if (id === "write") { if (state.sel.key !== session.key) d.openOther("member", session.key, "box"); else d.focusWin("composer"); return; }
-    if (id === "parent" || id === "wake") { d.openOther("member", session.key); d.focusWin("composer"); return; }
+  const act = (action: string) => () => {
+    if (state.sel.key !== session.key) d.openOther("member", session.key);
+    HANDLERS[action]?.(d, 1, false);
   };
   return <>
     <section className="cx cxhead">
       <div className="kind"><span className={`g-${now}`}>{GLYPH[now]} {now}</span> · {session.name || session.id}</div>
       <div className="muted">{kindWords(session)} · live roster</div>
       {parent !== undefined && <div>subagent of {item(() => d.openOther("member", parent.key), <b>{parent.name || parent.id}</b>)}</div>}
+      <div className="muted">{runsIn(live, session)}</div>
       <Clamp d={d} narrow={state.narrow} open={state.unclamped.has(`doing:${session.key}`)} id={`doing:${session.key}`} as="p"><span className="prose">{session.doing || "It has not said what it is on."}</span></Clamp>
     </section>
     {flags.length > 0 && <section className="cx"><h3>needs you</h3>{flags.map((flag) => <p key={flag.key} className="warn">{flag.text}</p>)}</section>}
@@ -166,6 +179,9 @@ function MemberContext({ d, state, session }: { d: Dashboard; state: PageState; 
       })}
     </section>
     <section className="cx"><h3>its mailbox</h3><p>{mail.filter((each) => each.waiting).length} waiting · {mail.filter((each) => !each.waiting).length} taken <span className="muted">· of the messages loaded</span></p></section>
+    {session.activity.recent.length > 0 && <section className="cx"><h3>its latest calls · {session.activity.recent.length} <span className="k">T reads the transcript</span></h3>
+      {[...session.activity.recent].reverse().map((call) => <p key={call.call}><span className={call.state === "error" ? "err" : call.state === "pending" ? "warn" : "ok"}>{call.state === "error" ? "✗" : call.state === "pending" ? "…" : "✓"}</span> {call.tool} <span className="muted">{call.summary} · {ago(call.at, state.now)}</span></p>)}
+    </section>}
     <section className="cx"><h3>reviews it parked · {parked.length} <span className="k">gr</span></h3>
       {parked.length === 0 && <p className="muted">None this page holds.</p>}
       {parked.slice(0, 10).map((row) => item(() => d.openReview(row.key, { mode: "normal" }), <><span className={`st-${stateClass(row)}`}>{stateSign(row)}</span> {d.short(row, state)} <span className="muted">{stateLabel(row)} · {ago(row.created, state.now)}</span></>))}
@@ -173,10 +189,12 @@ function MemberContext({ d, state, session }: { d: Dashboard; state: PageState; 
     {children.length > 0 && <section className="cx"><h3>its subagents · {children.length}</h3>
       {children.map((child) => item(() => d.openOther("member", child.key), <><span className={`g-${standing(child, state.now)}`}>{GLYPH[standing(child, state.now)]}</span> {child.name || child.id} <span className="muted">{activityBrief(child, state.now)}</span></>))}
     </section>}
-    <section className="cx"><h3>actions <span className="k">today · new server work</span></h3>
-      {ACTIONS.map((action) => action.needs === undefined
-        ? item(act(action.id), <><span className="orange">{action.keys}</span> {action.label} <i className="srv today">today</i></>)
-        : item(() => d.say(unserved(action.needs ?? "stop"), "err"), <><span className="orange">{action.keys}</span> {action.label} <i className="srv new">new server work</i></>))}
+    <section className="cx"><h3>actions</h3>
+      {ACTIONS.map((action) => {
+        const refused = action.needs === undefined ? "" : d.lacks(action.needs);
+        return item(refused === "" ? act(action.action) : () => d.say(refused, "err"),
+          <><span className="orange">{action.keys}</span> {action.label}{refused !== "" && <i className="srv new">not served here</i>}</>);
+      })}
     </section>
   </>;
 }
@@ -197,14 +215,14 @@ function ThreadContext({ d, state, discussion }: { d: Dashboard; state: PageStat
         if (session === undefined) return <p key={id} className="muted">{id} · not on the roster</p>;
         const now = standing(session, state.now);
         return <p key={id}>{item(() => d.openOther("member", session.key), <><span className={`g-${now}`}>{GLYPH[now]}</span> {session.name || session.id}</>)} <span className="muted">{kindWords(session)} · {now}</span>{" "}
-          {item(() => d.say(`${session.name || session.id}'s transcript ${unserved("transcript")}`, "err"), <>transcript</>)}</p>;
+          {item(() => void d.openTranscript(session), <>transcript</>)}</p>;
       })}
     </section>
     <section className="cx"><h3>how it is grouped</h3><p>{discussion.kind === "thread"
-      ? `Every post here replies to another (in_reply_to), back to the first, ${discussion.root.slice(0, 8)}.`
+      ? `Its posts share a thread, or reply to each other (in_reply_to), back to the first, ${discussion.root.slice(0, 8)}.`
       : "These members wrote to each other and none of it replies to anything, so their messages read as one running conversation."}</p></section>
-    <section className="cx"><h3>posting into it <i className="srv new">new server work</i></h3>
-      <p>A post reaches {reaches(live, discussion).join(", ") || "nobody yet"}: one message in each mailbox, replying to the last post or the one r chose, shown here once for all of them. It {unserved("thread-post")}.</p>
+    <section className="cx"><h3>posting into it{d.lacks("thread-post") !== "" && <i className="srv new">not served here</i>}</h3>
+      <p>A post reaches {reaches(live, discussion).join(", ") || "nobody yet"}: one message in each mailbox sharing one post id, replying to the last post or the one r chose, each of them woken.{d.lacks("thread-post") !== "" ? ` ${d.lacks("thread-post")}.` : ""}</p>
       {first !== undefined && <p className="muted">r on a post answers it · c writes · T opens its author's transcript ({memberName(live, discussion.repository, first.sender)} wrote first)</p>}</section>
   </>;
 }
@@ -225,15 +243,28 @@ function RepoContext({ d, state }: { d: Dashboard; state: PageState }) {
   </>;
 }
 
-function YouContext({ state }: { state: PageState }) {
+function YouContext({ d, state }: { d: Dashboard; state: PageState }) {
   const live = state.live;
   if (live === null) return null;
+  const item = items(d, state);
+  const repository = state.sel.key;
+  const row = [...live.users.values()].find((each) => each.repository === repository);
+  const checkout = live.repositories.get(repository)?.checkout ?? "";
   return <>
     <section className="cx cxhead"><div className="kind"><span className="info">◆</span> you</div>
       <p className="prose">You are a member of every roster, reached at user: agents write to you, and you write to any of them. Supervising is the layer this page puts first; your working verbs are one level down.</p></section>
-    <section className="cx"><h3>your inbox</h3><p>{unreadCount(live, state.sel.key)} unread here · {unreadCount(live)} in all <span className="muted">· gi</span></p></section>
-    <section className="cx"><h3>what needs new server work</h3>
-      <p className="muted">{unserved("describe")}</p><p className="muted">{unserved("claims")}</p><p className="muted">{unserved("notices")}</p></section>
+    <section className="cx"><h3>what you are on <span className="k">Space p d · :describe</span></h3>
+      <p className="prose">{row?.description || "You have not said; agents read it in coordination_peers."}</p></section>
+    <section className="cx"><h3>your inbox</h3><p>{unreadCount(live, repository)} unread here · {unreadCount(live)} in all <span className="muted">· gi · X marks every one read</span></p></section>
+    <section className="cx"><h3>what you hold · {row?.holding.length ?? 0} <span className="k">Space p l · :lock · :release</span></h3>
+      {(row?.holding.length ?? 0) === 0 && <p className="muted">Nothing; an agent writing under what you hold is asked first.</p>}
+      {row?.holding.map((claim) => item(() => void d.claim(repository, claimPath(claim), false), <>{inRepository(claimPath(claim), live.repositories.get(repository))} <span className="muted">· give back</span>{row.contested.includes(claim) && <span className="err"> · held by another too</span>}</>))}
+    </section>
+    <section className="cx"><h3>standing notices · {row?.notices.length ?? 0} <span className="k">Space p n · :notice · :unnotice</span></h3>
+      {(row?.notices.length ?? 0) === 0 && <p className="muted">None stands over {live.repositories.get(repository)?.name ?? "this repository"}.</p>}
+      {row?.notices.map((notice) => item(() => void d.withdraw(repository, notice.id), <>{notice.text} <span className="muted">· {notice.id} · withdraw</span></>))}
+    </section>
+    {checkout !== "" && <p className="muted">A relative path you lock is under {checkout}.</p>}
   </>;
 }
 
@@ -252,7 +283,7 @@ export function Context({ d, state }: { d: Dashboard; state: PageState }) {
     case "review": body = <ReviewContext d={d} state={state} />; break;
     case "member": { const session = live?.sessions.get(state.sel.key); if (session !== undefined) body = <MemberContext d={d} state={state} session={session} />; break; }
     case "repo": body = <RepoContext d={d} state={state} />; break;
-    case "you": body = <YouContext state={state} />; break;
+    case "you": body = <YouContext d={d} state={state} />; break;
     case "thread": { const discussion = d.discussion(state); if (discussion !== undefined) body = <ThreadContext d={d} state={state} discussion={discussion} />; break; }
     case "inbox": {
       const target = d.boxTarget(state);

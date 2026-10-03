@@ -2,10 +2,12 @@
 // the operator: the agents tree, and the buffers beside it for an agent, the
 // operator's own row, a repository's page, and the inbox. Worked out from what
 // the stream carries today — the roster's rows with each one's current call,
-// last words, holds and mailbox, and the mail between members. What needs new
-// server work (decision 62) stays behind the seam in `served.ts`.
+// last words, holds and mailbox, the person's own row, and the mail between
+// members. What a server older than the page does not serve stays behind the
+// seam in `served.ts`.
 import type { LiveMessage, LiveRepository, LiveSession, ReviewRoot, ReviewSummary } from "../generated/views";
 import { called, conversation, type LiveState } from "./live";
+import { unserved, type Feature } from "./served";
 import { askedBy, claimCovers, plural, Rows, type Buffer, type Holder } from "./review";
 
 /** How long ago something happened, as the tree says it: `45s`, `17m`, `6h`, `3d`. */
@@ -243,25 +245,28 @@ function mailTail(out: Rows, live: LiveState, repository: string, messages: Live
   for (const each of messages) out.push({ t: "mail", key: `mail:${each.key}`, m: each, unread: each.recipient === "user" && each.waiting });
 }
 
-/** The operator's working verbs, one level down, each with what the dashboard's server needs to carry it. */
-export const VERBS: { command: string; what: string; server: string }[] = [
-  { command: ":msg <agent> <text>", what: "write to any member, session or subagent; c does it for the one selected", server: "today" },
-  { command: ":broadcast <text>", what: "one message to every working member of the repository", server: "today, as one send each" },
-  { command: ":reply <text>", what: "reply in the thread of the message under the cursor (r)", server: "new: in_reply_to on the message route" },
-  { command: ":notice <text>", what: "a standing notice every session reads at the head of each prompt until you withdraw it", server: "new: a route over RepositoryPeers.notify" },
-  { command: ":redirect <agent> <text>", what: "refuse its next tool call with your words as the reason", server: "new: redirect on the message route" },
-  { command: ":describe <text>", what: "say what you are on; agents read it in coordination_peers", server: "new: the user row in the listing" },
-  { command: ":lock <path>", what: "hold a path; an agent writing under it parks a review for you", server: "new: the user's claims counted" },
-  { command: ":release <path>", what: "give a hold back; only what you hold", server: "new" },
-  { command: ":rename <agent> <name>", what: "call a session or subagent something else; its id still reaches it", server: "new: a route over RepositoryPeers.rename" },
-  { command: ":read, x, X", what: "mark your inbox read, one or all", server: "new: a route committing your mailbox" },
+/** The operator's working verbs, one level down, each with the supervision it needs from the dashboard's server. */
+export const VERBS: { command: string; what: string; needs?: Feature }[] = [
+  { command: ":msg <agent> <text>", what: "write to any member, session or subagent; c does it for the one selected" },
+  { command: ":broadcast <text>", what: "one post to every working member of the repository, each woken" },
+  { command: ":reply <text>", what: "reply in the thread of the message under the cursor (r)", needs: "reply-thread" },
+  { command: ":notice <text>", what: "a standing notice every session reads at the head of each prompt until you withdraw it (:unnotice)", needs: "notices" },
+  { command: ":redirect <agent> <text>", what: "refuse its next tool call with your words as the reason", needs: "redirect" },
+  { command: ":describe <text>", what: "say what you are on; agents read it in coordination_peers", needs: "describe" },
+  { command: ":lock <path>", what: "hold a path; an agent writing under it parks a review for you", needs: "claims" },
+  { command: ":release <path>", what: "give a hold back; only what you hold", needs: "claims" },
+  { command: ":rename <agent> <name>", what: "call a session or subagent something else; its id still reaches it", needs: "rename" },
+  { command: ":read, x, X", what: "mark your inbox read, one or all", needs: "inbox-read" },
 ];
 
 /** The operator's own page in one repository: what was sent to them, what they sent, and their verbs. */
 export function youBuffer(live: LiveState, repository: LiveRepository): Buffer {
   const out = new Rows();
   out.push({ t: "sec", key: "you", text: `you in ${repository.name}`, sub: "a peer like any agent, reached at user" });
-  out.push({ t: "msg", key: "proposed", tone: "muted", text: "What you are on, your holds and your notices need new server work (decision 62, items 4 and 11–14); this page shows them once the dashboard serves them." });
+  const row = [...live.users.values()].find((each) => each.repository === repository.key);
+  out.push({ t: "msg", key: "doing", tone: row?.description ? "" : "muted", text: row?.description ? `you are on: ${row.description}` : "You have not said what you are on (:describe); agents read it in coordination_peers." });
+  for (const claim of row?.holding ?? []) out.push({ t: "msg", key: `held:${claim}`, tone: row?.contested.includes(claim) ? "warn" : "", text: `you hold ${claim}${row?.contested.includes(claim) ? " · held by another too" : ""}` });
+  for (const notice of row?.notices ?? []) out.push({ t: "msg", key: `notice:${notice.id}`, tone: "", text: `notice ${notice.id}: ${notice.text}` });
   const inbox = inboxOf(live).filter((each) => each.repository === repository.key);
   out.push({ t: "sec", key: "to-you", text: `to you · ${inbox.filter((each) => each.waiting).length} unread of ${inbox.length}`, sub: "gi opens the inbox" });
   for (const each of inbox.slice(0, 6)) out.push({ t: "mail", key: `mail:${each.key}`, m: each, unread: each.waiting });
@@ -269,7 +274,7 @@ export function youBuffer(live: LiveState, repository: LiveRepository): Buffer {
   out.push({ t: "sec", key: "sent", text: `what you sent lately · ${sent.length}`, sub: "" });
   for (const each of sent) out.push({ t: "mail", key: `mail:${each.key}`, m: each, unread: false });
   out.push({ t: "sec", key: "verbs", text: "your verbs", sub: "one level down: the command line, Space p, and the finder (Space fc)" });
-  VERBS.forEach((verb, at) => out.push({ t: "verb", key: `verb:${at}`, ...verb }));
+  VERBS.forEach(({ command, what, needs }, at) => out.push({ t: "verb", key: `verb:${at}`, command, what, server: needs === undefined ? "works" : unserved(live.served, needs) || "works" }));
   return out.buffer();
 }
 

@@ -7,7 +7,7 @@ code asks here and no runtime's transport is spelled outside its adapter.
 
 from pathlib import Path
 
-from lup.coordination.wake import WakePath, Woken
+from lup.coordination.wake import WakePath, WakePriority, Woken
 from lup.providers.claude.wake import injected
 from lup.providers.codex.wake import queued
 
@@ -18,6 +18,7 @@ def wake(
     cwd: Path | None = None,
     *,
     queue_timeout_seconds: float = 20.0,
+    priority: WakePriority = "next",
 ) -> Woken:
     """Make one member look at what is waiting.
 
@@ -26,12 +27,15 @@ def wake(
     exited, or a handle that no longer resolves all leave the record intact and
     the peer merely un-nudged — which is the state a member with no wake path
     is in permanently and which the system is built to tolerate.
+
+    *priority* `now` interrupts a Claude turn that is generating; Codex's
+    queue takes a message for its next turn whatever is asked.
     """
     match path.runtime:
         case "codex" if path.handle:
             return queued(path, message, cwd, queue_timeout_seconds)
         case "claude" if path.handle:
-            return injected(Path(path.handle), message, path.session)
+            return injected(Path(path.handle), message, path.session, priority=priority)
         case _:
             return Woken(
                 reached=False,

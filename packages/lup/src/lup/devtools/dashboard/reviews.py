@@ -43,7 +43,6 @@ from pydantic import BaseModel, Field, JsonValue, PrivateAttr
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from lup.execution.git import GitError
-from lup.coordination.repository import PeerDepartedError
 from lup.devtools.dashboard.address import AdvertisedDashboard
 from lup.devtools.dashboard.companion import (
     Dashboard,
@@ -856,15 +855,10 @@ def dashboard_app(
     from starlette.datastructures import MutableHeaders
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-    from lup.devtools.dashboard.live import (
-        MessagePage,
-        ReplyOutcome,
-        ReplyRequest,
-        earlier_messages,
-        reply,
-    )
     from lup.devtools.dashboard.keys import DashboardKeys, KeyBindings, KeyTry
+    from lup.devtools.dashboard.live import MessagePage, earlier_messages
     from lup.devtools.dashboard.stream import LiveFeed
+    from lup.devtools.dashboard.supervision import supervision_routes
     from lup.web.serve import bundle_app
 
     named = named_repositories(roots)
@@ -916,7 +910,7 @@ def dashboard_app(
                 return JSONResponse(
                     {"detail": "Authentication required"}, status_code=401
                 )
-        if request.method == "POST":
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
             if headers.origin != url and headers.origin not in declared():
                 return JSONResponse({"detail": "Origin refused"}, status_code=403)
             if headers.content_type != "application/json":
@@ -999,18 +993,7 @@ def dashboard_app(
             media_type="text/event-stream",
         )
 
-    @app.post("/api/repositories/{repository}/sessions/{member}/messages")
-    def message(repository: str, member: str, request: ReplyRequest) -> ReplyOutcome:
-        """The operator's message to one session or subagent, by its member id."""
-        known = next((each for each in feed.served() if each.key() == repository), None)
-        if known is None:
-            raise HTTPException(status_code=404, detail="No repository has that key")
-        try:
-            return reply(known, member, request.text)
-        except PeerDepartedError as departed:
-            raise HTTPException(status_code=409, detail=str(departed)) from departed
-        except LookupError as missing:
-            raise HTTPException(status_code=404, detail=str(missing)) from missing
+    supervision_routes(app, feed)
 
     @app.get("/api/repositories/{repository}/messages")
     def messages(repository: str, before: int = Query(ge=0)) -> MessagePage:

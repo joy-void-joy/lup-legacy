@@ -21,7 +21,7 @@ from typer.testing import CliRunner
 from lup.channels.models import utc_now
 from lup.coordination.bare import store
 from lup.coordination.bare.departure import subagent_left
-from lup.coordination.peer_tools import PeerListOutput, create_peer_tools
+from lup.coordination.peer_tools import PeerListOutput, PeerSayOutput, create_peer_tools
 from lup.coordination.repository import RepositoryPeers
 from lup.devtools.coordination import app as coordination_app
 from lup.tools.mcp import LupMcpTool, ToolResponse, response_text
@@ -116,8 +116,9 @@ async def test_the_peers_listing_nests_each_subagent_under_its_session(
 
     response = await tools["coordination_peers"].handler(by("", worktree))
 
-    [session] = PeerListOutput.model_validate(answer(response)).peers
+    session, person = PeerListOutput.model_validate(answer(response)).peers
     assert session.address == "dev"
+    assert person.address == "user"
     assert sorted(child.doing for child in session.subagents) == [
         "building a0cacac5",
         "building b1dbdbd6",
@@ -176,10 +177,10 @@ async def test_a_lock_holds_a_path_for_one_subagent_against_its_sibling(
     assert peers.holding(module) == []
 
 
-async def test_a_subagent_is_not_asked_about_what_its_session_holds(
+async def test_a_subagent_and_its_session_are_not_asked_about_each_other_s_holds(
     tmp_path: Path, worktree: Path
 ) -> None:
-    """The session dispatched it; the session writing under it is the hazard instead."""
+    """The session dispatched it, and what it holds is the session's own work further on."""
     peers = RepositoryPeers(tmp_path)
     tools = verbs(peers, worktree)
     await described(tools, worktree, "a0cacac5")
@@ -191,9 +192,99 @@ async def test_a_subagent_is_not_asked_about_what_its_session_holds(
     assert store.claim_holders(peers.root, str(module), child, session=SESSION) == []
 
     peers.touched(child, module)
-    assert store.claim_holders(peers.root, str(module), SESSION, session=SESSION) == [
-        child
+    assert store.claim_holders(peers.root, str(module), SESSION, session=SESSION) == []
+    assert [
+        holder.id for claim in peers.holding(module) for holder in claim.holders
+    ] == [
+        SESSION,
+        child,
     ]
+
+
+def test_a_fork_names_the_subagent_that_spawned_it(
+    tmp_path: Path, worktree: Path
+) -> None:
+    """A fork is a subagent's own spawn: its row says whose, from the runtime's record."""
+    peers = RepositoryPeers(tmp_path)
+    peers.join(SESSION, worktree, cli_name="lead")
+    builder = peers.join_subagent(SESSION, store.Caller(agent_id="a0cacac5"))
+    fork = peers.join_subagent(
+        SESSION, store.Caller(agent_id="f0f0f0f0", spawned_by="a0cacac5")
+    )
+
+    rows = {row.member.actor.id: row.member for row in peers.listing()}
+
+    assert rows[builder.id].spawned_by == SESSION
+    assert rows[fork.id].spawned_by == builder.id
+    assert rows[fork.id].parent == SESSION
+
+
+def test_a_member_writes_what_its_own_descendants_hold_and_its_sibling_is_asked(
+    tmp_path: Path, worktree: Path
+) -> None:
+    """A builder's own fork holding a file is the builder's work further on; a sibling's is not."""
+    peers = RepositoryPeers(tmp_path)
+    peers.join(SESSION, worktree, cli_name="lead")
+    builder = peers.join_subagent(
+        SESSION, store.Caller(agent_id="a0cacac5", name="builder")
+    )
+    sibling = peers.join_subagent(
+        SESSION, store.Caller(agent_id="b1dbdbd6", name="sibling")
+    )
+    fork = peers.join_subagent(
+        SESSION,
+        store.Caller(agent_id="f0f0f0f0", spawned_by="a0cacac5", name="fork"),
+    )
+    module = worktree / "cli.py"
+    module.write_text("value = 1\n", encoding="utf-8")
+    peers.lock(fork.id, module)
+
+    assert (
+        store.claim_holders(peers.root, str(module), builder.id, session=SESSION) == []
+    )
+    assert store.claim_holders(peers.root, str(module), SESSION, session=SESSION) == []
+    assert store.claim_holders(
+        peers.root, str(module), sibling.id, session=SESSION
+    ) == ["fork"]
+    assert [claim.path for claim in peers.holding(module)] == [str(module)]
+    # Not asked, and told: whose hold it is, and that it is still running.
+    told = ["your subagent fork holds this file and is still running"]
+    assert store.family_holds(peers.root, str(module), builder.id) == told
+    assert store.family_holds(peers.root, str(module), SESSION) == told
+    assert store.family_holds(peers.root, str(module), sibling.id) == []
+    assert store.family_holds(peers.root, str(module), fork.id) == []
+
+
+def test_a_runtime_a_session_s_shell_started_is_its_descendant(
+    tmp_path: Path, worktree: Path
+) -> None:
+    """A `claude -p` the session ran is its own work further on; another session's is not."""
+    peers = RepositoryPeers(tmp_path)
+    peers.join(SESSION, worktree, cli_name="lead")
+    peers.join("def456", worktree, cli_name="other")
+    peers.join("spawned1", worktree, spawned_by=SESSION)
+    module = worktree / "cli.py"
+    module.write_text("value = 1\n", encoding="utf-8")
+    peers.lock("spawned1", module)
+
+    assert store.claim_holders(peers.root, str(module), SESSION) == []
+    assert store.claim_holders(peers.root, str(module), "def456") == ["lead-spawned"]
+    assert store.family_holds(peers.root, str(module), SESSION) == [
+        "lead-spawned, a runtime your shell started, holds this file "
+        "and is still running"
+    ]
+    assert store.family_holds(peers.root, str(module), "def456") == []
+
+
+def test_the_note_says_still_running_only_of_a_holder_that_is(tmp_path: Path) -> None:
+    """Said from the holder's own row: a row that has stopped running says only that it holds."""
+    stopped: store.Member = {"kind": store.SUBAGENT_KIND, "running": False}
+    running: store.Member = {"kind": store.SUBAGENT_KIND, "running": True}
+
+    assert store.family_note("scout", stopped) == "your subagent scout holds this file"
+    assert store.family_note("scout", running) == (
+        "your subagent scout holds this file and is still running"
+    )
 
 
 async def test_a_subagent_reaches_its_own_session_and_not_itself(
@@ -204,13 +295,15 @@ async def test_a_subagent_reaches_its_own_session_and_not_itself(
     await described(tools, worktree, "a0cacac5")
     child = store.subagent_id(SESSION, "a0cacac5")
 
-    sent = answer(
-        await tools["coordination_send"].handler(
-            by("a0cacac5", worktree, address="dev", text="the CLI half is done")
+    sent = PeerSayOutput.model_validate(
+        answer(
+            await tools["coordination_send"].handler(
+                by("a0cacac5", worktree, address="dev", text="the CLI half is done")
+            )
         )
     )
 
-    assert sent["outstanding"] == 1
+    assert [each.outstanding for each in sent.reached] == [1]
     [message] = peers.waiting(SESSION).messages
     assert message.text == "the CLI half is done"
     assert "own address" in refusal(
@@ -230,14 +323,16 @@ async def test_a_message_to_a_subagent_waits_in_its_own_mailbox(
     child = store.subagent_id(SESSION, "a0cacac5")
     peers.send("user", "unrelated, and not the recipient's")
 
-    sent = answer(
-        await tools["coordination_send"].handler(
-            by("", worktree, address=child, text="rebase before you commit")
+    sent = PeerSayOutput.model_validate(
+        answer(
+            await tools["coordination_send"].handler(
+                by("", worktree, address=child, text="rebase before you commit")
+            )
         )
     )
 
-    assert sent["delivery"] == "hook"
-    assert sent["outstanding"] == 1
+    [reached] = sent.reached
+    assert (reached.delivery, reached.outstanding) == ("hook", 1)
     assert [message.text for message in peers.waiting(child).messages] == [
         "rebase before you commit"
     ]
@@ -245,7 +340,7 @@ async def test_a_message_to_a_subagent_waits_in_its_own_mailbox(
         await tools["coordination_mailbox"].handler(by("a0cacac5", worktree))
     )
     assert taken["messages"] == [
-        f"[message from {SESSION} by agent] rebase before you commit"
+        f"[message from {SESSION} by agent · post {sent.post}] rebase before you commit"
     ]
     assert peers.waiting(SESSION).messages == []
 

@@ -1,0 +1,18 @@
+subjects = ["referral_noted", "CheckoutState.referrals"]
+reason = """
+the ledger of what a session was told once holds more than referrals now — \
+the spawn-name notice beside another repository's referral — so it is kept \
+per conversation and subject, in `.lup/notices.json`"""
+
+[[steps]]
+instruction = """
+Call `noted_once(root, conversation, subject)` where you called \
+`referral_noted(root, session, repository)`; it answers the same question \
+for any subject, and reads `.lup/notices.json` rather than \
+`.lup/referrals.json`."""
+
+[[steps]]
+instruction = """
+Read `CheckoutState.notices()` where you read `CheckoutState.referrals()`. \
+A `.lup/referrals.json` left in a checkout is read by nothing and may be \
+deleted."""

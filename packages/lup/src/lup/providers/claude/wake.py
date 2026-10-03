@@ -8,11 +8,15 @@ import json
 import socket
 from pathlib import Path
 
-from lup.coordination.wake import Woken
+from lup.coordination.wake import WakePriority, Woken
 
 
 def injected(
-    address: Path, message: str, session: str = "", patience: float = 3.0
+    address: Path,
+    message: str,
+    session: str = "",
+    patience: float = 3.0,
+    priority: WakePriority = "next",
 ) -> Woken:
     """Write one message into a Claude session's own wake socket at *address*.
 
@@ -39,11 +43,15 @@ def injected(
     the socket itself is refused with EPERM before any address is tried, and
     reporting that as nobody listening sent the reader looking for a dead
     peer rather than at the boundary the call ran inside.
+
+    *priority* rides the frame where it is `now`; a frame naming none is
+    taken as `next`, the runtime's own default.
     """
     frame = {
         "type": "user",
         "message": {"role": "user", "content": message},
         **({"session_id": session} if session else {}),
+        **({"priority": priority} if priority == "now" else {}),
     }
     try:
         peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

@@ -11,8 +11,8 @@ const root = { id: "root", path: "/src/lup.git/tree/dev", repository: "/src/lup.
 function session(id: string, fields: Partial<LiveSession> = {}): LiveSession {
   return {
     key: `r1/${id}`, repository: "r1", id, parent: "", kind: "session", name: id, doing: "", task: "", running: true, worktree: "", holding: [], contested: [],
-    delivery: "hook", wake: "claude", arrived: null, heard: minutesAgo(1), summary: "", error: "", waiting: 0,
-    activity: { said: "", calling: "", arguments: {}, at: minutesAgo(1), transcript: "" }, ...fields,
+    delivery: "hook", wake: "claude", arrived: null, heard: minutesAgo(1), summary: "", error: "", waiting: 0, runtime: "claude", spawned_by: "", process: null,
+    activity: { said: "", calling: "", arguments: {}, at: minutesAgo(1), transcript: "", recent: [] }, ...fields,
   };
 }
 
@@ -24,18 +24,18 @@ function review(key: string, asker: string): ReviewSummary {
 }
 
 function message(id: string, fields: Partial<LiveMessage> = {}): LiveMessage {
-  return { key: `r1/${id}`, repository: "r1", id, at: 0, sender: "lead", recipient: "user", recipient_kind: "user", text: id, door: "agent", redirect: false, in_reply_to: "", sent_at: minutesAgo(2), waiting: true, ...fields };
+  return { key: `r1/${id}`, repository: "r1", id, at: 0, sender: "lead", recipient: "user", recipient_kind: "user", text: id, door: "agent", redirect: false, in_reply_to: "", sent_at: minutesAgo(2), waiting: true, post: id, thread: id, ...fields };
 }
 
 const state = (sessions: LiveSession[], messages: LiveMessage[] = [], reviews: ReviewSummary[] = []) => applied(null, {
   cursor: "c",
-  event: { type: "snapshot", repositories: [repository], sessions, messages, extents: [], reviews: { roots: [root], reviews, errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS },
+  event: { type: "snapshot", repositories: [repository], sessions, messages, extents: [], reviews: { roots: [root], reviews, errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS, users: [], served: [] },
 });
 
 describe("who is here, and what each needs", () => {
   test("an agent is working, idle, quiet after ten minutes on one call, or stopped", () => {
-    expect(standing(session("a", { activity: { said: "", calling: "Bash", arguments: {}, at: minutesAgo(2), transcript: "" } }), now)).toBe("working");
-    expect(standing(session("a", { activity: { said: "", calling: "Bash", arguments: {}, at: minutesAgo(12), transcript: "" } }), now)).toBe("quiet");
+    expect(standing(session("a", { activity: { said: "", calling: "Bash", arguments: {}, at: minutesAgo(2), transcript: "", recent: [] } }), now)).toBe("working");
+    expect(standing(session("a", { activity: { said: "", calling: "Bash", arguments: {}, at: minutesAgo(12), transcript: "", recent: [] } }), now)).toBe("quiet");
     expect(standing(session("a"), now)).toBe("idle");
     expect(standing(session("a", { running: false }), now)).toBe("stopped");
   });
@@ -43,12 +43,12 @@ describe("who is here, and what each needs", () => {
   test("what it is doing reads its call in one line, from the call's own words", () => {
     expect(callSummary({ command: "uv run pytest", description: "Run the tests" })).toBe("Run the tests");
     expect(callSummary({ file_path: "/a.py" })).toBe("/a.py");
-    expect(activityBrief(session("a", { activity: { said: "", calling: "Read", arguments: { file_path: "a.py" }, at: minutesAgo(1), transcript: "" } }), now)).toBe("calling Read · a.py");
+    expect(activityBrief(session("a", { activity: { said: "", calling: "Read", arguments: { file_path: "a.py" }, at: minutesAgo(1), transcript: "", recent: [] } }), now)).toBe("calling Read · a.py");
     expect(activityBrief(session("a", { running: false, summary: "Handed back." }), now)).toBe("Handed back.");
   });
 
   test("an agent needs the operator when quiet, waited on, or written from", () => {
-    const quiet = session("lead", { activity: { said: "", calling: "Bash", arguments: {}, at: minutesAgo(20), transcript: "" }, contested: ["at /x"] });
+    const quiet = session("lead", { activity: { said: "", calling: "Bash", arguments: {}, at: minutesAgo(20), transcript: "", recent: [] }, contested: ["at /x"] });
     const live = state([quiet], [message("m1")], [review("q1", "lead")]);
     expect(attention(live, [root], [review("q1", "lead")], quiet, now).map((flag) => flag.key)).toEqual(["quiet", "asks", "wrote", "contested"]);
     expect(inboxOf(live).map((each) => each.id)).toEqual(["m1"]);

@@ -39,6 +39,17 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+type WakePriority = Literal["next", "now"]
+"""When a woken session takes what the wake carries: at its next chance, or at once.
+
+`now` is Claude's own frame priority, and what it does was measured on Claude
+Code 2.1.285 in an interactive session, with the runtime's debug log as
+witness: while the model is generating, the turn ends within milliseconds and
+the frame's message is taken as the next turn; while a tool call runs, the call
+runs to its end and the message is taken right after it, as `next` would be
+taken at that boundary. `next` lets a generating turn finish first.
+"""
+
 type WakeRuntime = Literal["", "claude", "codex"]
 """Which runtimes a member can declare a wake path for, named once.
 
