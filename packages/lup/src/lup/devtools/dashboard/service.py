@@ -585,6 +585,7 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         BudgetView,
         budget_ledger,
         budget_routes,
+        launched_on,
     )
     from lup.devtools.dashboard.reviews import dashboard_app
     from lup.devtools.dashboard.stream import LiveFeed
@@ -640,11 +641,12 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
             person,
             poller=poller,
             join=join,
+            account_of=launched_on(poller),
             notify=lambda summary, body: desktop_notified(
                 DesktopNotice(summary=summary, body=body)
             ),
         )
-        if arguments.shared
+        if poller is not None
         else None
     )
     feed = LiveFeed(

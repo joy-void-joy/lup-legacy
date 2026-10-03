@@ -36,6 +36,7 @@ from pydantic import BaseModel
 from lup.coordination.bare import store
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import Feature, RunningAgent
+from lup.launch.container import drawn_account
 from lup.devtools.dashboard.telemetry import RequestSpend, TelemetryJoin
 from lup.observability.usage.models import PacingWindow, UsageReader, UsageUnavailable
 from lup.providers.accounts import (
@@ -332,6 +333,18 @@ class AccountPoller:
         with self.lock:
             return list(self.watches.values())
 
+    def account_at(self, home: Path) -> Account | None:
+        """The account whose login is kept in *home*, where one being read is."""
+        with self.lock:
+            return next(
+                (
+                    watch.home.account
+                    for watch in self.watches.values()
+                    if watch.home.home.resolve() == home.resolve()
+                ),
+                None,
+            )
+
 
 class RolloutLine(BaseModel, frozen=True):
     """One whole line of a rollout, and the byte it starts at."""
@@ -396,6 +409,25 @@ def unrecorded(known: KnownRepository, agent: RunningAgent) -> Account:
     """The home no profile selects, in the agent's runtime: the account where nothing records another."""
     del known
     return Account(runtime=agent.runtime)
+
+
+def launched_on(poller: AccountPoller) -> AccountOf:
+    """Which account a session draws on, as its launch recorded it and a switch since moved it.
+
+    Read by the home its login is kept in, so it names the account the
+    poller reads; a session whose launch recorded nothing draws on the home
+    no profile selects.
+    """
+
+    def drawn(known: KnownRepository, agent: RunningAgent) -> Account:
+        owner = drawn_account(agent.id)
+        if owner is None:
+            return unrecorded(known, agent)
+        return poller.account_at(owner.home) or Account(
+            runtime=agent.runtime, profile=owner.profile or "default"
+        )
+
+    return drawn
 
 
 class RepositoryAgents(BaseModel, frozen=True):

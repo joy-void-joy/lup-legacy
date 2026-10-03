@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from lup.devtools.dashboard.budget import (
     AccountPoller,
     AccountWatch,
@@ -13,7 +15,9 @@ from lup.devtools.dashboard.budget import (
     HoldDoor,
     RepositoryAgents,
     WaitingCall,
+    launched_on,
 )
+from lup.launch.config_volume import LaunchedAccount, LaunchedAccounts, LoginOwner
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import RunningAgent
 from lup.devtools.dashboard.telemetry import RequestAgent, RequestSpend, TelemetryJoin
@@ -374,3 +378,33 @@ def test_the_poller_publishes_every_account_where_judgements_read_them(
     assert [
         (each.account.key, each.windows[0].window.utilization_pct) for each in published
     ] == [("claude:default", 55.0)]
+
+
+def test_a_session_draws_on_the_account_its_launch_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    work_home = tmp_path / "profiles" / "work" / "claude-config"
+    LaunchedAccounts().record(
+        LaunchedAccount(
+            member="lead",
+            runtime="claude",
+            owner=LoginOwner(home=work_home, profile="work"),
+            checkout=tmp_path,
+            contained=False,
+            at=NOW,
+        )
+    )
+    work = Account(runtime="claude", profile="work")
+    poller = AccountPoller(
+        lambda: [tmp_path],
+        SpendLedger(tmp_path / "ledger.json"),
+        config(tmp_path),
+        homes=lambda roots: [AccountHome(account=work, home=work_home, signed_in=True)],
+        reader=lambda each: Reader([30.0]),
+    )
+    poller.poll(NOW)
+    drawn = launched_on(poller)
+    known = KnownRepository(repository=tmp_path / ".git", checkout=tmp_path)
+    assert drawn(known, session("lead")) == work
+    assert drawn(known, session("never-recorded")) == CLAUDE
