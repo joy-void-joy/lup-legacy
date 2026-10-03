@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Two changelog entries added at one place merge whole and set off
+
+`.gitattributes` put the changelog on git's `union` driver, so two branches
+that each added an entry at the top of `## Unreleased` merged without a
+conflict. But union lines the two entries' text up: on most landings the
+first entry's last line ran into the second's heading, and a line both
+entries shared, such as a closing "What changes for a session" sentence,
+was kept once, under the second, and dropped from the first.
+
+- `lup.devtools.changelog.merged_changelog` merges two sides' changelogs as
+  units: each `###` entry under `## Unreleased`, and each release, is a block
+  under its heading, merged three-way against the common ancestor. What one
+  side added, changed or removed is taken from that side, an entry only
+  theirs added goes above ours, and only a block both sides changed
+  differently is a conflict, marked where it stands. Every block is followed
+  by one blank line, so no merge leaves a heading joined to the text above.
+- `lup-devtools git merge-changelog BASE OURS THEIRS` runs it as git's
+  `lup-changelog` merge driver, through a route that loads nothing of the
+  project mid-merge.
+- `git merge-driver` registers it beside `lup-ownership` and hands
+  `CHANGELOG.md` to it in the clone's own `info/attributes`, which git reads
+  before `.gitattributes`. `.gitattributes` keeps `merge=union`, so a clone
+  or forge that never registered still merges the changelog without a
+  conflict, as before. `dev check`'s merge-driver row names each driver still
+  unregistered, and `git worktree create` registers both where the shared
+  config is writable.
+- The headings union had joined on dev are set off again.
+
+What changes for a clone: run `uv run lup-devtools git merge-driver` once
+from a host terminal. Until then `dev check` fails its merge-driver row, and
+the changelog merges by union.
+
 ### Agents spend within limits you set, on accounts you choose
 
 The dashboard every launch holds keeps a budget over every account its
@@ -72,6 +104,7 @@ asks you first.
   seconds the dashboard writes the newest copy — by when its access token
   expires — into the profile, every home derived from it and every volume
   handed it, so a rotated refresh token never strands another session.
+
 ### The operator pauses an agent, and its next tool call waits
 
 - A paused agent's next tool call waits, whatever the tool, until the
@@ -154,6 +187,7 @@ for this project's CLI — and `dev check` confirms each one exists.
 A project's own shell rules, refused tools and paths declare `recovery` as a
 list of `step(...)` from `lup.policy.kernel.diagnostic`; `dev migrate pending`
 names the change. The edit-evaluator protocol is version 2.
+
 ### The dashboard's editor colours code as Neovim does, and says what a name is
 
 The page's highlighting saw a Python class only where it was defined:
@@ -193,6 +227,7 @@ nothing on the page said what a name was.
   (`$/cancelRequest`) without leaving the stream half read, the server's own
   requests are answered, a document can be re-sent as changed, and a session
   names its `languageId` and capabilities.
+
 ### A runtime's tree is spelled by its adapter, and read off it everywhere else
 
 `.claude` and `.codex` were spelled by hand outside their adapters: in the
@@ -236,6 +271,7 @@ adapter.
 
 The generated trees are byte-identical except for the kernel copies and the
 policy data, which carry the plugin roots as data.
+
 ### A review parked before a landing is still answered after it
 
 A parked review is bound to the fingerprint its hook computed over the
@@ -2353,6 +2389,7 @@ quietly stopped firing.
 -   Import `RosterMember` from `lup.coordination.roster` where `SpawnedActor` was imported. Every field keeps its name and its meaning; only the type is spelled for what it folds, which is `store.Member`.
 - Claim, Claim.at, Claim.covers, Claim.held, Claim.holders, Claim.path, Claim.prefix, Claim.subject, folded_claim — `Claim` named two shapes one import apart: a member's own record of a path it holds, and the cross-member row derived from every member claiming one path. The first is `store.Holding` and the second is this, so each says which it is
 -   Import `HeldPath` from `lup.coordination.touches` where `Claim` was imported, and `folded_held_path` where `folded_claim` was. The fields are unchanged: a path, whether it is a prefix, and the members holding it. A caller that meant one member's own record wants `lup.coordination.bare.store.Holding` instead.
+
 ## 0.2.0 — 2026-07-23
 
 Breaking capability-composition and semantic-policy release. A clean break:

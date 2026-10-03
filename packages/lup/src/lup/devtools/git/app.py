@@ -26,6 +26,7 @@ import lup.devtools.dev.git_guards as git_guards_mod
 import lup.devtools.dev.pr as pr
 import lup.devtools.dev.preview as preview
 import lup.devtools.dev.worktree as worktree
+from lup.devtools.changelog import merge_changelog_cmd
 from lup.devtools.dev.conflict_app import create_conflict_app
 from lup.devtools.dev.declarations import DevDeclarations
 from lup.devtools.harness.launch import relocation_hint
@@ -335,9 +336,14 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
 
     @app.command("merge-driver")
     def merge_driver_cmd() -> None:
-        """Register the ownership-manifest merge driver `.gitattributes` names."""
+        """Register the merge drivers this clone's merges need: the generated trees', the changelog's."""
         worktree.register_merge_driver()
-        typer.echo(f"Registered merge driver: {worktree.OWNERSHIP_MERGE_DRIVER}")
+        typer.echo(
+            "Registered merge drivers: "
+            f"{worktree.OWNERSHIP_MERGE_DRIVER}, {worktree.CHANGELOG_MERGE_DRIVER}"
+        )
+
+    app.command("merge-changelog")(merge_changelog_cmd)
 
     @app.command("delete")
     def delete_cmd(

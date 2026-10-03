@@ -30,7 +30,9 @@ import datetime as dt
 from collections.abc import Iterator
 from itertools import dropwhile
 from pathlib import Path
+from typing import Annotated
 
+import typer
 from markdown_it import MarkdownIt
 from packaging.version import Version
 from pydantic import BaseModel
@@ -653,3 +655,263 @@ def release_headings(text: str) -> list[ReleaseHeading]:
         if token.type == "heading_open" and token.tag == "h2" and token.map is not None
     ]
     return [heading for heading in found if heading is not None]
+
+
+class Block(BaseModel, frozen=True):
+    """One unit a changelog is merged in: the heading it is found by, and its text from that heading to the next.
+
+    An entry of the open section is found by its ``###`` heading's own text,
+    a release by its version.
+    """
+
+    heading: str
+    text: str
+
+
+class OpenSection(BaseModel, frozen=True):
+    """What stands under ``## Unreleased``, read as the entries landed into it.
+
+    Each entry is the block from its ``###`` heading to the next, found
+    through the parser for the reason this module opens with. ``intro`` is
+    whatever stands between the section's own heading and its first entry.
+    """
+
+    heading: str = f"## {UNRELEASED}"
+    intro: str = ""
+    entries: list[Block] = []
+
+    @classmethod
+    def read(cls, text: str) -> "OpenSection | None":
+        """An open section's text, its heading included, as its entries; None where there is none."""
+        if not text:
+            return None
+        lines = text.splitlines(keepends=True)
+        body = lines[1:]
+        tokens = parser.parse("".join(body))
+        starts = [
+            DocumentHeading(
+                line=token.map[0], content=tokens[index + 1].content.strip()
+            )
+            for index, token in enumerate(tokens)
+            if token.type == "heading_open"
+            and token.tag == "h3"
+            and token.map is not None
+        ]
+        bounds = [*(start.line for start in starts[1:]), len(body)]
+        return cls(
+            heading=text.splitlines()[0],
+            intro="".join(body[: starts[0].line if starts else len(body)]),
+            entries=[
+                Block(heading=start.content, text="".join(body[start.line : end]))
+                for start, end in zip(starts, bounds)
+            ],
+        )
+
+
+class MergedBlock(BaseModel, frozen=True):
+    """One block of a merged changelog, and whether its two sides still disagree."""
+
+    text: str
+    conflicted: bool = False
+
+
+class ChangelogMerge(BaseModel, frozen=True):
+    """A changelog merged from both sides, and whether any block of it is a conflict left to resolve."""
+
+    text: str
+    conflicted: bool
+
+
+def merged_block(
+    base: str | None, ours: str | None, theirs: str | None
+) -> MergedBlock | None:
+    """One block, three-way: the side that changed it, or a conflict where both did differently.
+
+    ``None`` on a side is a block it does not have, so a block one side added
+    and one side removed is settled the same way as a changed one. ``None``
+    comes back where the merge keeps no block at all.
+    """
+    if ours == theirs or theirs == base:
+        return MergedBlock(text=ours) if ours is not None else None
+    if ours == base:
+        return MergedBlock(text=theirs) if theirs is not None else None
+    return MergedBlock(
+        text="<<<<<<< ours\n"
+        + stacked(ours or "").removesuffix("\n")
+        + "=======\n"
+        + stacked(theirs or "").removesuffix("\n")
+        + ">>>>>>> theirs\n\n",
+        conflicted=True,
+    )
+
+
+class BlockKey(BaseModel, frozen=True):
+    """Which block a side's block is: its heading, and which occurrence of that heading on its side.
+
+    The occurrence keeps two blocks one side gave the same heading apart, so
+    neither is folded into the other.
+    """
+
+    heading: str
+    occurrence: int
+
+
+def keyed(blocks: list[Block]) -> dict[BlockKey, str]:
+    """Each block's text under its key, in document order."""
+    return {
+        BlockKey(
+            heading=block.heading,
+            occurrence=sum(
+                1 for earlier in blocks[:index] if earlier.heading == block.heading
+            ),
+        ): block.text
+        for index, block in enumerate(blocks)
+    }
+
+
+def merged_blocks(
+    base: dict[BlockKey, str], ours: dict[BlockKey, str], theirs: dict[BlockKey, str]
+) -> list[MergedBlock]:
+    """Every block of either side, each merged three-way, in our order with theirs' new ones placed.
+
+    A block only theirs has goes right after the nearest block before it on
+    their side that ours has too, or first where there is none: an entry
+    added at the top of a section on their side stays at the top, above the
+    ones added on ours.
+    """
+    listed = list(theirs)
+    anchors = {
+        key: next((kept for kept in reversed(listed[:index]) if kept in ours), None)
+        for index, key in enumerate(listed)
+        if key not in ours
+    }
+    order = [
+        *(key for key, anchor in anchors.items() if anchor is None),
+        *(
+            placed
+            for mine in ours
+            for placed in (
+                mine,
+                *(key for key, anchor in anchors.items() if anchor == mine),
+            )
+        ),
+    ]
+    merged = [
+        merged_block(
+            base[key] if key in base else None,
+            ours[key] if key in ours else None,
+            theirs[key] if key in theirs else None,
+        )
+        for key in order
+    ]
+    return [block for block in merged if block is not None]
+
+
+def merged_changelog(base: str, ours: str, theirs: str) -> ChangelogMerge:
+    """Two sides' changelogs as one, each entry and release merged as the unit it is.
+
+    What a line-based merge cannot do: two branches that each add an entry at
+    the top of ``## Unreleased`` meet on the same lines, and git's union
+    merge keeps both sides by interleaving them -- a line both entries share
+    is kept once, under the second, and the first entry's last line runs
+    into the second's heading. Here each entry is a block under its own
+    heading, merged three-way against the base: what one side added, changed
+    or removed is taken from that side, and only a block both changed
+    differently is a conflict, marked where it stands. Every block -- each
+    entry, the open section, each release -- is followed by one blank line
+    (:func:`stacked`), so spacing never depends on how a merge lined the
+    text up.
+    """
+    was, mine, other = (Changelog.parse(text) for text in (base, ours, theirs))
+    was_open, mine_open, other_open = (
+        OpenSection.read(document.unreleased) for document in (was, mine, other)
+    )
+
+    def entries_of(section: OpenSection | None) -> dict[BlockKey, str]:
+        return keyed(section.entries if section is not None else [])
+
+    def releases_of(document: Changelog) -> dict[BlockKey, str]:
+        return keyed(
+            [
+                Block(heading=section.version, text=section.text)
+                for section in document.sections
+            ]
+        )
+
+    def candidate_of(document: Changelog) -> str | None:
+        return document.candidate.render() if document.candidate is not None else None
+
+    def intro_of(section: OpenSection | None) -> str | None:
+        return section.intro if section is not None else None
+
+    def opened() -> MergedBlock | None:
+        """The open section merged, or None where the merge keeps none.
+
+        A side that closed it into a release has none; it stays closed unless
+        the other side added an entry since.
+        """
+        heading = next(
+            (
+                section.heading
+                for section in (mine_open, other_open)
+                if section is not None
+            ),
+            None,
+        )
+        entries = merged_blocks(
+            entries_of(was_open), entries_of(mine_open), entries_of(other_open)
+        )
+        intro = merged_block(
+            intro_of(was_open), intro_of(mine_open), intro_of(other_open)
+        )
+        said = [*([intro] if intro is not None else []), *entries]
+        if heading is None or not (
+            entries or (mine_open is not None and other_open is not None)
+        ):
+            return None
+        return MergedBlock(
+            text=f"{heading}\n\n" + stacked(*(block.text for block in said)),
+            conflicted=any(block.conflicted for block in said),
+        )
+
+    blocks = [
+        merged_block(was.preamble, mine.preamble, other.preamble),
+        opened(),
+        merged_block(candidate_of(was), candidate_of(mine), candidate_of(other)),
+        *merged_blocks(releases_of(was), releases_of(mine), releases_of(other)),
+    ]
+    kept = [block for block in blocks if block is not None]
+    return ChangelogMerge(
+        text=stacked(*(block.text for block in kept)).removesuffix("\n"),
+        conflicted=any(block.conflicted for block in kept),
+    )
+
+
+def merge_changelog_cmd(
+    base: Annotated[
+        Path, typer.Argument(help="The common ancestor's changelog (git's %O)")
+    ],
+    ours: Annotated[
+        Path,
+        typer.Argument(
+            help="This side's changelog, which the merge is written over (git's %A)"
+        ),
+    ],
+    theirs: Annotated[
+        Path, typer.Argument(help="The other side's changelog (git's %B)")
+    ],
+) -> None:
+    """Merge a changelog entry by entry: git's `lup-changelog` merge driver.
+
+    Writes the merge over OURS, and ends 1 where an entry or release both
+    sides changed differently is left marked, which git reports as a
+    conflict in the changelog.
+    """
+    merged = merged_changelog(
+        base.read_text(encoding="utf-8"),
+        ours.read_text(encoding="utf-8"),
+        theirs.read_text(encoding="utf-8"),
+    )
+    ours.write_text(merged.text, encoding="utf-8", newline="")
+    if merged.conflicted:
+        raise typer.Exit(1)

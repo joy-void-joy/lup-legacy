@@ -14,7 +14,7 @@
 # source and folds what that writes into the merge commit.
 #
 # The driver is per-clone git config, which no repository can ship. Register it
-# with `lup-devtools dev merge-driver`; without it git falls back to the text
+# with `lup-devtools git merge-driver`; without it git falls back to the text
 # merge and these files conflict as they did before. A merge performed on a
 # forge's server rather than in a clone reads no git config either, so nothing
 # declared here reaches it.
@@ -29,6 +29,13 @@ packages/lup/src/lup/web/bundles/** merge=lup-ownership
 # — keeps every line of each side, with a read folding any duplicate by id.
 ledger/journal.jsonl merge=union
 #
-# The changelog has the same shape: every branch adds its own section at the
-# top of Unreleased, so two branches always meet there and both are right.
+# The changelog has nearly the same shape: every branch adds its own entry at
+# the top of Unreleased, so two branches always meet there and both are right.
+# Union keeps both without a registration, which is why it is declared here:
+# every clone and forge merges the changelog without a conflict. But union
+# lines the two entries' text up, keeping a line both share once and running
+# one entry's last line into the next heading. `git merge-driver` therefore
+# also hands this file, in the registering clone's own `info/attributes` --
+# read before this one -- to the `lup-changelog` driver, which merges it entry
+# by entry (`lup-devtools git merge-changelog`).
 CHANGELOG.md merge=union

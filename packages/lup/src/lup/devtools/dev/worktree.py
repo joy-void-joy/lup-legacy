@@ -130,31 +130,103 @@ def adopt_records() -> None:
 OWNERSHIP_MERGE_DRIVER = "lup-ownership"
 
 
-def register_merge_driver() -> None:
-    """Teach this clone the merge driver ``.gitattributes`` names.
+# lup: ignore[constant-declaration] — the driver name this clone's own
+# attributes and this registration must spell alike for git to find one from
+# the other
+CHANGELOG_MERGE_DRIVER = "lup-changelog"
 
-    A driver that exits without writing leaves git holding one side, which is
-    the whole resolution a generated digest manifest can have — regeneration
-    settles it afterwards. Git resolves driver names from config alone, so no
-    repository can ship this and every clone registers it once; the config is
-    shared with every worktree of the same repository.
+
+def changelog_attribute(changelog: str = "CHANGELOG.md") -> str:
+    """The line in a clone's own attributes that hands *changelog* to the changelog driver."""
+    return f"{changelog} merge={CHANGELOG_MERGE_DRIVER}"
+
+
+def clone_attributes(root: Path | None = None) -> Path:
+    """This clone's own attributes file, shared by every worktree and read before ``.gitattributes``."""
+    return records.shared_directory(root) / "info" / "attributes"
+
+
+def register_merge_driver(changelog: str = "CHANGELOG.md") -> None:
+    """Teach this clone the merge drivers its merges need.
+
+    ``lup-ownership`` is the one ``.gitattributes`` names for the generated
+    trees: a driver that exits without writing leaves git holding one side,
+    which is the whole resolution a generated digest manifest can have --
+    regeneration settles it afterwards.
+
+    ``lup-changelog`` merges *changelog* entry by entry
+    (:func:`~lup.devtools.changelog.merged_changelog`, through `git
+    merge-changelog`). ``.gitattributes`` leaves the changelog on git's own
+    ``union`` driver, which needs no registration, so a clone or a forge that
+    never ran this still merges it, if less well; this clone hands it to the
+    structured driver instead through its own attributes
+    (:func:`clone_attributes`), which git reads before ``.gitattributes``.
+
+    Git resolves driver names from config alone, so no repository can ship
+    this and every clone registers it once; the config and the attributes
+    are shared with every worktree of the same repository.
     """
     git("config", f"merge.{OWNERSHIP_MERGE_DRIVER}.name", "keep one side, regenerate")
     git("config", f"merge.{OWNERSHIP_MERGE_DRIVER}.driver", "true")
+    git(
+        "config",
+        f"merge.{CHANGELOG_MERGE_DRIVER}.name",
+        "merge changelog entries as whole blocks",
+    )
+    git(
+        "config",
+        f"merge.{CHANGELOG_MERGE_DRIVER}.driver",
+        "uv run lup-devtools git merge-changelog %O %A %B",
+    )
+    attributes = clone_attributes()
+    lines = attributes.read_text().splitlines() if attributes.exists() else []
+    if changelog_attribute(changelog) not in lines:
+        attributes.parent.mkdir(parents=True, exist_ok=True)
+        attributes.write_text(
+            "".join(f"{line}\n" for line in [*lines, changelog_attribute(changelog)])
+        )
+
+
+def unregistered_merge_drivers(
+    root: Path | None = None, changelog: str = "CHANGELOG.md"
+) -> list[str]:
+    """Each merge driver this clone's merges need and cannot yet resolve, by name.
+
+    The changelog's counts only where its config and this clone's attribute
+    handing the changelog to it both stand: a clone naming a driver its
+    config lacks would text-merge the changelog, worse than the union it
+    replaces.
+    """
+    attributes = clone_attributes(root)
+
+    def configured(driver: str) -> bool:
+        return all(
+            git.out(
+                *records.at(root),
+                "config",
+                "--get",
+                f"merge.{driver}.{setting}",
+                _ok_code=[0, 1],
+            )
+            for setting in ("name", "driver")
+        )
+
+    handed = attributes.exists() and changelog_attribute(changelog) in (
+        attributes.read_text().splitlines()
+    )
+    return [
+        *([] if configured(OWNERSHIP_MERGE_DRIVER) else [OWNERSHIP_MERGE_DRIVER]),
+        *(
+            []
+            if configured(CHANGELOG_MERGE_DRIVER) and handed
+            else [CHANGELOG_MERGE_DRIVER]
+        ),
+    ]
 
 
 def merge_driver_registered(root: Path | None = None) -> bool:
-    """Whether this clone can already resolve the driver `.gitattributes` names."""
-    return all(
-        git.out(
-            *records.at(root),
-            "config",
-            "--get",
-            f"merge.{OWNERSHIP_MERGE_DRIVER}.{setting}",
-            _ok_code=[0, 1],
-        )
-        for setting in ("name", "driver")
-    )
+    """Whether this clone can already resolve every merge driver its merges need."""
+    return not unregistered_merge_drivers(root)
 
 
 def report_a_blocked_registration(root: Path | None = None) -> bool:
@@ -189,10 +261,11 @@ def report_a_blocked_registration(root: Path | None = None) -> bool:
         return False
     typer.echo(diagnosis, err=True)
     typer.echo(
-        f"The {OWNERSHIP_MERGE_DRIVER} merge driver stays unregistered for this "
-        "clone, so a merge touching the generated trees resolves as a plain "
-        "three-way merge until it is. Register it once from a host terminal: "
-        "`uv run lup-devtools git merge-driver`.",
+        f"The {', '.join(unregistered_merge_drivers(root))} merge driver(s) stay "
+        "unregistered for this clone, so until they are a merge touching the "
+        "generated trees resolves as a plain three-way merge, and the changelog "
+        "by union, which can drop a line two entries share. Register them once "
+        "from a host terminal: `uv run lup-devtools git merge-driver`.",
         err=True,
     )
     return True
@@ -301,7 +374,7 @@ class SetupStep(BaseModel, ABC, frozen=True):
 
 
 class MergeDriver(SetupStep, frozen=True):
-    """The merge driver ``.gitattributes`` names, registered for this clone.
+    """The merge drivers this clone's merges need, registered (:func:`register_merge_driver`).
 
     ``blocked`` is what :func:`report_a_blocked_registration` found: a shared
     config this session cannot write. The step then neither tries the write
@@ -312,7 +385,9 @@ class MergeDriver(SetupStep, frozen=True):
     blocked: bool = False
 
     def label(self) -> str:
-        return f"the {OWNERSHIP_MERGE_DRIVER} merge driver"
+        return (
+            f"the {OWNERSHIP_MERGE_DRIVER} and {CHANGELOG_MERGE_DRIVER} merge drivers"
+        )
 
     def satisfied(self) -> bool:
         return merge_driver_registered()
