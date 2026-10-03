@@ -974,7 +974,12 @@ wherever one exists — the document's first name, which Claude Code still
 honours and never creates, and which wins however empty it is. A derived home
 lives in the checkout, under `.lup/sessions/`, whichever profile it was derived
 from: it keeps a document of its own under the current name, seeded from
-whichever document the profile is read from, and never a `.config.json`.
+whichever document the profile is read from, and never a `.config.json`. It
+keeps a copy of the profile's login too, in `.credentials.json`, rather than a
+link to it: Claude Code renames a refreshed login over that file, which
+replaces a link. Each derivation applies the profile's login again once it has
+changed, keeping whatever else the copy holds; under an unchanged profile, the
+copy a session renewed stays as that session left it.
 Every one of these spellings matters for an interactive fix: accepting a trust
 dialog in a shell that does not export the same variables writes to a different
 document and appears to do nothing.

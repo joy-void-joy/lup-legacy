@@ -2,6 +2,7 @@
 
 import json
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -29,22 +30,55 @@ from lup.providers.claude.config_home import (
     workspace_config_environment,
 )
 from lup.providers.claude.login import CLAUDE_CONFIG_DIR, CLAUDE_LOGIN
-from lup.providers.session_home import SessionHomeLayout, SessionHomes
-from lup.types import EnvVars
+from lup.providers.session_home import SessionHomeLayout, SessionHomes, seed_login
+from lup.types import EnvVars, JsonObject
 
 SEEDED_PROJECT = "/already/trusted"
 SEEDED_THEME = "dark-daltonized"
+PROFILE_RECORDS: JsonObject = {"mcpOAuth": {"profile-server": "the profile's own"}}
+
+
+def claude_login(token: str, refresh: str | None = None) -> JsonObject:
+    """A stored Claude login that can renew for a day, its access token spent.
+
+    ``refresh`` stands in for the refresh token; an empty one is the shape a
+    logout or a refused refresh leaves, which can no longer renew."""
+    now = int(time.time() * 1000)
+    return {
+        "claudeAiOauth": {
+            "accessToken": f"access-{token}",
+            "refreshToken": f"refresh-{token}" if refresh is None else refresh,
+            "expiresAt": now - 3_600_000,
+            "refreshTokenExpiresAt": now + 86_400_000,
+        }
+    }
+
+
+def store(path: Path, credential: JsonObject) -> None:
+    """Write a credentials file in place, as a sign-in leaves one."""
+    path.write_text(json.dumps(credential), encoding="utf-8")
+
+
+def refresh(home: Path, credential: JsonObject) -> None:
+    """Renew a home's login as Claude Code does: staged beside it, renamed over it."""
+    stored = CLAUDE_LOGIN.credentials_path(home)
+    staged = stored.with_name(f"{stored.name}.tmp.refresh")
+    store(staged, credential)
+    staged.replace(stored)
 
 
 def shared_home(root: Path, document: str = CLAUDE_HOME_DOCUMENT) -> Path:
     """A configuration home holding what a real profile carries.
 
     Its document is under the current name by default, which is what Claude
-    Code writes into a named home that never held a legacy one."""
+    Code writes into a named home that never held a legacy one. Its stored
+    login keeps a record beside the login, as a profile that connected a tool
+    server does."""
     home = root / "profile"
     (home / "plugins").mkdir(parents=True)
     (home / "settings.json").write_text('{"model": "opus"}', encoding="utf-8")
-    (home / ".credentials.json").write_text('{"token": "shared"}', encoding="utf-8")
+    credentials = CLAUDE_LOGIN.credentials_path(home)
+    store(credentials, {**claude_login("shared"), **PROFILE_RECORDS})
     save_document(
         home / document,
         {
@@ -59,20 +93,166 @@ def homes_under(root: Path) -> SessionHomes:
     return SessionHomes(shared_home(root), CLAUDE_HOME_LAYOUT)
 
 
+def login_in(home: Path) -> JsonObject:
+    """The stored login a session opened under that home starts with."""
+    return load_document(CLAUDE_LOGIN.credentials_path(home))
+
+
+def copied_from(home: Path) -> JsonObject:
+    """What a copy of that home's stored login carries: the login's own fields."""
+    stored = login_in(home)
+    return {field: stored[field] for field in CLAUDE_LOGIN.credential_fields}
+
+
 def session_document(environment: EnvVars, workspace: Path) -> Path:
     """The document a session of that workspace reads, as Claude Code finds it."""
     derived = workspace_config_environment(environment, workspace)
     return selected_config_home({**environment, **derived}).document
 
 
-def test_a_derived_home_shares_everything_but_the_document(tmp_path: Path) -> None:
-    """Isolation is of the racing file alone, never of the whole home."""
+def test_a_derived_home_links_everything_but_the_document_and_the_login(
+    tmp_path: Path,
+) -> None:
+    """Isolation is of what a session rewrites or replaces, never the whole home."""
     derived = homes_under(tmp_path).derive(tmp_path / "lease-a")
 
     assert (derived / "settings.json").is_symlink()
     assert (derived / "plugins").is_symlink()
-    assert (derived / ".credentials.json").is_symlink()
+    assert not (derived / ".credentials.json").is_symlink()
     assert not (derived / CLAUDE_HOME_DOCUMENT).exists()
+
+
+def test_a_derived_home_holds_a_copy_of_the_profile_s_login_alone(
+    tmp_path: Path,
+) -> None:
+    """A file of the home's own, readable by its owner alone, carrying the login.
+
+    The login's own fields and nothing else the profile's file keeps: a tool
+    server the profile connected is the profile's record, not the login's."""
+    homes = homes_under(tmp_path)
+
+    derived = homes.derive(tmp_path / "lease-a")
+
+    copy = CLAUDE_LOGIN.credentials_path(derived)
+    assert copy.is_file()
+    assert not copy.is_symlink()
+    assert copy.stat().st_mode & 0o777 == 0o600
+    assert login_in(derived) == copied_from(homes.shared)
+    assert "mcpOAuth" in login_in(homes.shared)
+    assert "mcpOAuth" not in login_in(derived)
+
+
+def test_a_session_s_refresh_stays_in_its_home_across_derivations(
+    tmp_path: Path,
+) -> None:
+    """Claude renames a renewed login over its file, and the rename stays put.
+
+    It lands in the derived home alone, so the profile's file is the one it
+    was. Derived again under that unchanged profile, the home keeps the copy
+    the session renewed rather than handing it back the login it renewed
+    from."""
+    homes = homes_under(tmp_path)
+    workspace = tmp_path / "lease-a"
+    derived = homes.derive(workspace)
+    profile = CLAUDE_LOGIN.credentials_path(homes.shared)
+    before = profile.read_bytes()
+    renewed = claude_login("renewed")
+
+    refresh(derived, renewed)
+    again = homes.derive(workspace)
+
+    assert profile.read_bytes() == before
+    assert again == derived
+    assert login_in(derived) == renewed
+
+
+def test_a_profile_that_signed_in_again_reaches_a_home_derived_before(
+    tmp_path: Path,
+) -> None:
+    """A changed profile login is applied over whatever the copy renewed to."""
+    homes = homes_under(tmp_path)
+    workspace = tmp_path / "lease-a"
+    derived = homes.derive(workspace)
+    refresh(derived, claude_login("renewed"))
+    signed_in = claude_login("signed-in-again")
+
+    store(CLAUDE_LOGIN.credentials_path(homes.shared), signed_in)
+    homes.derive(workspace)
+
+    assert login_in(derived) == signed_in
+
+
+def test_a_re_seed_keeps_every_record_the_copy_holds_beside_the_login(
+    tmp_path: Path,
+) -> None:
+    """Only the login moves; a tool server a session connected stays connected."""
+    homes = homes_under(tmp_path)
+    workspace = tmp_path / "lease-a"
+    derived = homes.derive(workspace)
+    connected: JsonObject = {"mcpOAuth": {"session-server": "the session's own"}}
+    refresh(derived, {**claude_login("renewed"), **connected})
+    signed_in = claude_login("signed-in-again")
+
+    store(CLAUDE_LOGIN.credentials_path(homes.shared), signed_in)
+    homes.derive(workspace)
+
+    assert login_in(derived) == {**connected, **signed_in}
+
+
+def test_a_copy_that_can_no_longer_renew_is_seeded_again(tmp_path: Path) -> None:
+    """An emptied refresh token is a login no request is answered for.
+
+    The profile is unchanged since it was applied, and is still the way back:
+    a logout or a refused refresh in one home does not strand that home."""
+    homes = homes_under(tmp_path)
+    workspace = tmp_path / "lease-a"
+    derived = homes.derive(workspace)
+
+    refresh(derived, claude_login("logged-out", refresh=""))
+    homes.derive(workspace)
+
+    assert login_in(derived) == copied_from(homes.shared)
+
+
+def test_a_link_an_earlier_derivation_left_becomes_a_copy(tmp_path: Path) -> None:
+    """A home that once linked its login is brought to holding one of its own."""
+    shared = shared_home(tmp_path)
+    workspace = tmp_path / "lease-a"
+    linked = SessionHomes(shared, SessionHomeLayout()).derive(workspace)
+    assert CLAUDE_LOGIN.credentials_path(linked).is_symlink()
+    before = CLAUDE_LOGIN.credentials_path(shared).read_bytes()
+
+    derived = SessionHomes(shared, CLAUDE_HOME_LAYOUT).derive(workspace)
+
+    assert derived == linked
+    assert not CLAUDE_LOGIN.credentials_path(derived).is_symlink()
+    assert login_in(derived) == copied_from(shared)
+    assert CLAUDE_LOGIN.credentials_path(shared).read_bytes() == before
+
+
+def test_a_profile_holding_no_login_leaves_a_home_without_one(tmp_path: Path) -> None:
+    """Nothing to copy is no copy, rather than a failure or a dangling link."""
+    shared = shared_home(tmp_path)
+    CLAUDE_LOGIN.credentials_path(shared).unlink()
+
+    derived = SessionHomes(shared, CLAUDE_HOME_LAYOUT).derive(tmp_path / "lease-a")
+
+    assert not CLAUDE_LOGIN.credentials_path(derived).exists()
+    assert not CLAUDE_LOGIN.credentials_path(derived).is_symlink()
+
+
+def test_seeds_racing_on_one_copy_apply_the_login_once(tmp_path: Path) -> None:
+    """Homes derived at once take turns, so the copy is written whole, once."""
+    shared = shared_home(tmp_path)
+    stored = CLAUDE_LOGIN.credentials_path(tmp_path / "derived")
+    profile = CLAUDE_LOGIN.credentials_path(shared)
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        seeds = [
+            pool.submit(seed_login, CLAUDE_LOGIN, profile, stored) for _ in range(8)
+        ]
+        assert sum(seed.result() for seed in seeds) == 1
+    assert login_in(stored.parent) == copied_from(shared)
 
 
 @pytest.mark.parametrize(
@@ -96,7 +276,7 @@ def test_a_derived_home_lives_in_the_checkout_and_still_reads_the_account(
     """Where a home lives and what it reads are answered separately.
 
     It lives in the checkout, because the state is the project's. It reads
-    the selected home, because the login is the account's. Selecting an
+    the selected home, because the settings are the account's. Selecting an
     account home is not a licence to write inside it, and the symlink is
     what lets both hold at once."""
     homes = homes_under(tmp_path)
@@ -132,38 +312,28 @@ def test_two_workspaces_in_one_checkout_keep_separate_documents(
     assert first.parent == second.parent == root / ".lup" / "sessions"
 
 
-def test_a_refreshed_login_reaches_every_derived_home(tmp_path: Path) -> None:
-    """One file for every session, because a rotation invalidates copies."""
-    homes = homes_under(tmp_path)
-    first = homes.derive(tmp_path / "lease-a")
-    second = homes.derive(tmp_path / "lease-b")
-
-    (first / ".credentials.json").write_text('{"token": "rotated"}', encoding="utf-8")
-
-    rotated = '{"token": "rotated"}'
-    assert (homes.shared / ".credentials.json").read_text(encoding="utf-8") == rotated
-    assert (second / ".credentials.json").read_text(encoding="utf-8") == rotated
-
-
-def test_switching_account_does_not_reuse_the_previous_login(tmp_path: Path) -> None:
+def test_switching_account_does_not_reuse_the_previous_home(tmp_path: Path) -> None:
     """Two accounts working one checkout each get a derived home of their own.
 
     A home kept in the checkout has no parent directory to carry the account, so
     a name derived from the workspace alone hands the second account a home the
-    first already derived — whose entries are symlinked to the first and never
-    re-pointed. Nothing fails: the session opens and runs as the wrong login,
-    which is the reading a profile exists to make impossible.
+    first already derived — whose links point at the first and are never
+    re-pointed. Nothing fails: the session opens under the second login reading
+    the first account's settings, which is the mix a profile exists to rule out.
     """
     workspace = tmp_path / "lease-a"
     first = homes_under(tmp_path / "account-one")
     second = homes_under(tmp_path / "account-two")
+    store(CLAUDE_LOGIN.credentials_path(second.shared), claude_login("account-two"))
 
     before = first.derive(workspace)
     after = second.derive(workspace)
 
     assert before != after
-    assert (before / ".credentials.json").resolve().is_relative_to(first.shared)
-    assert (after / ".credentials.json").resolve().is_relative_to(second.shared)
+    assert (before / "settings.json").resolve().is_relative_to(first.shared)
+    assert (after / "settings.json").resolve().is_relative_to(second.shared)
+    assert login_in(before) == copied_from(first.shared)
+    assert login_in(after) == login_in(second.shared)
 
 
 def test_an_entry_made_later_reaches_a_home_derived_before_it(tmp_path: Path) -> None:
@@ -372,15 +542,13 @@ def test_a_derived_home_is_the_operator_s_whatever_home_a_session_names(
     for user in (operator, elsewhere):
         account = user / CLAUDE_LOGIN.ambient_home.name
         account.mkdir(parents=True)
-        credentials = json.dumps({"account": user.name})
-        CLAUDE_LOGIN.credentials_path(account).write_text(credentials, encoding="utf-8")
+        store(CLAUDE_LOGIN.credentials_path(account), claude_login(user.name))
         save_document(user / CLAUDE_HOME_DOCUMENT, {"account": user.name})
 
     derived = workspace_config_environment({"HOME": str(elsewhere)}, tmp_path / "lease")
     home = Path(derived[CLAUDE_CONFIG_DIR])
 
-    linked = CLAUDE_LOGIN.credentials_path(home).resolve()
-    assert linked == login.credentials_path(login.ambient_home).resolve()
+    assert login_in(home) == login_in(login.ambient_home)
     assert load_document(home / CLAUDE_HOME_DOCUMENT) == {"account": "operator"}
 
 
