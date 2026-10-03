@@ -9,12 +9,11 @@ from typer.testing import CliRunner
 
 from lup.coordination.identity import MEMBER_ENV, mint_member_id
 from lup.coordination.repository import RepositoryPeers
-from lup.devtools.dashboard.budget import budget_ledger
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.reviews import create_operator_dashboard_app
 from lup.observability.usage.models import PacingWindow
 from lup.providers.user_config import UserConfigFile
-from lup.sessions.budget import Charge
+from lup.sessions.budget import Charge, budget_ledger
 from lup.sessions.limits import Account, AccountStanding, AgentCaps, MeteredWindow
 
 WORK = Account(runtime="claude", profile="work")
@@ -133,7 +132,7 @@ def test_what_names_no_agent_or_no_priority_is_refused(checkout: Path) -> None:
     nothing = runner.invoke(cli, ["dashboard", "cap", "lead", "--total-usd", "0"])
 
     assert nobody.exit_code == 2
-    assert "No agent of this repository answers to 'nobody'" in nobody.output
+    assert "no agent of this repository answers to 'nobody'" in nobody.output
     assert urgent.exit_code != 0 and "is no priority" in urgent.output
     assert nothing.exit_code != 0 and "more than nothing" in nothing.output
     assert budget_ledger().read().agents == []

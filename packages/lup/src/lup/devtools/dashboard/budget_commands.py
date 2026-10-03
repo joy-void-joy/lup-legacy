@@ -19,11 +19,12 @@ from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from lup.coordination.bare import store
 from lup.coordination.repository import RepositoryPeers
-from lup.devtools.dashboard.budget import budget_ledger
 from lup.devtools.dashboard.companion import KnownRepository
+from lup.diagnostics import refuse
 from lup.launch.config_volume import LaunchedAccount, LaunchedAccounts
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.providers.user_config import UserConfigFile
-from lup.sessions.budget import AgentLedger, SpendLedger
+from lup.sessions.budget import AgentLedger, SpendLedger, budget_ledger
 from lup.sessions.limits import (
     Account,
     AccountStanding,
@@ -52,9 +53,11 @@ def ledger_agent(root: Path, spelling: str) -> LedgerAgent:
     """The agent *spelling* reaches in the repository of *root*: a name or an id, as `coordination send` takes one."""
     reached = RepositoryPeers(root).address(spelling)
     if reached is None:
-        raise LookupError(
-            f"No agent of this repository answers to {spelling!r}; "
-            "`uv run lup-devtools coordination roster` lists them"
+        refuse(
+            f"no agent of this repository answers to {spelling!r}",
+            what=spelling,
+            steps=[step("list them", devtools("coordination", "roster"))],
+            code=2,
         )
     return LedgerAgent(
         key=f"{KnownRepository.of(root).key()}/{reached.id}", member=reached.id
@@ -172,7 +175,7 @@ def budget_commands(
         try:
             return config.load().budget
         except ValueError as unread:
-            raise typer.BadParameter(str(unread)) from unread
+            refuse(str(unread), what="[budget]", code=2)
 
     @app.command("budget")
     def budget_cmd() -> None:
@@ -218,11 +221,13 @@ def budget_commands(
         """Set an agent's priority under its account's limits: low holds first, high last."""
         try:
             chosen: Priority = TypeAdapter(Priority).validate_python(priority)
-        except ValidationError as unread:
-            raise typer.BadParameter(
-                f"{priority!r} is no priority: one of "
-                f"{', '.join(get_args(Priority.__value__))}"
-            ) from unread
+        except ValidationError:
+            refuse(
+                f"{priority!r} is no priority",
+                what=priority,
+                steps=[step(f"name one of {', '.join(get_args(Priority.__value__))}")],
+                code=2,
+            )
 
         def settle() -> None:
             line = settled(ledger_agent(root, agent), ledger(), priority=chosen)
@@ -260,8 +265,12 @@ def budget_commands(
                 total_usd=total_usd,
                 total_tokens=total_tokens,
             )
-        except ValidationError as unread:
-            raise typer.BadParameter("a cap is more than nothing") from unread
+        except ValidationError:
+            refuse(
+                "a cap is more than nothing",
+                steps=[step("leave a cap out to clear it")],
+                code=2,
+            )
 
         def settle() -> None:
             line = settled(ledger_agent(root, agent), ledger(), caps=caps)

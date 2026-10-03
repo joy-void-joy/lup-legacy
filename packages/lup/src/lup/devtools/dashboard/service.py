@@ -587,7 +587,6 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         StoredCalls,
         StoredHolds,
         StoredResumption,
-        budget_ledger,
         budget_routes,
         launched_on,
         profile_routes,
@@ -595,6 +594,7 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
     from lup.devtools.dashboard.logins import LoginKeeper
     from lup.devtools.dashboard.reviews import dashboard_app
     from lup.devtools.dashboard.stream import LiveFeed
+    from lup.sessions.budget import budget_ledger
     from lup.devtools.dashboard.telemetry import TelemetryJoin, TelemetryReceiver
 
     token = DashboardToken(directory=arguments.state).read()

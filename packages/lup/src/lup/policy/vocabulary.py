@@ -1126,7 +1126,9 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                                 "the operator sets it on the dashboard or from a"
                                 " terminal outside the agent session"
                             ),
-                            step("`dashboard budget` reads what holds now"),
+                            step(
+                                "read what holds now", devtools("dashboard", "budget")
+                            ),
                         ],
                     )
                     for verb in ("turtle", "priority", "cap")

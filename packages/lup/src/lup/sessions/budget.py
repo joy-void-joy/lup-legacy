@@ -52,6 +52,7 @@ from lup.sessions.limits import (
     judged,
 )
 from lup.types import UsageCost
+from lup.workspace.user_directories import UserDirectories
 
 
 class Charge(BaseModel, frozen=True):
@@ -351,6 +352,18 @@ class SpendLedger:
             return state.model_copy(update={"accounts": [*kept, *fresh.values()]})
 
         return self.transact(put)
+
+
+def budget_ledger(directories: UserDirectories | None = None) -> SpendLedger:
+    """The ledger in the person's own state, which the dashboard and every in-process door share.
+
+    An in-process pipeline that wants to draw on the same budget as the
+    sessions the dashboard governs names this file as its
+    :class:`~lup.sessions.budget.FinancialBudgetConfig` ``state_path``.
+    """
+    return SpendLedger(
+        (directories or UserDirectories()).state() / "budget" / "ledger.json"
+    )
 
 
 class FinancialBudgetConfig(BaseModel, frozen=True, arbitrary_types_allowed=True):

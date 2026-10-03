@@ -71,7 +71,6 @@ from lup.sessions.limits import (
     judged,
 )
 from lup.types import JsonObject
-from lup.workspace.user_directories import UserDirectories
 
 logger = logging.getLogger(__name__)
 
@@ -589,18 +588,6 @@ class RolloutTail:
                         yield RolloutLine(at=at, record=record)
 
         return list(appended())
-
-
-def budget_ledger(directories: UserDirectories | None = None) -> SpendLedger:
-    """The ledger in the person's own state, which the dashboard and every in-process door share.
-
-    An in-process pipeline that wants to draw on the same budget as the
-    sessions the dashboard governs names this file as its
-    :class:`~lup.sessions.budget.FinancialBudgetConfig` ``state_path``.
-    """
-    return SpendLedger(
-        (directories or UserDirectories()).state() / "budget" / "ledger.json"
-    )
 
 
 type AccountOf = Callable[[KnownRepository, RunningAgent], Account]
