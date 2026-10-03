@@ -10,7 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel
 
 import lup.coordination.bare.arrival as arrival
-import lup.coordination.wake as routing
+import lup.providers.codex.wake as routing
 from lup.channels.models import Door, publish_atomic
 from lup.coordination.relay import MailboxRelay
 from lup.coordination.repository import RepositoryPeers

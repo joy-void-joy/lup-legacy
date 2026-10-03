@@ -4,39 +4,61 @@ The fixture is a thousand native reviews of a one-line edit, each binding a
 14 KB preimage and a 14 KB after-document of its own, 980 carried out and 20
 waiting -- the shape of a busy week in one checkout, where a review's
 documents outweigh its call. Built and measured in about two seconds, it
-runs with the rest of the suite. Measured on a workstation, with other test
-suites running:
+runs with the rest of the suite.
 
-- the log holds 2.2 KB per review, where the same reviews kept whole in
-  every record, one copy per transition, come to about 100 KB each;
-- the first snapshot is 37 KB, where one carrying a row for every review is
-  535 KB;
-- a fold of the whole log from a reader that has read none of it takes 0.07
-  to 0.19 s of the measuring thread's CPU time, and the first snapshot 0.10 to
-  0.25 s.
+What goes wrong at this scale is work done once per review: a question
+reading the log again, a review reading a file for each of the others, a
+page carrying a row for every review. Each multiplies something countable
+by about a thousand, so what is bounded is counted -- bytes kept, and files
+opened -- and each bound is about three times what is measured, but the
+log's, which each action opens once:
 
-The two sizes are what tell the shapes apart: time alone does not at this
-scale, since the whole-copy log of these reviews still parses in about
-0.4 s, and a snapshot summarizing every review costs 0.5 to 0.7 s. So each
-size is bounded at three to four times what was measured, and each time at
-five to eight times the slowest measurement. The times are the measuring
-thread's CPU time, so neither a suite running beside others nor a thread an
-earlier test left running in this process inflates them; only work growing
-faster than the log -- a question
-reading the log again, or a review reading a file for each of the others --
-exceeds them.
+- the log holds 2.3 KB a review, bounded at 8 KB, where the same reviews
+  with both documents copied into each of their three records come to about
+  100 KB each;
+- the first snapshot is 37 KB, bounded at 128 KB, where one carrying a row
+  for every review is 539 KB;
+- a fold of the whole log, from a reader that has read none of it, opens two
+  files: the log, once, and the host's answers. It is bounded at six, the
+  log exactly once; a fold that opens the log again for each question opens
+  it 1001 times and 2002 files in all;
+- the first snapshot opens 165 files: the two documents of each of the 70
+  rows it hands the page (20 waiting, History's first 50), the file each
+  waiting review rewrites, the archive, the boot id twice, and the log and
+  the host's answers once each, the queue's questions, remarks and replies
+  all made from that one read. It is bounded at 500, the log at once; one
+  carrying a row for every review opens 2025.
+
+The counts are the same on every run and under any load, which time is not:
+under shared cores and caches even the measuring thread's own CPU time
+inflates. Alone, the fold takes 0.06 to 0.47 s of it and the first snapshot
+0.11 to 0.34 s; with 32 copies of the measurement on 32 cores the fold takes
+up to 0.63 s, and beside several sessions' test suites 1.5 s -- while the
+fold opening the log for each question takes 0.25 s, no slower than the
+fold it regresses. So time is bounded only as a backstop against a blow-up
+that opens no file, such as a scan of every review against every other in
+memory: at 15 s for each, ten times the slowest either has measured.
 """
 
+import os
+import sys
+import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
 
 from lup.devtools.dashboard.reviews import ReviewStore
 from lup.policy.operations import Operation
-from lup.policy.relay import CapturedFileReview, PersistentQuestion, QuestionRelay
+from lup.policy.relay import (
+    CapturedFileReview,
+    PersistentQuestion,
+    QuestionRelay,
+    RecordedQuestion,
+)
 
 LOG_BYTES_PER_REVIEW = 8 * 1024
 """The fixture's log, over the reviews it holds."""
@@ -44,18 +66,79 @@ LOG_BYTES_PER_REVIEW = 8 * 1024
 SNAPSHOT_BYTES = 128 * 1024
 """The first snapshot of the fixture's queue, as JSON."""
 
-FOLD_SECONDS = 1.0
-"""A fold of the whole fixture's log, from a reader that has read none of it, in CPU seconds."""
+FOLD_OPENS = 6
+"""Files a fold of the whole fixture's log opens, from a reader that has read none of it."""
 
-SNAPSHOT_SECONDS = 2.0
-"""The first snapshot of the fixture's queue, from a store that has read none of it, in CPU seconds."""
+SNAPSHOT_OPENS = 500
+"""Files the first snapshot of the fixture's queue opens, from a store that has read none of it."""
+
+SNAPSHOT_LOG_OPENS = 1
+"""Times the first snapshot of the fixture's queue opens the log: once, as a fold does."""
+
+FOLD_SECONDS = 15.0
+"""A fold of the whole fixture's log, in the measuring thread's CPU seconds: a backstop load cannot reach."""
+
+SNAPSHOT_SECONDS = 15.0
+"""The first snapshot of the fixture's queue, in the measuring thread's CPU seconds: the same backstop."""
 
 
-def timed(action: Callable[[], object]) -> float:
-    """The CPU time this thread spends on *action*, which other load does not inflate."""
-    started = time.thread_time()
-    action()
-    return time.thread_time() - started
+class Measured(BaseModel):
+    """What one action cost the thread that ran it: each file it opened, in order, and its CPU time."""
+
+    opened: list[Path]
+    seconds: float
+
+    def opens(self, path: Path) -> int:
+        """How many times the action opened *path*."""
+        return sum(each.resolve() == path.resolve() for each in self.opened)
+
+    def described(self, log: Path) -> str:
+        """What the action cost, as an assertion says it."""
+        return f"{len(self.opened)} files opened, the log {self.opens(log)} times, in {self.seconds:.3f}s"
+
+
+class OpenWatch:
+    """The files one thread opens while armed, heard through the interpreter's audit hook.
+
+    An audit hook is never removed, so this one is installed once and records
+    only while :meth:`measured` runs, and only what the thread that called it
+    opens: a thread an earlier test left running adds nothing to the count.
+    """
+
+    def __init__(self) -> None:
+        self.thread: int | None = None
+        self.opened: list[Path] = []
+        sys.addaudithook(self.heard)
+
+    def heard(self, event: str, arguments: tuple[object, ...]) -> None:
+        """Keep the path of each open made on the armed thread."""
+        match event, arguments:
+            case "open", (str() | bytes() | os.PathLike() as path, *_) if (
+                threading.get_ident() == self.thread
+            ):
+                self.opened.append(Path(os.fsdecode(path)))
+
+    def measured(self, action: Callable[[], object]) -> Measured:
+        """The files *action* opens and the CPU time it spends, on this thread alone."""
+        self.opened, self.thread = [], threading.get_ident()
+        started = time.thread_time()
+        try:
+            action()
+        finally:
+            self.thread = None
+        return Measured(opened=self.opened, seconds=time.thread_time() - started)
+
+
+def fold_within_bounds(fold: Measured, log: Path) -> bool:
+    """Whether a fold of the fixture's log opened it exactly once, and few files in all."""
+    return fold.opens(log) == 1 and len(fold.opened) <= FOLD_OPENS
+
+
+def snapshot_within_bounds(first: Measured, log: Path) -> bool:
+    """Whether the first snapshot of the fixture's queue opened few files, the log among them once."""
+    return (
+        first.opens(log) <= SNAPSHOT_LOG_OPENS and len(first.opened) <= SNAPSHOT_OPENS
+    )
 
 
 def review(root: Path, index: int) -> PersistentQuestion:
@@ -120,33 +203,72 @@ def checkout(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return root
 
 
+@pytest.fixture(scope="module")
+def watch() -> OpenWatch:
+    """The module's one audit hook, armed only around what a test measures."""
+    return OpenWatch()
+
+
 def test_a_thousand_reviews_are_kept_and_folded_within_the_bound(
-    checkout: Path,
+    checkout: Path, watch: OpenWatch
 ) -> None:
     log = checkout / ".lup/questions.jsonl"
     reader = QuestionRelay(log, checkout / "answers.jsonl")
 
-    seconds = timed(reader.questions)
+    fold = watch.measured(reader.questions)
 
     assert len(reader.questions()) == 1000
     per_review = log.stat().st_size / 1000
     assert per_review < LOG_BYTES_PER_REVIEW, (
         f"the log holds {per_review:.0f} B a review"
     )
-    assert seconds < FOLD_SECONDS, f"a fold of 1000 reviews took {seconds:.3f}s"
+    said = f"a fold of 1000 reviews: {fold.described(log)}"
+    assert fold_within_bounds(fold, log), said
+    assert fold.seconds < FOLD_SECONDS, said
 
 
 def test_the_first_snapshot_of_a_thousand_reviews_stays_within_the_bound(
-    checkout: Path, monkeypatch: pytest.MonkeyPatch
+    checkout: Path, watch: OpenWatch, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("LUP_REVIEW_ANSWERS", str(checkout / "answers"))
     store = ReviewStore(roots=(checkout,))
 
-    seconds = timed(store.snapshot)
+    first = watch.measured(store.snapshot)
 
     snapshot = store.snapshot()
     size = len(snapshot.model_dump_json())
     assert snapshot.history == 980
     assert len(snapshot.reviews) == 20 + store.recent
     assert size < SNAPSHOT_BYTES, f"the first snapshot is {size} B"
-    assert seconds < SNAPSHOT_SECONDS, f"the first snapshot took {seconds:.3f}s"
+    said = f"the first snapshot: {first.described(checkout / '.lup/questions.jsonl')}"
+    assert snapshot_within_bounds(first, checkout / ".lup/questions.jsonl"), said
+    assert first.seconds < SNAPSHOT_SECONDS, said
+
+
+def test_a_fold_reading_the_log_again_for_each_question_exceeds_the_bound(
+    checkout: Path, watch: OpenWatch, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settled = QuestionRelay.settled
+
+    def again(relay: QuestionRelay, question: str) -> RecordedQuestion | None:
+        relay.refreshed()
+        return settled(relay, question)
+
+    monkeypatch.setattr(QuestionRelay, "settled", again)
+    log = checkout / ".lup/questions.jsonl"
+
+    fold = watch.measured(QuestionRelay(log, checkout / "answers.jsonl").questions)
+
+    assert not fold_within_bounds(fold, log), fold.described(log)
+
+
+def test_a_snapshot_carrying_a_row_for_every_review_exceeds_the_bound(
+    checkout: Path, watch: OpenWatch, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LUP_REVIEW_ANSWERS", str(checkout / "answers"))
+    store = ReviewStore(roots=(checkout,), recent=1000)
+
+    first = watch.measured(store.snapshot)
+
+    log = checkout / ".lup/questions.jsonl"
+    assert not snapshot_within_bounds(first, log), first.described(log)

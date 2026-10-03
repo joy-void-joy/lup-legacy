@@ -17,7 +17,8 @@ import pytest
 
 from lup.coordination.identity import mint_member_id
 from lup.coordination.repository import RepositoryPeers
-from lup.coordination.wake import WakePath, wake
+from lup.coordination.wake import WakePath
+from lup.providers.wake import wake
 from lup.providers.identity import native_wake
 
 

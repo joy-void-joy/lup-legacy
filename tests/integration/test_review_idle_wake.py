@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from websockets.asyncio.client import unix_connect
 
 import lup.coordination.bare.arrival as arrival
-import lup.coordination.wake as routing
+import lup.providers.codex.wake as routing
 from lup.channels.wait import wait_until
 from lup.coordination.bare import store
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, member_ref

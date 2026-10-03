@@ -26,24 +26,18 @@ session is refused by it rather than delivered to it.
 so that case is rare rather than ordinary; this is what makes it harmless when
 it happens anyway.
 
-An unavailable native route leaves durable mail pending and reports why no
-wake was attempted. An owned stdio coordination server can relay its own mail
+Each transport is its runtime's adapter's to spell
+(:mod:`lup.providers.claude.wake`, :mod:`lup.providers.codex.wake`), and
+:func:`lup.providers.wake.wake` picks one by the path's runtime; this module
+holds what every one of them answers in. An unavailable native route leaves
+durable mail pending and reports why no wake was attempted. An owned stdio coordination server can relay its own mail
 through the target's local queue. Queue acceptance does not prove an idle turn
 started.
 """
 
-import json
-import socket
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
-
-from lup.execution.shell import LazyCommand
-from lup.coordination.bare.scope import execution_scope
-
-# lup: ignore[constant-declaration] — env overlays the target home while retaining native process discovery settings
-QUEUE_COMMAND = LazyCommand("env")
 
 type WakePriority = Literal["next", "now"]
 """When a woken session takes what the wake carries: at its next chance, or at once.
@@ -151,144 +145,3 @@ class Woken(BaseModel, frozen=True):
 
     error_type: str = ""
     """Safe failure category for diagnostics that must not echo native arguments."""
-
-
-def wake(
-    path: WakePath,
-    message: str,
-    cwd: Path | None = None,
-    *,
-    queue_timeout_seconds: float = 20.0,
-    priority: WakePriority = "next",
-) -> Woken:
-    """Make one member look at what is waiting.
-
-    Never raises on a failed wake. The mail is already written by the time
-    anything calls this, so a runtime that is missing, a session that has since
-    exited, or a handle that no longer resolves all leave the record intact and
-    the peer merely un-nudged — which is the state a member with no wake path
-    is in permanently and which the system is built to tolerate.
-
-    *priority* `now` interrupts a Claude turn that is generating; Codex's
-    queue takes a message for its next turn whatever is asked.
-    """
-    match path.runtime:
-        case "codex" if path.handle:
-            return queued(path, message, cwd, queue_timeout_seconds)
-        case "claude" if path.handle:
-            return injected(Path(path.handle), message, path.session, priority=priority)
-        case _:
-            return Woken(
-                reached=False,
-                reason=(
-                    "this member declared no wake path, so the mail waits until"
-                    " it next looks"
-                ),
-            )
-
-
-def injected(
-    address: Path,
-    message: str,
-    session: str = "",
-    patience: float = 3.0,
-    priority: WakePriority = "next",
-) -> Woken:
-    """Write one message into a Claude session's own wake socket at *address*.
-
-    One frame, carrying the message as the session's own user turn, because
-    that is what makes an idle session take a turn rather than merely record
-    something. The authentication frame the runtime's help describes is left
-    off: the socket accepts a message without one, and the token that frame
-    would carry belongs to the receiving session and is published only for
-    some of them, so requiring it here would make the wake work for a subset
-    of peers and fail silently for the rest.
-
-    *session* is the id the receiving socket checks the frame against, and
-    omitting it asks for no check. It is the difference between reaching a
-    path and reaching a member: the paths a runtime chooses collide across pid
-    namespaces and members do not, so a frame that names its session is
-    dropped by whoever else has bound that path rather than delivered by them.
-
-    *patience* bounds the write rather than leaving it to the kernel, because
-    a socket file can outlive the process that bound it, and the worst this
-    call is allowed to cost is a peer that stays un-nudged.
-
-    A process that may not open a Unix socket at all is told so apart from a
-    peer that is not listening. Measured in a Claude Code Bash sandbox, where
-    the socket itself is refused with EPERM before any address is tried, and
-    reporting that as nobody listening sent the reader looking for a dead
-    peer rather than at the boundary the call ran inside.
-
-    *priority* rides the frame where it is `now`; a frame naming none is
-    taken as `next`, the runtime's own default.
-    """
-    frame = {
-        "type": "user",
-        "message": {"role": "user", "content": message},
-        **({"session_id": session} if session else {}),
-        **({"priority": priority} if priority == "now" else {}),
-    }
-    try:
-        peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    except OSError as refused:
-        return Woken(
-            reached=False,
-            reason=(
-                f"this process may not open a Unix socket ({refused}), so no "
-                "wake socket is reachable from here; the mail waits for the peer"
-            ),
-            error_type="UnixSocketRefused",
-        )
-    try:
-        with peer:
-            peer.settimeout(patience)
-            peer.connect(str(address))
-            peer.sendall(json.dumps(frame).encode() + b"\n")
-    except OSError as failure:
-        return Woken(
-            reached=False,
-            reason=f"nothing is listening at {str(address)!r}: {failure}",
-        )
-    return Woken(reached=True)
-
-
-def queued(
-    path: WakePath, message: str, cwd: Path | None = None, timeout: float = 20.0
-) -> Woken:
-    """Hand a message to Codex's queue; reached means the queue accepted it.
-
-    Acceptance does not establish that an idle session started a turn.
-    """
-    if not path.home or not Path(path.home).is_absolute() or not path.scope:
-        return Woken(
-            reached=False,
-            reason="Codex wake has no verified target home and execution scope; durable mail remains pending.",
-            error_type="UnboundNativeRoute",
-        )
-    if path.scope != execution_scope():
-        # lup: Add an owned execution bridge before supporting Codex wake across container boundaries.
-        return Woken(
-            reached=False,
-            reason="Direct Codex wake cannot cross this execution boundary; durable mail remains pending for the peer's owned mailbox relay or its next activity.",
-            error_type="ForeignExecutionScope",
-        )
-    try:
-        QUEUE_COMMAND(
-            f"CODEX_HOME={path.home}",
-            "codex",
-            "queue",
-            "--thread",
-            path.handle,
-            "--message",
-            message,
-            _cwd=str(cwd) if cwd else None,
-            _timeout=timeout,
-        )
-    except Exception as failure:
-        return Woken(
-            reached=False,
-            reason=f"codex queue did not reach {path.handle!r}: {failure}",
-            error_type=type(failure).__name__,
-        )
-    return Woken(reached=True)

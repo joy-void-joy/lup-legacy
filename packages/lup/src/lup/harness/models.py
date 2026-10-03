@@ -1628,6 +1628,14 @@ class HookSet(BaseModel, frozen=True):
             "beside each file that met it"
         ),
     )
+    generated_plugin_roots: list[Path] = Field(
+        default=[],
+        description=(
+            "Where each runtime renders its plugin trees: a hand edit there is "
+            "refused, since the next generation replaces it and the runtime "
+            "already loaded what was there"
+        ),
+    )
     import_boundaries: list[ImportBoundary] = []
     path_roles: list[HookPathRole] = Field(
         default=[],

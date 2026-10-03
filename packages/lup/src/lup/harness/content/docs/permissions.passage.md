@@ -1137,7 +1137,14 @@ checkout's and a sibling worktree's alike, and so does every tree no scratch
 of this repository holds: another repository's, one under the machine's
 temporary root, and this checkout's own reached through a link planted in
 scratch, which the host resolves and the shell refuses once it has seen the
-link move the write.
+link move the write. Where the generated plugin trees sit is each adapter's to
+say (`NativeSpellings.plugins_directory`). The hook set carries every supported
+runtime's in `generated_plugin_roots`, which the catalog fills from
+`lup.providers.harness.runtime_plugin_directories()`. The policy data renders
+them for both dispatchers and the in-process policy hands the kernel the same
+list, so the kernel names no runtime's tree. A hook set that declares none
+refuses nothing here, and the protected-tree rows still ask about every file
+under each runtime's tree.
 
 Edit decisions cover protected paths, marker changes, size, the canonical
 anti-pattern audit, and declared import ownership. A human-owned file
@@ -1349,6 +1356,22 @@ devtools module — on both enforcement paths whatever a project declares, and
 no adopter has to know to list them. A record there claiming an answer is
 ignored, and a parked record whose fields no longer hash to its fingerprint
 — one rewritten to show another call — can be neither answered nor spent.
+The fingerprint covers what the record holds: the call and where it runs,
+each file's preimage and where its path resolved, the verdict's reason,
+rule, purpose and reviewer, the policy identity, and each file verdict,
+command and unpreviewed step with the fields it carries. Every reader checks
+it with the hook's own function (`lup.policy.assets.host.recorded_fingerprint`)
+over the record as it holds it (`QuestionRecord.held`), so a field a later
+version adds to those rows, with a default, is no part of a record parked
+before it, and that record stays answerable; a field it does carry, changed,
+removed or written in since, unbinds it. A field added to them is therefore
+optional with a default; renaming, removing or retyping one strands every
+review parked before. Where a record does not hash to its fingerprint, the
+reader says it changed after it was parked or was parked by code writing it
+another way, names the compiled hook script that parked it where its policy
+identity records one, and offers the checkout's own review commands only
+where they run other code than the reader's; otherwise `review cancel <id>`
+withdraws it, and the session that asked asks again.
 Nested command paths are declared with `ShellOperationRule.parents`, and the
 deepest matching path decides.
 

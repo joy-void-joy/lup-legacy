@@ -490,6 +490,14 @@ class ApplicationRoots(BaseModel, frozen=True):
     native_dependencies: list[str] = []
     """Additional owners of provider SDK imports, such as integration fixtures."""
 
+    runtime_trees: list[str] = []
+    """Each runtime's own tree, as its adapter spells the tree's root.
+
+    Asked of the runtimes rather than listed, as ``generated`` is. A neutral
+    module naming one as a path states what only that runtime's adapter may,
+    so the native-spelling rule refuses it there; nothing is refused for an
+    application that names none."""
+
     source_roots: list[str] = []
     """Python source directories used to resolve relative imports statically."""
 

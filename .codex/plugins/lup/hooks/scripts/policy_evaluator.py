@@ -90,6 +90,7 @@ from kernel.withheld import (
 )
 from policy_data import (
     ACCEPTANCE_GUARD,
+    GENERATED_PLUGIN_ROOTS,
     ALLOWANCE_GRANTS_ENV,
     ALLOWED_FETCH_SCOPES,
     ANTI_PATTERN_ROWS,
@@ -1894,12 +1895,12 @@ def bound_parts(
     A record keeps its scheme -- the parts it bound, in order -- so a reader
     on other code tells a record it cannot check from one that changed:
     ``None`` where the scheme names a part this code does not know. A record
-    keeping no scheme binds the parts it carries; one it holds as null, which
-    a relay writes for a part it never had, it does not.
+    keeping no scheme, or a null one, binds the parts it carries; one it
+    holds as null, which a relay writes for a part it never had, it does not.
     """
     scheme = (
         entry["scheme"]
-        if "scheme" in entry
+        if "scheme" in entry and entry["scheme"] is not None
         else [name for name in known if name in entry and entry[name] is not None]
     )
     if not isinstance(scheme, list) or not all(
@@ -1916,6 +1917,10 @@ def recorded_fingerprint(entry: dict) -> str:
     a record whose fields hash to another digest shows one call and carries
     another's authority, and nothing may answer or spend it. A retry's
     payload recorded as null is the operation's own, as it was hashed.
+
+    Hashed from what the record holds, so a field a later model adds never
+    enters a record parked before it. A hook checks a record it would spend
+    with this, and every reader checks a record it shows with this too.
     """
     match entry:
         case {
@@ -4828,6 +4833,7 @@ def bash_decision(
         trusted_script_roots=managed_script_roots(managed_root),
         path_roles=[*PATH_ROLES, *sibling_scratch_rows(siblings, PATH_ROLES)],
         path_rules=PATH_RULES,
+        plugin_roots=GENERATED_PLUGIN_ROOTS,
         existing_targets=existing_write_targets(
             [*shell_write_targets(command), *acted_on, *flagged], cwd
         ),
@@ -5714,6 +5720,7 @@ def local_edit_decision(
         path_rules=PATH_RULES,
         antipattern_rows=rows,
         path_roles=PATH_ROLES,
+        plugin_roots=GENERATED_PLUGIN_ROOTS,
         maximum_added_lines=MAXIMUM_ADDED_LINES,
         autonomous=autonomous,
         allowances=(

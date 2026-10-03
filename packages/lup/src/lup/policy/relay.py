@@ -12,6 +12,8 @@ only by the operator's side, into the host's own state
 reaches read-only. So nothing a session writes into its relay answers
 anything: a record there claiming an answer is ignored, and a parked record
 whose fields no longer hash to its fingerprint may not be answered at all.
+Every reader hashes a record as it holds it, with the hook's own function, so
+a field a later version adds to a record unbinds no record parked before it.
 
 The relay keeps each question once. Its log holds a record per question as it
 was parked -- every document it binds, a file's preimage or what a verdict
@@ -68,6 +70,7 @@ from lup.policy.assets.host import (
     named_blobs,
     opened_relay,
     park_relay_entry,
+    recorded_fingerprint,
     relay_blobs,
     relay_current,
     relay_header,
@@ -75,7 +78,6 @@ from lup.policy.assets.host import (
     resolved_entry,
     review_answers,
     review_answers_home,
-    review_fingerprint,
     rewrite_relay,
     stored_form,
     stream_records,
@@ -89,7 +91,7 @@ from lup.policy.kernel.semantics import (
     ReviewerRequirement,
 )
 from lup.policy.operations import Operation
-from lup.types import JsonObject, JsonValue
+from lup.types import JsonObject
 
 type QuestionState = Literal[
     "pending",
@@ -527,6 +529,42 @@ class QuestionRecord(BaseModel, frozen=True):
             return self.answer.at
         return self.changed if self.changed is not None else self.created
 
+    def held(self) -> JsonObject:
+        """This record as JSON, each part its fingerprint binds written as the record holds it.
+
+        Every row of those parts (:func:`~lup.policy.assets.host.bound_parts`)
+        keeps to the fields it was given -- read from a record, the ones that
+        record carries -- so a field a later model adds, with a default,
+        never enters a record parked before it, and the record hashes as the
+        hook that parked it hashed it. What the relay writes, what it reads a
+        record back through, and what its fingerprint is checked against; the
+        rest of the record is written whole.
+        """
+        whole = self.model_dump(mode="json")
+        parts = bound_parts(whole) or {}
+        return {
+            **whole,
+            **self.model_dump(
+                mode="json", include=dict.fromkeys(parts, True), exclude_unset=True
+            ),
+        }
+
+    def parked_by(self) -> str:
+        """The digest of the compiled hook script that parked this record, where its policy identity names one.
+
+        The last part of the policy identity a native hook binds, after the
+        routed policy's and the policy snapshot's; blank on a record that
+        keeps none, as one the relay's own code parks.
+        """
+        try:
+            identity = json.loads(self.policy_identity)
+        except json.JSONDecodeError:
+            return ""
+        match identity:
+            case [str(), str(), str() as script]:
+                return script
+        return ""
+
     def unverifiable(self) -> str:
         """Why this reader cannot check the record against its fingerprint, or nothing where it can.
 
@@ -629,9 +667,7 @@ class PersistentQuestion(QuestionRecord, frozen=True):
         Worked out as the relay works out the record it parks
         (:func:`~lup.policy.assets.host.stored_form`), so the two never differ.
         """
-        return RecordedQuestion.model_validate(
-            stored_form(self.model_dump(mode="json"), document_name)
-        )
+        return RecordedQuestion.model_validate(stored_form(self.held(), document_name))
 
     def shown(self) -> RecordedQuestion:
         """This question as a reviewer's page carries it: its call whole, its documents named by digest.
@@ -650,56 +686,16 @@ class PersistentQuestion(QuestionRecord, frozen=True):
             }
         )
 
-    def bound_parts(self) -> dict[str, JsonValue] | None:
-        """What else this record's fingerprint binds, by name, or ``None`` where its scheme is not this code's."""
-        carried: dict[str, JsonValue] = {
-            "file_reviews": [row.model_dump(mode="json") for row in self.file_reviews]
-            if self.file_reviews is not None
-            else None,
-            "unpreviewed": [step.model_dump(mode="json") for step in self.unpreviewed]
-            if self.unpreviewed is not None
-            else None,
-            "segments": [row.model_dump(mode="json") for row in self.segments]
-            if self.segments is not None
-            else None,
-        }
-        return bound_parts(
-            {
-                **carried,
-                **({"scheme": self.scheme} if self.scheme is not None else {}),
-            }
-        )
-
     def native_fingerprint(self) -> str:
-        """The digest a native hook binds this record to, recomputed from what it shows.
+        """The digest a native hook binds this record to, recomputed from what it holds.
 
-        The same material the hook hashed when it parked the call
-        (:func:`~lup.policy.assets.host.review_fingerprint`), read back off the
-        record: the call, the documents it would change, the verdict and the
-        policy that reached it. Blank where the record's scheme is not this
-        code's (:meth:`unverifiable`).
+        The hook's own reading of a parked record
+        (:func:`~lup.policy.assets.host.recorded_fingerprint`), over this
+        record as it holds it (:meth:`held`): the call, the documents it
+        would change, the verdict and the policy that reached it. Blank where
+        the record's scheme is not this code's (:meth:`unverifiable`).
         """
-        operation = self.operation
-        bound = self.bound_parts()
-        if bound is None:
-            return ""
-        return review_fingerprint(
-            operation.session,
-            str(operation.cwd),
-            operation.tool,
-            operation.payload,
-            {str(path): before for path, before in self.preconditions.items()},
-            self.reason,
-            self.rule,
-            self.purpose or "",
-            self.requirement,
-            self.execution_payload
-            if self.execution_payload is not None
-            else operation.payload,
-            self.policy_identity,
-            {str(path): str(landed) for path, landed in self.resolved.items()},
-            bound,
-        )
+        return recorded_fingerprint(self.held())
 
     def bound(self) -> bool:
         """Whether what this question shows is what its fingerprint covers.
@@ -713,6 +709,26 @@ class PersistentQuestion(QuestionRecord, frozen=True):
             return True
         return self.native_fingerprint() == self.fingerprint
 
+    def unbound(self) -> str:
+        """Why this record's fields do not hash to its fingerprint, naming the hook that parked it where the record does; nothing where they do.
+
+        This code cannot tell a record altered since it was parked from one
+        code that writes its record another way parked, so it says both.
+        """
+        if self.bound():
+            return ""
+        script = self.parked_by()
+        return (
+            "its record does not hash to its fingerprint under this code, so "
+            "either it changed after it was parked or code that writes its "
+            "record another way parked it"
+            + (
+                f" (the hook whose compiled script hashes to {script})"
+                if script
+                else ""
+            )
+        )
+
     @classmethod
     def review_fingerprint(
         cls,
@@ -721,15 +737,25 @@ class PersistentQuestion(QuestionRecord, frozen=True):
         unpreviewed: list[UnpreviewedStep] | None,
         segments: list[CommandSegment] | None,
     ) -> str:
-        """Bind captured attribution to an in-process operation's approval."""
+        """Bind captured attribution to an in-process operation's approval.
+
+        Each row is hashed as the record holds it (:meth:`held`), so a field
+        a later model adds never enters a question parked before it.
+        """
         if file_reviews is None and unpreviewed is None and segments is None:
             return operation.fingerprint()
         material = [
             operation.fingerprint(),
-            [row.model_dump(mode="json") for row in file_reviews or []],
-            [step.model_dump(mode="json") for step in unpreviewed or []],
+            [
+                row.model_dump(mode="json", exclude_unset=True)
+                for row in file_reviews or []
+            ],
+            [
+                step.model_dump(mode="json", exclude_unset=True)
+                for step in unpreviewed or []
+            ],
             *(
-                [[row.model_dump(mode="json") for row in segments]]
+                [[row.model_dump(mode="json", exclude_unset=True) for row in segments]]
                 if segments is not None
                 else []
             ),
@@ -901,6 +927,53 @@ class AnswerFold(BaseModel):
     remarked: dict[str, list[RecordedRemark]] = {}
 
 
+class RelayThreads(BaseModel, frozen=True):
+    """What was said on each of one relay's reviews, from a single read of its log and its answers.
+
+    The operator's remarks are kept in the host's answers and the
+    requesters' replies in the log, so the two are read together: read one
+    at a time, a reply and the remark it answers can fall on either side of
+    a write. Each is what the read made, carried as it is rather than
+    checked again.
+    """
+
+    remarks: SkipValidation[dict[str, list[RecordedRemark]]]
+    """The operator's remarks on each review, by review id, oldest first."""
+
+    replies: SkipValidation[dict[str, list[Reply]]]
+    """The requester's replies on each review, by review id, oldest first."""
+
+    @classmethod
+    def of(cls, fold: QuestionFold, heard: AnswerFold) -> "RelayThreads":
+        """What a relay's two folds hold of each review's thread, copied out of them."""
+        return cls(
+            remarks={question: list(said) for question, said in heard.remarked.items()},
+            replies={
+                question: [each.reply for each in said]
+                for question, said in fold.replied.items()
+            },
+        )
+
+
+class RelayReading(BaseModel, frozen=True):
+    """Every question of one relay and what was said on each, from a single read of its log and its answers.
+
+    The questions and their threads are views of the same two files, so they
+    are read together. Read one at a time, a question parked between them
+    with a reply and a remark on it shows its reply and its remark beside a
+    queue that does not hold it, and an approval appended with a remark
+    leaves the remark on a question still read as waiting. The questions are
+    what the read made, carried as they are rather than checked again, since
+    a cold read of a relay holds thousands.
+    """
+
+    questions: SkipValidation[list[RecordedQuestion]]
+    """Every question, folded forward to its latest state, with the host's answer."""
+
+    threads: RelayThreads
+    """The operator's remarks and the requesters' replies on each review."""
+
+
 class QuestionRelay:
     """The durable store every final ask is written to before anybody sees it.
 
@@ -1038,8 +1111,8 @@ class QuestionRelay:
         )
 
     def record(self, question: PersistentQuestion) -> PersistentQuestion:
-        """Park one question: its documents kept in the store, its record naming them."""
-        park_relay_entry(self.path, question.model_dump(mode="json"))
+        """Park one question as it holds it: its documents kept in the store, its record naming them."""
+        park_relay_entry(self.path, question.held())
         return question
 
     def reply(self, recorded: RecordedReply) -> RecordedReply:
@@ -1064,8 +1137,12 @@ class QuestionRelay:
             finally:
                 self.holder = 0
 
-    def questions(self) -> list[RecordedQuestion]:
-        """Every question, folded forward to its latest state, with the host's answer.
+    def read(self) -> RelayReading:
+        """Every question, remark and reply, from one read of the log and of the host's answers.
+
+        What was appended to either since the last read is folded once, and
+        all three are made from that one fold: a record appended meanwhile
+        reaches all three on the next read, never some of them on this one.
 
         Malformed or unterminated lines remain inert evidence. Appenders
         preserve those bytes and frame later records separately, so a torn
@@ -1075,11 +1152,29 @@ class QuestionRelay:
         """
         with self.reading:
             self.refreshed()
-            return [
-                entry
-                for question in list(self.fold.entries)
-                if (entry := self.settled(question)) is not None
-            ]
+            return RelayReading(
+                questions=[
+                    entry
+                    for question in list(self.fold.entries)
+                    if (entry := self.settled(question)) is not None
+                ],
+                threads=RelayThreads.of(self.fold, self.heard),
+            )
+
+    def questions(self) -> list[RecordedQuestion]:
+        """Every question, folded forward to its latest state, with the host's answer."""
+        return self.read().questions
+
+    def threads(self) -> RelayThreads:
+        """Every remark and reply, from one read of the log and of the host's answers.
+
+        No question is made of the entries the log holds, which a reader of
+        what was said on one review has no use for and a cold relay holds
+        thousands of.
+        """
+        with self.reading:
+            self.refreshed()
+            return RelayThreads.of(self.fold, self.heard)
 
     def recorded(self) -> dict[str, RecordedAnswer]:
         """The operator's answer to each of this relay's reviews, by review id."""
@@ -1093,20 +1188,11 @@ class QuestionRelay:
 
     def remarks(self) -> dict[str, list[RecordedRemark]]:
         """Every remark the operator made on this relay's reviews, by review id, oldest first."""
-        with self.reading:
-            self.refreshed()
-            return {
-                question: list(said) for question, said in self.heard.remarked.items()
-            }
+        return self.threads().remarks
 
     def replies(self) -> dict[str, list[Reply]]:
         """Every reply a requester wrote on this relay's reviews, by review id, oldest first."""
-        with self.reading:
-            self.refreshed()
-            return {
-                question: [each.reply for each in said]
-                for question, said in self.fold.replied.items()
-            }
+        return self.threads().replies
 
     def find(self, question: str) -> RecordedQuestion | None:
         """One question as it stands, reading only what was appended since the last read."""
@@ -1120,9 +1206,11 @@ class QuestionRelay:
         Raises ValueError where one is missing or no longer hashes to its
         name -- a question retired to the archive keeps none -- since what
         cannot be read back cannot be shown, or checked, for what it binds.
+        Read through what the record holds (:meth:`QuestionRecord.held`), so
+        the question keeps to the fields its record carries.
         """
         return PersistentQuestion.model_validate(
-            resolved_entry(entry.model_dump(mode="json"), self.blobs)
+            resolved_entry(entry.held(), self.blobs)
         )
 
     def question(self, question: str) -> PersistentQuestion | None:
@@ -1205,11 +1293,9 @@ class QuestionRelay:
                     f"review {question!r} cannot be read back whole, so nothing "
                     f"may answer it: {unread}"
                 ) from unread
-            if not shown.bound():
+            if unbound := shown.unbound():
                 raise ValueError(
-                    f"review {question!r} changed after it was parked: what it "
-                    "shows is not what its fingerprint covers, so nothing may "
-                    "answer it"
+                    f"review {question!r}: {unbound}; nothing may answer it"
                 )
             given = RecordedAnswer(
                 question=entry.id,

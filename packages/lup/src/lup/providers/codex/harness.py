@@ -121,6 +121,10 @@ class CodexSpellings(NativeSpellings):
         return Atom("Codex")
 
     @property
+    def plugins_directory(self) -> Atom:
+        return Atom(".codex/plugins/")
+
+    @property
     def protected_tree(self) -> ProtectedRoot:
         return ProtectedRoot(
             path=Path(self.tree("tree_root")),
@@ -342,7 +346,7 @@ class CodexSpellings(NativeSpellings):
                 return Atom(".agents/plugins/marketplace.json")
 
     def plugin(self, plugin: str, location: PluginLocation, member: str | None) -> Atom:
-        root = f".codex/plugins/{plugin}"
+        root = f"{self.plugins_directory}{plugin}"
         match location:
             case "root":
                 return Atom(f"{root}/")
@@ -1094,6 +1098,9 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
                         unscoped_fetch=source.unscoped_fetch,
                         refused_paths=list(source.refused_paths),
                         secret_variables=list(source.secret_variables),
+                        generated_plugin_roots=[
+                            root.as_posix() for root in source.generated_plugin_roots
+                        ],
                         runner_targets=list(source.runner_targets),
                         sandbox_excluded_commands=source.excluded_commands(),
                         auto_escape_prefixes=codex_allow_prefixes(

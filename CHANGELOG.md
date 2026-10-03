@@ -21,6 +21,85 @@ none, and its subagent's roster row keeps the nickname Codex generated.
   spawning is allowed the tools stay.
 - `docs/permissions.md` lists every tool a Codex session can call and what
   judges it. `write_stdin` fires no hook at all.
+### A runtime's tree is spelled by its adapter, and read off it everywhere else
+
+`.claude` and `.codex` were spelled by hand outside their adapters: in the
+ownership reader's default homes, in the generator's two per-runtime
+recipes, in the policy kernel's generated-plugin refusal, and in the
+devtools that rename the marketplace, render Claude's settings, copy local
+settings into a worktree and count unlanded lines. Each place now asks the
+adapter.
+
+- `NativeSpellings.plugins_directory` names where a runtime's plugin trees
+  sit. Each adapter's `plugin()` spells under it.
+- `lup.providers.harness.spellings_of(AdapterName)` returns one runtime's
+  spellings. `every_runtime()` is built from it, and
+  `runtime_plugin_directories()` and `runtime_generated(root)` read every
+  runtime's plugin directory and ownership proof.
+- `claude_generation_recipe` and `codex_generation_recipe` now live in each
+  adapter's `composition.py`, and every path they write comes from that
+  adapter's spellings. `lup.harness.generate` imports no runtime.
+- `generated_artifacts(root, manifests)` takes the manifests to read.
+  `ADAPTER_HOMES` is gone.
+- The kernel's `GENERATED_PLUGIN_ROOTS` constant is gone. `HookSet` declares
+  `generated_plugin_roots`, the policy data renders them, and every gate
+  refusing a hand edit in a generated plugin tree is handed them
+  (`plugin_roots`). A hook set that declares none refuses nothing there,
+  but the protected-tree rows still ask.
+- The native-spelling rule now also refuses a neutral module that spells a
+  runtime's own tree as a path. The tree names come from the runtimes through
+  `ApplicationRoots.runtime_trees`, so the rule names no runtime itself.
+  Prose naming a tree for a reader is not a path, and is left alone.
+- The rule now also reads inside a path joined with `/` and an f-string with
+  variables, which it used to skip. That turned up two older spellings. The
+  wake transports move into their adapters: Codex's queue wake, which spells
+  its home, to `lup.providers.codex.wake`, and Claude's socket wake to
+  `lup.providers.claude.wake`. `lup.providers.wake.wake` picks one by the wake
+  path's runtime, and `lup.coordination.wake` keeps the contract (`WakePath`,
+  `Woken`). The other spelling, a review page's heading, now reads
+  `lup:resolve` with no runtime's prefix.
+- `dev worktree create` copies every runtime's personal settings. The
+  unlanded-lines count reads every runtime's tree, so `.codex/` now counts
+  beside `.claude/`.
+
+The generated trees are byte-identical except for the kernel copies and the
+policy data, which carry the plugin roots as data.
+### A review parked before a landing is still answered after it
+
+A parked review is bound to the fingerprint its hook computed over the
+record it wrote, and the dashboard, `review approve`, `review wait` and a
+remark check the record against it before anything answers or runs it. They
+recomputed it from the current model's dump of each file verdict, command
+and unpreviewed step, so a field added to those rows with a default entered
+every recomputation: once `protected` landed, every review parked before it
+stopped hashing to its fingerprint, and the operator was told it "changed
+after it was parked" and offered the same checkout's commands, which refused
+it the same way.
+
+- A reader hashes a record as it holds it: each row with only the fields it
+  carries (`QuestionRecord.held`), through the hook's own
+  `lup.policy.assets.host.recorded_fingerprint`. The relay writes a question
+  and reads one back through the same form, and the coordinator binds its
+  own questions' rows that way. A review parked before a field existed stays
+  bound and answerable, with nothing rewritten; every value a record does
+  carry still binds it, so a changed call, path, judged document, reason,
+  rule, policy identity or verdict, or a `protected` written in since, is
+  refused as before. On a copy of this checkout's queue, all 311 reviews its
+  hooks parked check again, where 199 had stopped, two of them still waiting.
+- `bound_parts` reads a null `scheme`, which the relay writes for a question
+  its own code parks, as none, so the hook's reading of such a record agrees
+  with the relay's.
+- A review that does not hash to its fingerprint says it changed after it
+  was parked or was parked by code that writes its record another way,
+  names the compiled hook script that parked it where its policy identity
+  records one, offers the checkout's own `review approve` and
+  `review decline` only where they run other code than the reader's, and
+  otherwise the `review cancel` that lets the session ask again.
+
+What changes for an adopter: a field added to `FileVerdict`, `CommandSegment`,
+`UnpreviewedStep` or `ProtectedMatch`, or to the kernel rows they record, is
+optional with a default; renaming, removing or retyping one still strands
+every review parked before it.
 
 ### Another session's stash no longer fails the test suite
 
@@ -97,6 +176,7 @@ push` in another worktree failed sixteen bystander tests.
 - A redirect a wake carried still refuses the agent's next tool call. A wake
   that reached used to hand the redirect over with everything else, so the
   delivery hook never saw it and the next call went through.
+
 ### The dashboard highlights a conflicted file's code through its merge markers
 
 A file a merge left conflicted no longer throws the dashboard's syntax
@@ -113,6 +193,7 @@ conflict left unterminated, or with its markers out of order, is highlighted
 as the file stands. The markers are read by `conflicts.ts` in the dashboard
 page, which accepts git's longer markers too (`conflict-marker-size`, and the
 inner conflicts a merge of merge bases writes).
+
 ### An agent that spawns an unnamed subagent is told to name its next one
 
 On Claude Code, a subagent spawned without a `name` goes out under one read
@@ -265,6 +346,7 @@ two paths it named, so both trees stay protected whichever runtime a session
 runs. An adopter's own `NativeSpellings` implements `protected_tree`, and a
 hook set that listed `.claude` and `.codex` by hand can spread
 `runtime_trees()` instead.
+
 ### A script `uv run` is handed beside an unread word is no longer refused as a bare interpreter
 
 `cd tmp && T=/a; uv run python s.py $T` was refused as a bare interpreter,
