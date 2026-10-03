@@ -15,12 +15,18 @@ already carries.
 
 import asyncio
 import logging
+import time
+import uuid
 from collections.abc import Callable
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from lup.coordination.bare.holds import Waiting, held_call, refusal
+from lup.coordination.bare.store import RETRY
 from lup.policy.assets.host import ran_out, unjudged_reason
 from lup.policy.kernel.decision import unjudged_recovery
+from lup.policy.kernel.diagnostic import diagnostic, rendered, step
 from lup.policy.bundle import hook_deadline
 from lup.policy.hooks import (
     LupHookInput,
@@ -274,6 +280,69 @@ class NativeSemantics(BaseModel, frozen=True):
         session that would drop it.
         """
         return self.escapable and sandbox.escapable
+
+
+def create_hold_hooks(
+    store: Path,
+    member: str,
+    seconds: float,
+    timeout: float,
+    poll: float = 1.0,
+    tag: str = "hold",
+) -> LupHooksConfig:
+    """Create a PreToolUse hook holding every call of one member while a hold covers it.
+
+    **What:** Before any tool runs, waits while the operator's pause or a
+    budget covers *member* in the coordination store at *store*, reading it
+    again every *poll* seconds; lets the call go the moment nothing does, and
+    refuses it in the hold's words, asking for a retry, *seconds* after it
+    started waiting.
+
+    **When:** Compose it ahead of the policy's own hooks for a session opened
+    in this process that is on a repository's roster, so a pause reaches it
+    as it reaches a launched session through its plugin.
+
+    **Why:** A hold is somebody else's say over this member's next call, and
+    a session the operator can see on the roster but not pause is one a
+    pause of everything leaves running.
+
+    Args:
+        store: The repository's coordination store.
+        member: The roster id the session's tool servers joined under. A
+            native subagent's call carries nothing here naming it, so it is
+            held as its session is.
+        seconds: How long one call is held before it is refused.
+        timeout: What the runtime is told this hook may take, longer than
+            *seconds* so the refusal is the hook's and never the runtime's.
+        poll: How often the store is read while a call waits.
+        tag: Matcher tag for adapter dispatch.
+    """
+
+    async def hold_hook(event: LupHookInput) -> LupHookOutput:
+        # LupHookEvent adopts Claude's event names as the neutral seam's own
+        # vocabulary, so this reads a lup spelling rather than a provider's.
+        if event.event != "PreToolUse":  # lup: ignore[native-spelling]
+            return LupHookOutput()
+        holds = await asyncio.to_thread(
+            held_call,
+            store,
+            member,
+            Waiting(tool=event.tool_name, call=uuid.uuid4().hex[:12]),
+            time.monotonic(),
+            seconds,
+            "",
+            poll,
+        )
+        if not holds:
+            return LupHookOutput()
+        held = diagnostic("refused", refusal(holds), steps=[step(says=RETRY)])
+        return LupHookOutput(decision="deny", reason=rendered(held))
+
+    return LupHooksConfig(
+        pre_tool_use=[
+            LupHookMatcher(hook=hold_hook, matcher="", tag=tag, timeout=timeout)
+        ]
+    )
 
 
 # A composition root over policy and semantics together; on either one it would

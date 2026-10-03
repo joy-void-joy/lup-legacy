@@ -38,6 +38,9 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `coordination notices` | Everything standing over this repository, with the id that takes one down. |
 | `coordination unnotice` | Take one standing fact down, so no later prompt reads it. |
 | `coordination mailbox` | Read what is queued for one session, consuming it only when asked. |
+| `coordination pause` | Hold an agent at its next tool call until it is resumed. |
+| `coordination resume` | Let a paused agent&#x27;s next tool call go, and wake it where it stopped. |
+| `coordination held` | List every hold standing in this repository, and every call a hook is holding now. |
 | `coordination holdings` | List what each live session in this repository is holding. |
 | `coordination lock` | Take everything beneath a prefix, before having touched any of it. |
 | `coordination release` | Give a prefix back, refusing where this session does not hold it. |

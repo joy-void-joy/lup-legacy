@@ -205,10 +205,10 @@ function Mail({ row, d, live, cur, pattern, touch, open }: RowProps & { row: Row
   const message = row.m;
   if (live === null) return null;
   const heads = mailHeads(live, message);
-  const state = message.recipient === "user" ? (message.waiting ? "unread" : "read") : message.waiting ? "waiting in its mailbox" : "taken";
+  const state = message.prompt ? "the prompt its runtime was woken with, never in its mailbox" : message.recipient === "user" ? (message.waiting ? "unread" : "read") : message.waiting ? "waiting in its mailbox" : "taken";
   const flags = [message.redirect ? "redirect" : "", message.in_reply_to !== "" ? "reply" : ""].filter((each) => each !== "").join(" · ");
-  return <div className={`r full mail${message.sender === "user" ? " from-user" : ""}${row.unread ? " unread" : ""}${cur ? " cur" : ""}`} data-i={row.i}>
-    <span className="sg"><b className={row.unread ? "warn" : "muted"}>{row.unread ? "●" : message.recipient === "user" ? "○" : ""}</b><b /></span>
+  return <div className={`r full mail${message.prompt ? " prompt" : message.sender === "user" ? " from-user" : ""}${row.unread ? " unread" : ""}${cur ? " cur" : ""}`} data-i={row.i}>
+    <span className="sg"><b className={row.unread ? "warn" : "muted"}>{row.unread ? "●" : message.prompt ? "▶" : message.recipient === "user" ? "○" : ""}</b><b /></span>
     <span className="tx"><span className="mh"><b>{heads.from} → {heads.to}</b> · {clock(message.sent_at)} · {state} · through {message.door}{flags !== "" ? ` · ${flags}` : ""}</span>{"\n"}<Clamp d={d} narrow={touch} open={open} id={row.key}>{lit(message.text, pattern)}</Clamp></span>
   </div>;
 }
@@ -221,13 +221,13 @@ function Mail({ row, d, live, cur, pattern, touch, open }: RowProps & { row: Row
 function PostRow({ row, d, live, cur, pattern, touch, open, now }: RowProps & { row: RowOf<"post"> }) {
   if (live === null) return null;
   const post = row.post;
-  const author = live === null ? post.sender : memberName(live, post.repository, post.sender);
+  const author = post.prompt ? "prompt" : memberName(live, post.repository, post.sender);
   const session = memberById(live, post.repository, post.sender);
   const held = session === undefined ? null : standing(session, now);
   const mark = (recipient: string, waiting: boolean) => recipient === "user" ? (waiting ? " (unread)" : "") : waiting ? " ◷" : " ✓";
   return <div className={`r full post${post.sender === "user" ? " from-user" : ""}${row.unread ? " unread" : ""}${cur ? " cur" : ""}`} data-i={row.i}>
     <span className="sg"><b className={row.unread ? "warn" : "muted"}>{row.unread ? "●" : ""}</b><b /></span>
-    <span className="tx"><span className="ph">{held !== null ? <span className={`g-${held}`} title={held}>{GLYPH[held]} </span> : post.sender === "user" ? <span className="info">◆ </span> : null}
+    <span className="tx"><span className="ph">{post.prompt ? <span className="muted" title="the prompt its runtime was woken with">▶ </span> : held !== null ? <span className={`g-${held}`} title={held}>{GLYPH[held]} </span> : post.sender === "user" ? <span className="info">◆ </span> : null}
       <b>{author}</b> → {post.copies.map((copy, at) => <span key={copy.id}>{at > 0 ? ", " : ""}{memberName(live, post.repository, copy.recipient)}<span className="muted" title={copy.waiting ? "waiting in its mailbox" : "taken"}>{mark(copy.recipient, copy.waiting)}</span></span>)}
       {" "}· {clock(post.sent_at)}{post.redirect && <> · <span className="warn">redirect</span></>}</span>
       {row.answered !== null && <>{"\n"}<span className="quote">↩ {memberName(live, post.repository, row.answered.sender)}: {row.answered.text.split("\n")[0]}</span></>}

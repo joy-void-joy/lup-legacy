@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { LiveMessage, LiveSession, ReviewSummary } from "../generated/views";
+import type { HeldBy, LiveMessage, LiveSession, ReviewSummary } from "../generated/views";
 import { applied, NO_KEYS, UNSAID } from "./live";
-import { activityBrief, attention, callSummary, inboxOf, inRepository, standing, treeItems, unreadCount } from "./supervision";
+import {
+  activityBrief, attention, callSummary, heldCall, heldCount, heldWord, holdOwner, holdReach, holdTitle, inboxOf, inRepository, mailHeads, ownPause, repoBuffer, standing, treeItems,
+  unreadCount, youBuffer,
+} from "./supervision";
+import type { Row } from "./review";
 
 const now = Date.parse("2026-09-29T12:00:00Z");
 const minutesAgo = (minutes: number) => new Date(now - minutes * 60_000).toISOString();
@@ -12,7 +16,7 @@ function session(id: string, fields: Partial<LiveSession> = {}): LiveSession {
   return {
     key: `r1/${id}`, repository: "r1", id, parent: "", kind: "session", name: id, doing: "", task: "", running: true, worktree: "", holding: [], contested: [],
     delivery: "hook", wake: "claude", arrived: null, heard: minutesAgo(1), summary: "", error: "", waiting: 0, runtime: "claude", spawned_by: "", process: null,
-    activity: { said: "", calling: "", arguments: {}, at: minutesAgo(1), transcript: "", recent: [] }, ...fields,
+    holds: [], held_since: null, activity: { said: "", calling: "", arguments: {}, at: minutesAgo(1), transcript: "", recent: [] }, ...fields,
   };
 }
 
@@ -24,7 +28,7 @@ function review(key: string, asker: string): ReviewSummary {
 }
 
 function message(id: string, fields: Partial<LiveMessage> = {}): LiveMessage {
-  return { key: `r1/${id}`, repository: "r1", id, at: 0, sender: "lead", recipient: "user", recipient_kind: "user", text: id, door: "agent", redirect: false, in_reply_to: "", sent_at: minutesAgo(2), waiting: true, post: id, thread: id, ...fields };
+  return { key: `r1/${id}`, repository: "r1", id, at: 0, sender: "lead", recipient: "user", recipient_kind: "user", text: id, door: "agent", redirect: false, in_reply_to: "", sent_at: minutesAgo(2), waiting: true, post: id, thread: id, prompt: false, ...fields };
 }
 
 const state = (sessions: LiveSession[], messages: LiveMessage[] = [], reviews: ReviewSummary[] = []) => applied(null, {
@@ -67,6 +71,40 @@ describe("who is here, and what each needs", () => {
     expect(shown.some((item) => item.t === "member" && item.key === "r1/gone")).toBe(true);
     const reviews = treeItems(live, [root], pending, { ...options, filter: "reviews" });
     expect(reviews.filter((item) => item.t === "member").map((item) => item.key)).toEqual(["r1/lead", "r1/lead-a1"]);
+  });
+
+  test("a held agent says what holds it, whose hold it is and whom it covers, and a resume lifts the pause placed on it", () => {
+    const tree: HeldBy = { reason: "paused", owner: "operator", scope: "tree", on: "lead", said: "paused by the operator", since: minutesAgo(3), until: null, freeze: true };
+    const budget: HeldBy = { reason: "over-rate", owner: "budget", scope: "self", on: "lead-a1", said: "over its rate", since: minutesAgo(1), until: minutesAgo(-4), freeze: false };
+    const lead = session("lead", { holds: [tree] });
+    const scout = session("lead-a1", { parent: "lead", kind: "subagent", name: "scout", holds: [tree, budget], held_since: minutesAgo(2) });
+    const live = state([lead, scout, session("idle")]);
+    expect(heldWord(lead)).toBe("frozen");
+    expect(heldWord(session("idle", { holds: [budget] }))).toBe("held");
+    expect(heldCount(live)).toBe(2);
+    expect(heldCount(state([session("gone", { running: false, holds: [tree] })]))).toBe(0);
+    expect(attention(live, [root], [], scout, now).map((flag) => flag.text)).toEqual(["⏸ paused by the operator for 3m · frozen · 1 more hold"]);
+    expect(holdReach(live, scout, tree)).toBe("lead and everything it spawned");
+    expect(holdReach(live, lead, tree)).toBe("it and everything it spawned");
+    expect(holdOwner(budget)).toBe("the budget's hold (over-rate)");
+    expect(holdTitle(live, scout, now).split("\n")[1]).toContain("the budget's hold (over-rate) of it alone");
+    expect(heldCall(scout, now)).toContain("its hook holds the call it made");
+    expect(heldCall(lead, now)).toContain("it is idle");
+    expect(ownPause(lead)).toEqual({ kind: "agent", repository: "r1", member: "lead", tree: true });
+    expect(ownPause(scout)).toEqual({ kind: "agent", repository: "r1", member: "lead-a1", tree: false });
+  });
+
+  test("a resume's bare prompt comes from `prompt`, not from the operator", () => {
+    const live = state([session("lead")]);
+    expect(mailHeads(live, message("m1", { sender: "user", recipient: "lead", prompt: true }))).toEqual({ from: "prompt", to: "lead" });
+    expect(mailHeads(live, message("m2", { sender: "user", recipient: "lead" }))).toEqual({ from: "you", to: "lead" });
+  });
+
+  test("a repository's page lists every message between its members, and the operator's row what they sent", () => {
+    const live = state([session("lead"), session("scout")], [message("m1", { sender: "lead", recipient: "scout" }), message("m2", { sender: "user", recipient: "lead" })]);
+    const mail = (rows: Row[]) => rows.flatMap((row) => row.t === "mail" ? [row.m.id] : []).sort();
+    expect(mail(repoBuffer(live, repository, 0, []).rows)).toEqual(["m1", "m2"]);
+    expect(mail(youBuffer(live, repository).rows)).toEqual(["m2"]);
   });
 
   test("a path reads relative to its repository's checkouts", () => {

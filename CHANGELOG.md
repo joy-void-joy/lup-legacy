@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+### The operator pauses an agent, and its next tool call waits
+
+- A paused agent's next tool call waits, whatever the tool, until the
+  operator resumes it. The agent is told nothing; to it, the call just takes
+  long. A call already running finishes first. Pausing a session pauses its
+  subagents too. A pause can also cover everything a session spawned, a
+  whole repository, or every repository the dashboard serves. A pause is a
+  file in the repository's coordination store (`lup.coordination.holds`), so
+  it lasts until it is resumed or the agent leaves, and it survives a
+  dashboard restart.
+- Holding is a step of its own, before the policy judges the call. A call
+  is judged once it is let go, with the whole of `policy_timeout` from that
+  moment, so a call held for an hour is never refused as "could not judge in
+  time". The hooks that hold a call declare `HookSet.hold_seconds` plus
+  `policy_timeout` (a day and thirty seconds by default). A call still held
+  at the end of `hold_seconds` is refused with "paused by the operator; this
+  call didn't run" in the diagnostic shape, its way through "retry it", and
+  the retry is held again.
+  - Measured on Claude Code 2.1.285: a declared timeout of up to 10^16
+    seconds is honoured, and a call held 65 minutes ran cleanly.
+  - A new hook, `coordination_hold.sh`, holds every tool's calls for both
+    runtimes. It starts no interpreter unless some hold exists.
+  - A session opened in process is held the same way (`create_hold_hooks`).
+- Freezing also stops the commands an agent is running and interrupts its
+  turn. Resuming continues the commands and wakes the agent with a bare
+  "continue", which the page shows as a prompt. Freezing is refused, with
+  the reason, for a subagent, for a runtime in another pid namespace, and
+  for Codex. A Codex session's commands run under an app-server that every
+  session on the same configuration home shares, so freezing one session's
+  commands could stop another session's.
+- While an agent is paused, messages to it wait without waking it.
+  `coordination_peers` shows "paused by the operator" on its row, and
+  `coordination_send` says the recipient is held.
+- Only the operator pauses and resumes. On the dashboard: Space a z / a Z /
+  a u, and `:pause`, `:freeze`, `:resume`, each taking `tree`, `repo` or
+  `all`; the row shows ⏸ and the status line counts ⏸N. From a terminal
+  outside every agent session: `lup-devtools coordination pause`, `resume`
+  and `held`. An agent cannot pause or resume anyone, itself included: the
+  command refuses a shell that an agent's runtime started, and the policy
+  refuses it to an agent.
+
 ### Every refusal, question and command error says what was caught, why, and the way through
 
 A hook's refusal, a question put to the person approving a call, a devtools

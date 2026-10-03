@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "runtime"))
 from decisions import (
     bash_decision,
     dashboard_held,
+    held_refusal,
     edit_decision,
     claim_window_closed,
     claim_window_opened,
@@ -63,6 +64,7 @@ from host import (
     boundary_account,
     closed_deadline,
     declared_identity,
+    hook_started,
     note_ran,
     observe_hook_call,
     opened_deadline,
@@ -791,6 +793,62 @@ def unanswered(given, error):
         unjudged_answer(payload["hook_event_name"] if named else "", error, True),
         sys.stdout,
     )
+
+
+def held(given):
+    """Keep a call waiting while a hold covers its caller, before anything judges it.
+
+    Only a call about to run is held; the event watching one that ran has
+    nothing left to hold. True where the call was refused here -- still held
+    at the hold's limit, in the hold's own words, as a refusal this runtime
+    shows the agent -- False where a hold kept it waiting and then let it go
+    to be judged, and None where nothing held it or no hold reaches its
+    event. Input nothing can read is let go to the judgement, which refuses
+    it in its own words.
+
+    A hold this cannot read is let go to the judgement too, which meets the
+    same failure and refuses in its own words, or judges the call at once.
+    The call is not let through unheld for it: the hold hook registered
+    beside this one for every tool holds it as well, and refuses wherever it
+    cannot tell. What this adds is only that a held call is judged when let
+    go, not when it was made.
+    """
+    try:
+        payload = json.loads(given)
+    except ValueError:
+        return None
+    return held_input(payload) if isinstance(payload, dict) else None
+
+
+def held_input(payload):
+    """The hold of one decoded hook input, as :func:`held` answers it."""
+    if "hook_event_name" not in payload or payload["hook_event_name"] != "PreToolUse":
+        return None
+    try:
+        refused = held_refusal(
+            payload["tool_name"] if "tool_name" in payload else "",
+            payload["tool_use_id"] if "tool_use_id" in payload else "",
+            session_root(payload),
+            lambda: caller_of(payload),
+            hook_started(),
+        )
+    except Exception:
+        return None
+    if refused is None:
+        return None
+    if not refused:
+        return False
+    json.dump(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": refused,
+            }
+        },
+        sys.stdout,
+    )
+    return True
 
 
 def judged(given):

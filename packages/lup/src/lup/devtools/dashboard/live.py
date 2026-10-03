@@ -23,8 +23,10 @@ from pathlib import Path, PurePath
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
+from lup.coordination.bare import holds as bare_holds
 from lup.coordination.bare import mail as bare_mail
 from lup.coordination.bare import store
+from lup.coordination.holds import Hold, held_calls
 from lup.coordination.bare.runtime import Runtime, process_scope, runtime_alive
 from lup.coordination.mail import (
     MAIL_BLOCK,
@@ -95,6 +97,7 @@ type Feature = Literal[
     "claims",
     "inbox-read",
     "thread-post",
+    "pause",
 ]
 """A piece of supervision the page can ask this server for, as the page names it."""
 
@@ -219,6 +222,33 @@ def session_process(
     )
 
 
+class HeldBy(BaseModel, frozen=True):
+    """One hold over a session or subagent, as its row says why it waits."""
+
+    reason: str
+    """Why: `paused` for the operator's pause, or the budget's own reason."""
+
+    owner: str
+    """Who placed it, and so who lifts it: `operator` or `budget`."""
+
+    scope: str
+    """Whom it covers: `self`, `agent`, `tree` or `repository`."""
+
+    on: str = ""
+    """The member it was placed on, by id -- this one, its session, an
+    ancestor -- empty for a whole repository."""
+
+    said: str
+    """What the row, and a call refused at the hold's limit, read."""
+
+    since: datetime | None = None
+    until: datetime | None = None
+    """When it lifts by itself, empty where only its owner lifts it."""
+
+    freeze: bool = False
+    """Whether the operator froze it too: its commands stopped and its turn interrupted."""
+
+
 class LiveSession(BaseModel, frozen=True):
     """One session or subagent of one repository, as the page lists it.
 
@@ -263,6 +293,14 @@ class LiveSession(BaseModel, frozen=True):
     waiting: int = 0
     """How many messages sit in its mailbox, not yet handed over."""
 
+    holds: list[HeldBy] = []
+    """What keeps its next tool call waiting, the operator's pause first;
+    empty for one nothing holds."""
+
+    held_since: datetime | None = None
+    """When its hook began holding the oldest call it holds now, empty where
+    it holds none: a held agent that is not mid-call is idle, paused."""
+
     activity: SessionActivity = SessionActivity()
 
 
@@ -299,6 +337,10 @@ class LiveMessage(BaseModel, frozen=True):
     sent_at: datetime
     waiting: bool
     """Whether it still sits in the recipient's mailbox, not yet handed over."""
+
+    prompt: bool = False
+    """A bare prompt its recipient's runtime was woken with -- a resume's
+    "continue" -- which the page shows as a prompt rather than a message."""
 
     def mailbox(self) -> str:
         """The mailbox it was put in, as the store names it."""
@@ -384,6 +426,7 @@ def live_message(repository: str, root: Path, posted: PostedMessage) -> LiveMess
         post=posted.message.post or posted.message.id,
         thread=posted.message.thread,
         sent_at=posted.message.sent_at,
+        prompt=posted.message.prompt,
         waiting=bare_mail.message_path(
             root, posted.recipient.conversation(), posted.message.id
         ).is_file(),
@@ -777,6 +820,9 @@ class RepositoryNeeds(BaseModel, frozen=True):
     unread: int = 0
     """Messages its agents sent the operator that still wait in its mailbox."""
 
+    held: int = 0
+    """Its running agents the operator's pause or a budget holds at their next call."""
+
     def asker(self, question: QuestionRecord) -> str:
         """The running session here that parked *question*, by its roster id; empty where none did.
 
@@ -795,6 +841,48 @@ class RepositoryNeeds(BaseModel, frozen=True):
             ),
             "",
         )
+
+
+def held_rows(root: Path) -> dict[str, list[HeldBy]]:
+    """Every member something holds, with each hold as its row says it, the operator's first.
+
+    A row reads frozen only where the freeze reached it -- its own session's
+    commands stopped -- and paused where the freeze could not.
+    """
+    here = bare_holds.roster(root)
+    return {
+        member: [
+            HeldBy(
+                reason=hold.reason.value,
+                owner=hold.owner.value,
+                scope=hold.scope.value,
+                on=hold.member,
+                said=hold.said,
+                since=hold.placed,
+                until=hold.until,
+                freeze=hold.froze(
+                    member,
+                    store.parent_of(here[member]) if member in here else "",
+                ),
+            )
+            for record in records
+            for hold in [Hold.read(record)]
+            if hold is not None
+        ]
+        for member, records in bare_holds.covered(root).items()
+    }
+
+
+def held_since(root: Path) -> dict[str, datetime]:
+    """When each member's hook began holding the oldest call it holds now.
+
+    Read newest first, so the oldest of each member's calls is the one kept.
+    """
+    return {
+        call.member: call.since
+        for call in reversed(held_calls(root))
+        if call.since is not None
+    }
 
 
 def transcript_path(view: PeerView, rows: dict[str, PeerView]) -> Path | None:
@@ -900,6 +988,8 @@ class RepositoryWatch:
         signature = [
             *stamps(self.peers.root / store.MEMBERS_DIR),
             *stamps(self.peers.root / store.DEPARTED_DIR),
+            *stamps(self.peers.root / store.HOLDS_DIR),
+            *stamps(self.peers.root / store.HOLDS_DIR / store.WAITING_DIR),
         ]
         if (
             self.signature is None
@@ -961,6 +1051,8 @@ class RepositoryWatch:
         activity = self.activities(views)
         rows = {view.member.actor.id: view.member for view in views}
         scope = process_scope()
+        held = held_rows(self.peers.root)
+        calls = held_since(self.peers.root)
         return [
             LiveSession(
                 key=f"{self.key}/{view.member.actor.id}",
@@ -991,6 +1083,12 @@ class RepositoryWatch:
                 waiting=len(
                     bare_mail.waiting(self.peers.root, view.member.actor.conversation())
                 ),
+                holds=held[view.member.actor.id]
+                if view.member.running and view.member.actor.id in held
+                else [],
+                held_since=calls[view.member.actor.id]
+                if view.member.running and view.member.actor.id in calls
+                else None,
                 activity=activity[view.member.actor.id]
                 if view.member.actor.id in activity
                 else SessionActivity(),
@@ -1038,6 +1136,7 @@ class RepositoryWatch:
             ]
 
         held = {path for view in views for path in view.contested}
+        paused = held_rows(self.peers.root)
         return RepositoryNeeds(
             sessions=[
                 Answering(
@@ -1069,6 +1168,7 @@ class RepositoryWatch:
                 > 1
             ),
             unread=len(bare_mail.waiting(self.peers.root, user_peer().conversation())),
+            held=sum(1 for view in views if view.member.actor.id in paused),
         )
 
     def waits(self, mailbox: str, message_id: str) -> bool:

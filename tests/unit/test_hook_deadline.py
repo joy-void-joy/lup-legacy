@@ -15,6 +15,7 @@ import json
 import os
 import shutil
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -23,7 +24,16 @@ import sh
 from claude_agent_sdk import types as claude_types
 
 import lup.policy.assets.host as policy_host
-from lup.policy.bundle import hook_answer_limit, hook_deadline
+from lup.coordination.holds import (
+    HoldOwner,
+    HoldReason,
+    HoldScope,
+    lift,
+    operator_pause,
+    place,
+)
+from lup.coordination.meeting import coordination_root
+from lup.policy.bundle import hook_answer_limit, hook_deadline, held_hook_timeout
 from lup.policy.contracts import DecisionPolicy
 from lup.policy.enforcement import create_policy_hooks
 from lup.policy.hooks import LupHookInput
@@ -276,6 +286,86 @@ def test_a_hook_started_past_its_answer_limit_refuses_at_once(
     assert "could not judge this call in time" in detail
 
 
+PAUSED_MEMBER = "a1b2c3d4e5f6"
+"""The member a launch named this hook's session, whose repository is paused."""
+
+
+def paused(checkout: Path) -> Path:
+    """Pause every agent of *checkout*'s repository; the store the pause sits in."""
+    store = coordination_root(checkout)
+    place(store, operator_pause(HoldScope.REPOSITORY))
+    return store
+
+
+def test_a_call_the_operator_held_is_judged_in_full_once_resumed(
+    checkout: Path, runtime: str
+) -> None:
+    """A hold is no part of the judgement's time: it starts when the call is let go.
+
+    The judgement's limits are cut to seconds in the copied data and the
+    operator resumes after more of them than the judgement has, so a
+    judgement counted from the hook's start would be refused as unjudged.
+    Counted from the moment the hold let the call go, it is judged in full.
+    """
+    store = paused(checkout)
+    data = checkout / f".{runtime}/plugins/lup/hooks/runtime/policy_data.py"
+    data.write_text(
+        data.read_text(encoding="utf-8")
+        + "\nHOOK_DEADLINE_SECONDS = 3.0\nHOOK_ANSWER_SECONDS = 4.0\n",
+        encoding="utf-8",
+    )
+    resume = threading.Timer(
+        6.0,
+        lift,
+        (store, HoldOwner.OPERATOR, HoldReason.PAUSED, HoldScope.REPOSITORY),
+    )
+    resume.start()
+    try:
+        effect, detail, elapsed = judged(
+            checkout,
+            runtime,
+            "Bash",
+            {"command": "ls"},
+            {**started_ago(0), "LUP_COORDINATION_MEMBER": PAUSED_MEMBER},
+        )
+    finally:
+        resume.cancel()
+
+    assert elapsed >= 6.0
+    assert "could not judge" not in detail
+    assert effect == "allow"
+
+
+def test_a_call_still_held_at_the_hold_s_limit_is_refused_in_the_hold_s_words(
+    checkout: Path, runtime: str
+) -> None:
+    """Short of the timeout the runtime would run it at, a held call is refused, to retry.
+
+    The limit is cut to two seconds in the copied data, as a day's would be
+    met by a pause outlasting it. The refusal is the hold's own sentence and
+    never the unjudged one: nothing was judged, and the retry is held afresh.
+    """
+    paused(checkout)
+    data = checkout / f".{runtime}/plugins/lup/hooks/runtime/policy_data.py"
+    data.write_text(
+        data.read_text(encoding="utf-8") + "\nHOLD_SECONDS = 2\n", encoding="utf-8"
+    )
+
+    effect, detail, elapsed = judged(
+        checkout,
+        runtime,
+        "Bash",
+        {"command": "ls"},
+        {**started_ago(0), "LUP_COORDINATION_MEMBER": PAUSED_MEMBER},
+    )
+
+    assert effect == "deny"
+    assert "refused: paused by the operator; this call didn't run" in detail
+    assert "retry it" in detail
+    assert "could not judge" not in detail
+    assert 1.0 <= elapsed < 6
+
+
 TRACKED_CHANGE = (
     "--- a/tracked.py\n+++ b/tracked.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n"
 )
@@ -332,7 +422,10 @@ def test_one_declared_timeout_sets_the_hook_timeout_and_every_deadline(
     so a value restated anywhere instead of derived would be left behind.
     """
     timeout = RUNTIME_LIMIT + 17
-    declared = declared_hook_set().model_copy(update={"policy_timeout": timeout})
+    hold = 3600
+    declared = declared_hook_set().model_copy(
+        update={"policy_timeout": timeout, "hold_seconds": hold}
+    )
     renderer = (
         ClaudeHookRenderer("lup", "", ClaudeSpellings())
         if runtime == "claude"
@@ -353,13 +446,27 @@ def test_one_declared_timeout_sets_the_hook_timeout_and_every_deadline(
     }
     grace = inspect.signature(policy_host.opened_deadline).parameters["grace"].default
 
+    def timeouts(event: str, script: str) -> set[int]:
+        return {
+            entry["timeout"]
+            for group in hooks["hooks"][event]
+            for entry in group["hooks"]
+            if script in entry["command"]
+        }
+
     assert {
-        entry["timeout"]
-        for groups in hooks["hooks"].values()
-        for group in groups
-        for entry in group["hooks"]
-        if "policy.sh" in entry["command"]
-    } == {timeout}
+        event: timeouts(event, "policy.sh")
+        for event in hooks["hooks"]
+        if timeouts(event, "policy.sh")
+    } == {
+        event: {held_hook_timeout(timeout, hold) if event == "PreToolUse" else timeout}
+        for event in hooks["hooks"]
+        if timeouts(event, "policy.sh")
+    }
+    assert timeouts("PreToolUse", "coordination_hold.sh") == {
+        held_hook_timeout(timeout, hold)
+    }
+    assert constants["HOLD_SECONDS"] == hold
     assert constants["HOOK_DEADLINE_SECONDS"] == hook_deadline(timeout)
     assert constants["HOOK_ANSWER_SECONDS"] == hook_answer_limit(timeout)
     assert hook_deadline(timeout) + grace < hook_answer_limit(timeout) < timeout

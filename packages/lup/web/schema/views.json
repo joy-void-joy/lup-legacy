@@ -1234,7 +1234,8 @@
         "describe",
         "claims",
         "inbox-read",
-        "thread-post"
+        "thread-post",
+        "pause"
       ],
       "type": "string"
     },
@@ -1432,6 +1433,76 @@
         "standings"
       ],
       "title": "GraphView",
+      "type": "object"
+    },
+    "HeldBy": {
+      "additionalProperties": false,
+      "description": "One hold over a session or subagent, as its row says why it waits.",
+      "properties": {
+        "freeze": {
+          "default": false,
+          "title": "Freeze",
+          "type": "boolean"
+        },
+        "on": {
+          "default": "",
+          "title": "On",
+          "type": "string"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "said": {
+          "title": "Said",
+          "type": "string"
+        },
+        "scope": {
+          "title": "Scope",
+          "type": "string"
+        },
+        "since": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Since"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Until"
+        }
+      },
+      "required": [
+        "reason",
+        "owner",
+        "scope",
+        "on",
+        "said",
+        "since",
+        "until",
+        "freeze"
+      ],
+      "title": "HeldBy",
       "type": "object"
     },
     "InboxRead": {
@@ -2518,6 +2589,57 @@
               "mode": "normal",
               "name": "agent.stop",
               "needs": "stop",
+              "note": "",
+              "scope": "anywhere",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "pause it at its next tool call, its subagents with it (:pause)",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "<leader>az"
+              ],
+              "mode": "normal",
+              "name": "agent.pause",
+              "needs": "pause",
+              "note": "",
+              "scope": "anywhere",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "freeze it: pause, stop its running commands and interrupt its turn (:freeze)",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "<leader>aZ"
+              ],
+              "mode": "normal",
+              "name": "agent.freeze",
+              "needs": "pause",
+              "note": "",
+              "scope": "anywhere",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "resume it: let its next call go, continue what a freeze stopped (:resume)",
+              "focus": "any",
+              "group": "agent",
+              "hidden": false,
+              "keys": [
+                "<leader>au"
+              ],
+              "mode": "normal",
+              "name": "agent.resume",
+              "needs": "pause",
               "note": "",
               "scope": "anywhere",
               "stands": "new",
@@ -4650,6 +4772,11 @@
           "title": "Post",
           "type": "string"
         },
+        "prompt": {
+          "default": false,
+          "title": "Prompt",
+          "type": "boolean"
+        },
         "recipient": {
           "title": "Recipient",
           "type": "string"
@@ -4704,7 +4831,8 @@
         "post",
         "thread",
         "sent_at",
-        "waiting"
+        "waiting",
+        "prompt"
       ],
       "title": "LiveMessage",
       "type": "object"
@@ -4840,12 +4968,33 @@
           "default": null,
           "title": "Heard"
         },
+        "held_since": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Held Since"
+        },
         "holding": {
           "default": [],
           "items": {
             "type": "string"
           },
           "title": "Holding",
+          "type": "array"
+        },
+        "holds": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HeldBy"
+          },
+          "title": "Holds",
           "type": "array"
         },
         "id": {
@@ -4948,6 +5097,8 @@
         "summary",
         "error",
         "waiting",
+        "holds",
+        "held_since",
         "activity"
       ],
       "title": "LiveSession",
@@ -5557,6 +5708,26 @@
       "title": "NodeView",
       "type": "object"
     },
+    "NotFrozenSession": {
+      "additionalProperties": false,
+      "description": "One session a freeze could not reach, by its session key, and why; it is paused.",
+      "properties": {
+        "session": {
+          "title": "Session",
+          "type": "string"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session",
+        "why"
+      ],
+      "title": "NotFrozenSession",
+      "type": "object"
+    },
     "NotReached": {
       "additionalProperties": false,
       "description": "One member a post was meant for and did not reach, and why.",
@@ -5761,6 +5932,90 @@
         "new_devtools"
       ],
       "type": "string"
+    },
+    "PauseOutcome": {
+      "additionalProperties": false,
+      "description": "What one pause or resume did, in every repository it reached.",
+      "properties": {
+        "continued": {
+          "default": 0,
+          "title": "Continued",
+          "type": "integer"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "frozen": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Frozen",
+          "type": "array"
+        },
+        "held": {
+          "default": 0,
+          "title": "Held",
+          "type": "integer"
+        },
+        "repositories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Repositories",
+          "type": "array"
+        },
+        "unfrozen": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/NotFrozenSession"
+          },
+          "title": "Unfrozen",
+          "type": "array"
+        },
+        "woken": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Woken",
+          "type": "array"
+        }
+      },
+      "required": [
+        "repositories",
+        "held",
+        "frozen",
+        "unfrozen",
+        "continued",
+        "woken",
+        "detail"
+      ],
+      "title": "PauseOutcome",
+      "type": "object"
+    },
+    "PauseRequest": {
+      "additionalProperties": false,
+      "description": "How far a pause reaches, and whether it stops what is running too.",
+      "properties": {
+        "freeze": {
+          "default": false,
+          "title": "Freeze",
+          "type": "boolean"
+        },
+        "tree": {
+          "default": false,
+          "title": "Tree",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "tree",
+        "freeze"
+      ],
+      "title": "PauseRequest",
+      "type": "object"
     },
     "PendingQuestionView": {
       "additionalProperties": false,
@@ -6732,6 +6987,22 @@
       ],
       "title": "ResolvePhase",
       "type": "string"
+    },
+    "ResumeRequest": {
+      "additionalProperties": false,
+      "description": "Which pause a resume lifts: the agent's own, or the one over its tree.",
+      "properties": {
+        "tree": {
+          "default": false,
+          "title": "Tree",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "tree"
+      ],
+      "title": "ResumeRequest",
+      "type": "object"
     },
     "ReviewAnswer": {
       "additionalProperties": false,

@@ -653,6 +653,9 @@ class DashboardStatus(BaseModel, frozen=True):
     contested: int = 0
     """Paths two sessions hold at once."""
 
+    held: int = 0
+    """Running agents the operator's pause or a budget holds at their next tool call."""
+
     tabs: int = 0
     """Pages following it now."""
 
@@ -737,6 +740,7 @@ def counted(pulse: DashboardPulse, detail: str) -> DashboardStatus:
         unread=pulse.unread,
         quiet=pulse.quiet,
         contested=pulse.contested,
+        held=pulse.held,
         tabs=pulse.tabs,
         code=pulse.code,
         restarts=pulse.restarts,

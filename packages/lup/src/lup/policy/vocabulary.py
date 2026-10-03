@@ -1115,6 +1115,26 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                 ),
             ],
         ),
+        # A pause is the operator's say over an agent's next call, and one an
+        # agent could place or lift is no say at all: a session pausing a peer
+        # takes the operator's place, and one resuming itself undoes it.
+        ShellSubcommandRule(
+            name="coordination",
+            operations=[
+                ShellOperationRule(
+                    name=action,
+                    operator_only=True,
+                    reason=f"a requesting agent cannot {action} an agent, itself included",
+                    recovery=[
+                        step(
+                            "the operator pauses and resumes agents on the dashboard,"
+                            " or from a terminal outside the agent session"
+                        ),
+                    ],
+                )
+                for action in ("pause", "resume")
+            ],
+        ),
         ShellSubcommandRule(
             name="dev",
             operations=[
