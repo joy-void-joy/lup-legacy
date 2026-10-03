@@ -92,7 +92,9 @@ payload, and the verbs act on that subagent's row — its description, its
 name, its locks, its mailbox — and leave the session's alone. The row is keyed
 by the runtime's subagent id under the session's, named what the spawn called
 it — which Claude Code records beside the session's transcript and Codex atop
-the subagent's own rollout — numbered like any default name, and live
+the subagent's own rollout, and which the caller chooses (a spawn given no
+name on Claude Code is called after its description, and its caller is told
+once to choose its own) — numbered like any default name, and live
 while its session is: it ends when the subagent stops, forwarding whatever it
 never read to its session, and with its session in any case. A subagent
 reaches the session that dispatched it at that session's address. What a

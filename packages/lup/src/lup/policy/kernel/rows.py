@@ -163,12 +163,17 @@ class SpawnNameRow(TypedDict):
     judgement, because which spellings are safe is a property of the runtimes
     a project runs on, and a project running on one of them may widen what a
     project running on several cannot.
+
+    ``notice`` opens what a caller is told, once in its conversation, after a
+    spawn of its went out under the name read from its description, and is
+    blank where the project says nothing then.
     """
 
     reason: str
     recovery: str
     punctuation: str
     limit: int
+    notice: str
 
 
 class AcceptanceGuardRow(TypedDict):

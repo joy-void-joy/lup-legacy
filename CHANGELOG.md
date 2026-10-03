@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### An agent that spawns an unnamed subagent is told to name its next one
+
+On Claude Code, a subagent spawned without a `name` goes out under one read
+out of its description (`SpawnNames`), and that name is what the listing,
+`SendMessage`, a stop and the roster call it: a summary of the request rather
+than of the work. Now the policy dispatcher also watches `Agent` after it
+runs, and when the spawn went out under its description's name, its caller
+is told once in that conversation — the session's own, or a subagent's — to
+pass `name` itself next time, with the name the spawn went out as and the
+shape a name takes. A spawn its caller named is told nothing.
+
+- `SpawnNames.notice` opens the sentence; `None` turns it off.
+- What a conversation was already told once is kept in `.lup/notices.json`,
+  which also holds another repository's referral, formerly
+  `.lup/referrals.json` (`CheckoutState.notices()`, `noted_once`).
+- Codex is not watched: 0.159.2 lists `task_name` as required and refuses a
+  spawn without it before any hook runs, so a spawn there is always named by
+  its caller.
+- The always-loaded guidance says to name every spawn after its work.
+
 ### Files, locks and per-person state are each spelled once in the library
 
 The same file chores were hand-rolled at dozens of sites, each a little

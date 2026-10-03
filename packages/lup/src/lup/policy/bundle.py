@@ -452,6 +452,7 @@ def spawn_names_literal(row: SpawnNameRow | None) -> str:
         f'"recovery": {json.dumps(row["recovery"])}',
         f'"punctuation": {json.dumps(row["punctuation"])}',
         f'"limit": {json.dumps(row["limit"])}',
+        f'"notice": {json.dumps(row["notice"])}',
     ]
     return "{\n" + "".join(f"    {entry},\n" for entry in entries) + "}"
 

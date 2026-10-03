@@ -1369,15 +1369,31 @@ class SpawnNames(BaseModel, frozen=True):
     below: one given in that shape goes as given, one outside it is
     normalized, and a spawn given none takes one read out of its description.
 
-    The caller is not asked for it, because the schema it reads may not list
-    the argument. Claude Code 2.1.280 and 2.1.283 show the model an `Agent`
-    schema with no `name`, `additionalProperties` false, and take a `name`
-    all the same; a session refused with "pass a name beside the agent type"
-    puts it in `description` twice before trying the key the schema does not
-    list, which makes that refusal the commonest spawn friction. The
-    description is the argument every spawn there carries, so the name is
-    read out of it and handed back as a rewrite of the call — measured on
-    2.1.283, where the runtime records the rewritten spawn under that name.
+    The caller is not refused for want of it, because the schema it reads may
+    not list the argument. Claude Code 2.1.280, 2.1.283 and 2.1.285 show the
+    model an `Agent` schema with no `name`, `additionalProperties` false, and
+    take a `name` all the same; a session refused with "pass a name beside
+    the agent type" puts it in `description` twice before trying the key the
+    schema does not list, which makes that refusal the commonest spawn
+    friction. The description is the argument every spawn there carries, so
+    the name is read out of it and handed back as a rewrite of the call —
+    measured on 2.1.283, where the runtime records the rewritten spawn under
+    that name.
+
+    A name read that way summarizes the request rather than naming the work,
+    so the caller is told once in its conversation, after such a spawn, to
+    choose its own; ``notice`` opens that sentence. Told rather than refused,
+    because the spawn has already gone out and the next one is what a habit
+    improves; once, because a sentence repeated on every spawn is the one a
+    conversation learns to skip. Measured on 2.1.285: a Haiku session told
+    in its prompt to pass `name` left it off a call whose schema did not
+    list it, and after one notice a Sonnet and an Opus session each named
+    their next spawn themselves (`count_lupine_letters`, `count_letters`)
+    where Haiku did not — what the schema leaves out is what has to be said,
+    and a strong model acts on it. Codex needs no such sentence — 0.159.2
+    lists `task_name` as required and refuses a spawn without it before any
+    hook sees the call — so only the runtime that reads a name out of a
+    description says it.
 
     The spelling is settled here rather than left to the runtime, because
     leaving it is measured to fail quietly. Claude Code 2.1.278 validates it
@@ -1418,6 +1434,10 @@ class SpawnNames(BaseModel, frozen=True):
     words with."""
     limit: int = 64
     """The longest name accepted, which is the shorter of the two limits."""
+    notice: str | None = "Name each subagent you spawn after the work it does"
+    """What a caller is told first, once in its conversation, after a spawn of
+    its went out under the name read from its description; the kernel adds
+    the name it went out as and how to pass one. ``None`` says nothing."""
 
     def erased(self) -> SpawnNameRow:
         """This declaration as the kernel reads it, primitive and dependency-free."""
@@ -1426,6 +1446,7 @@ class SpawnNames(BaseModel, frozen=True):
             recovery=self.recovery,
             punctuation=self.punctuation,
             limit=self.limit,
+            notice=self.notice or "",
         )
 
 
@@ -1724,8 +1745,10 @@ class HookSet(BaseModel, frozen=True):
     spawn_names: SpawnNames | None = Field(
         default=SpawnNames(),
         description=(
-            "Whether every subagent this project spawns has to carry a name: "
-            "a spawn without one is refused with the shape a name takes. None "
+            "Whether every subagent this project spawns goes out named: a "
+            "spawn given none takes one read from its description, and its "
+            "caller is told once to choose its own; one with nothing to read "
+            "a name from is refused with the shape a name takes. None "
             "declines, and leaves a nameless subagent listed by its type"
         ),
     )

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "generator_version": "0.2.0",
-  "source_digest": "e1a26452a0aecf52eb23c0b2e5fcef47aed53f1505b6b9416d1ce84618aa827b",
+  "source_digest": "b07016f9ff96c198c507a3eddf45c79627811df99a7856f60289dd3110b0b02b",
   "target_requirements": [
     "claude-code"
   ],
@@ -9,7 +9,7 @@
     {
       "path": ".claude/CLAUDE.md",
       "category": "generated",
-      "sha256": "9288b7abf2c12dacad244983b4023c7bdfbc0cdc0cd82f4299af8ba74dc12c3a",
+      "sha256": "19d91e0dc80489e33058546a28c33c72b7c17fc99939b0dc8ceb2b8d722daee0",
       "semantic_id": "harness.guidance",
       "executable": false
     },
@@ -331,7 +331,7 @@
     {
       "path": ".claude/plugins/lup/hooks/hooks.json",
       "category": "generated",
-      "sha256": "f24168fa2ec0dfb2bd2bfc650797fab97da6c1b8cd7818917b2987e60eaf98f5",
+      "sha256": "0e57c5aea2fb2ebd08014520e7d776ad10d53f3de277d27f28d1176ac1194d05",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -590,7 +590,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/kernel/rows.py",
       "category": "generated",
-      "sha256": "60f18e306c7662df12c2406478030adc072e479b89160d91c3bd3987b9c91ddc",
+      "sha256": "1d1145d669206d95bbf2d81171bb133cecce84875b2a0d46556c8c25d2646ba9",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -618,7 +618,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/kernel/spawns.py",
       "category": "generated",
-      "sha256": "41b3c4eea679a3f769bd71f34bc4749c22db1846a4fa9cd9bd469a01231ed655",
+      "sha256": "a91e7bd205ffa64cd9fd958b957ee30b0c284634a0f47d0af8812910cc170970",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -674,7 +674,7 @@
     {
       "path": ".claude/plugins/lup/hooks/runtime/policy_data.py",
       "category": "generated",
-      "sha256": "f252b6f921d28f56e88456e019bc43ca272985fbf10b4161b07babc7d8b015fe",
+      "sha256": "b2e5b289bc8a1b41a0b8fa0af13ce9992fad61c2fd646192b3c0ae79cad93ba9",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -730,7 +730,7 @@
     {
       "path": ".claude/plugins/lup/hooks/scripts/policy.py",
       "category": "generated",
-      "sha256": "b90af001ad04a399e70048704bdf04a80105c511b1eb74a33d9748d5dcc66baa",
+      "sha256": "55412438a4083d335d26923122c6689af99a4399c67d3b9e26274f80ea5cedb4",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
@@ -744,7 +744,7 @@
     {
       "path": ".claude/plugins/lup/hooks/scripts/policy_evaluator.py",
       "category": "generated",
-      "sha256": "621ad2955b0d369a5650697d8817f718a42e65498782ffe1a3ad30b77a1b3565",
+      "sha256": "a2fdfc89e734d1661194f9e5cf8424322c8243d5c1216bf28251ae482549b174",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -814,7 +814,7 @@
     {
       "path": "docs/coordination.md",
       "category": "generated",
-      "sha256": "210f89369eab6b3a847749c090f8f843b59412254ef0f177cd066cd6cbaa9c8c",
+      "sha256": "87b410e3fc2fbdbfb7d1ef965c76f86a19505f4bbeb1dac4397bad6297bc4eaa",
       "semantic_id": "docs.coordination",
       "executable": false
     },
@@ -870,7 +870,7 @@
     {
       "path": "docs/orchestration.md",
       "category": "generated",
-      "sha256": "fcebca98b97393a489db316caa1a503f3bcaa2271d4cd48a39d186943ff20bc5",
+      "sha256": "ee602ba79af3365281cde68528789036f38ed343c454c54d3ed5d39e7eb2e616",
       "semantic_id": "docs.orchestration",
       "executable": false
     },
@@ -891,7 +891,7 @@
     {
       "path": "docs/platform-differentiation.md",
       "category": "generated",
-      "sha256": "c8dad18d5cfc14e55e63f2f339b1a9143776b5e5c1b3a84e81af575ad637d19a",
+      "sha256": "efe3b924bd0a302775b57bd713bd3f139e850fac0302cb3a90f0a8d46faa2877",
       "semantic_id": "docs.platform-differentiation",
       "executable": false
     },
