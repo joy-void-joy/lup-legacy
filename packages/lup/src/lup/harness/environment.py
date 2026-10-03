@@ -12,13 +12,22 @@ the child project must select its own environment from its working directory.
 """
 
 from collections.abc import Mapping
+from typing import Self
+
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
 
 from lup.coordination.identity import MEMBER_ENV, NAME_ENV, MemberEnv
 from lup.devtools.dashboard.pulse import DASHBOARD_PULSE_ENV
-from lup.policy.identity import DASHBOARD_URL_ENV, REVIEW_ANSWERS_ENV
+from lup.policy.identity import (
+    AGENT_IDENTITY_ENV,
+    DASHBOARD_URL_ENV,
+    REVIEW_ANSWERS_ENV,
+)
 from lup.devtools.launcher import ENVIRONMENT_VARIABLE
 from lup.sessions.recursion import RecursiveAgentSettings
 from lup.types import EnvVars
+from lup.workspace.context import SESSION_DIR_ENV, SESSION_ID_ENV
 
 # lup: ignore[library-default] — each pair is the variable and off-value git, ssh, gh, and keyring document
 NON_INTERACTIVE_SHELL_ENV: EnvVars = {
@@ -43,15 +52,102 @@ def non_interactive_environment(
     return {name: value for name, value in merged.items() if name != "VIRTUAL_ENV"}
 
 
-def inside_a_container(environment: EnvVars) -> bool:
-    """Whether a process runs inside a session's container rather than on the host.
+class PlacementEnv(BaseSettings, extra="ignore"):
+    """The variables a launch sets to say where this process runs, as they arrive."""
 
-    The image's baked marker, read as a placement hint only, never as a
-    boundary: a shell that exported it on the host costs that process what
-    the hint withholds there — a launch its dashboard, the wizard its
-    host-only secrets — and nothing else.
+    contained: str = Field(default="", validation_alias="LUP_CONTAINED")
+    sandbox: str = Field(default="", validation_alias="LUP_SANDBOX_ACTIVE")
+    nonce: str = Field(default="", validation_alias="LUP_BOUNDARY_NONCE")
+    member: str = Field(default="", validation_alias=MEMBER_ENV)
+    agent: str = Field(default="", validation_alias=AGENT_IDENTITY_ENV)
+    session_dir: str = Field(default="", validation_alias=SESSION_DIR_ENV)
+    session_id: str = Field(default="", validation_alias=SESSION_ID_ENV)
+
+
+class GivenPlacementEnv(PlacementEnv):
+    """The same variables, read from an environment handed over and nothing else.
+
+    A launch's environment is asked about before it is anybody's process, so
+    this process's own variables must not answer for it.
     """
-    return "LUP_CONTAINED" in environment and environment["LUP_CONTAINED"] == "1"
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (init_settings,)
+
+
+class Placement(BaseModel, frozen=True):
+    """Where a process runs, as the environment a launch made for it says.
+
+    Three facts, each its own variables and none the negation of another — a
+    session the runtime sandboxes on the host is in no container and is
+    still not the operator's terminal. Each is a placement hint and never a
+    boundary: a shell that exported one on the host costs that process what
+    the hint withholds there and nothing else. What the launch *measured*
+    is the boundary ledger's, which the policy host reads.
+
+    Which runtime's session a process is in is not among them: it is read
+    off the configuration-home variable each launcher exports, which only
+    the providers may spell, by :func:`~lup.providers.runtime_homes.selected_runtime`.
+    """
+
+    # lup: defer: carry `runtime` here once this module holds the sanctioned
+    # whole-environment reader (`inherited`, on refactor-lib-files-state):
+    # `here()` then asks selected_runtime of that environment rather than
+    # devtools/harness/launch.py reading os.environ for it
+    contained: bool = False
+    """Inside a session's container: the image bakes ``LUP_CONTAINED=1``."""
+
+    sandboxed: bool = False
+    """Under the runtime's own sandbox, which the launcher arms and marks."""
+
+    in_session: bool = False
+    """Inside an agent session: a launch hands each one its boundary nonce, a
+    roster identity, an agent identity or a session directory, and a command
+    the operator runs from a terminal carries none of them."""
+
+    @classmethod
+    def of(cls, environment: EnvVars) -> Self:
+        """The placement a launch's environment describes, read from it alone."""
+        return cls.read(GivenPlacementEnv.model_validate(environment))
+
+    @classmethod
+    def here(cls) -> Self:
+        """The placement of this process."""
+        return cls.read(PlacementEnv())
+
+    @classmethod
+    def read(cls, variables: PlacementEnv) -> Self:
+        """The placement the launch's variables state."""
+        return cls(
+            contained=variables.contained == "1",
+            sandboxed=variables.sandbox == "1",
+            in_session=any(
+                (
+                    variables.nonce,
+                    variables.member,
+                    variables.agent,
+                    variables.session_dir,
+                    variables.session_id,
+                )
+            ),
+        )
+
+    @property
+    def host(self) -> bool:
+        """Whether this is the operator's own terminal: no session, sandbox or container.
+
+        What the known-repositories store is written from, since a session
+        that could add to it could add its own repository.
+        """
+        return not (self.contained or self.sandboxed or self.in_session)
 
 
 LAUNCHER_DECIDED_ENV: list[str] = [

@@ -1,13 +1,12 @@
 """The ledger explorer: a data explorer over the log, served or exported.
 
-The worked example this answers was an 18 MB single HTML file — curated
-trails as list and detail, every record searchable, a topic register, browser
-history for every view, the whole dataset embedded so a memo attachment opened
-with no server behind it. This is that shape over the ledger, generic over
-whatever kinds a project declared: the page is the TypeScript surface Vite
-built into `lup.web`'s package data, and what it reads is the same view
-models the tool group returns, served here as JSON routes or embedded whole
-for an export.
+The shape is a single HTML file — curated trails as list and detail, every
+record searchable, a topic register, browser history for every view, the whole
+dataset embedded so a memo attachment opens with no server behind it — over
+the ledger, generic over whatever kinds a project declares: the page is the
+TypeScript surface Vite builds into `lup.web`'s package data, and what it
+reads is the same view models the tool group returns, served here as JSON
+routes or embedded whole for an export.
 
 **Two ways to open it, one page.** `serve` answers the routes on the loopback
 and the page fetches them; `export` renders the template the build emitted

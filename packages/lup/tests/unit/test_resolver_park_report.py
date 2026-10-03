@@ -35,11 +35,11 @@ def view(
 def test_a_question_answered_while_the_run_worked_is_not_asked_again(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The reported case: answered and promoted, then relayed 37 minutes later.
+    """A question answered and promoted is never relayed again later.
 
-    `pending` is the list one concern held when it raised, and the run kept
-    going. Printed unfiltered, the report named a settled question and told
-    the human to answer it again.
+    `pending` is the list one concern held when it raised, and the run keeps
+    going. Printed unfiltered, the report would name a settled question and
+    tell the human to answer it again.
     """
     parked = ResolverAwaitingAnswers([question("settled"), question("open")], [])
 

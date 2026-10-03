@@ -162,7 +162,7 @@ Sort a value by asking whether anyone could reasonably want another:
 The tell is a downstream reader who agrees with the mechanism and disagrees
 with the number. If that reader has to edit library source, the value was
 declared at the wrong level. `GuidanceBudget`
-(`packages/lup/src/lup/harness/models.py`) is a worked example of the fix: its
+(`packages/lup/src/lup/harness/models.py`) is a worked example: its
 ceiling mirrors a real vendor default, so the number is not arbitrary — but
 *which* number a given project wants is still its own call, so it is a field
 default on a declaration callers take, rather than a constant.
@@ -180,21 +180,20 @@ different places and the check stops testing what it was written to test: it
 fires when the *sources* disagree, which they eventually will for reasons
 that have nothing to do with the movement being guarded.
 
-The resolver validated a worker's turn against a commit carried in a local,
-seeded once at loop entry from the note clearance and advanced only by that
-loop. Within one process the two agreed. A concern resumed in a second
-process re-entered at the clearance while its lease already held a round the
-first process had committed, so the guard read the orchestrator's own commit
-as the worker seizing commit authority and failed the concern for work the
-orchestrator did itself. Three defects of this exact shape were fixed
-separately before the shape was named.
+Take a worker's turn validated against a commit carried in a local, seeded
+once at loop entry from the note clearance and advanced only by that loop.
+Within one process the two agree. A concern resumed in a second
+process re-enters at the clearance while its lease already holds a round the
+first process committed, so the guard reads the orchestrator's own commit as
+the worker seizing commit authority and fails the concern for work the
+orchestrator did itself.
 
 The rule is one line: **read the current value from its own source at the
 moment you compare, and never carry a copy across a boundary that can also
 move it.** `execute_concern_inner`
 (`packages/lup/src/lup/resolver/execution.py`) reads `worktrees.head(lease)`
-at the top of each round; `join_commits` in `joins.py` was already written
-this way.
+at the top of each round, and `join_commits` in `joins.py` reads its commits
+the same way.
 
 Two things follow. A value that must be captured *before* an operation — a
 pre-turn head, a pre-edit digest — is captured as close to that operation as
@@ -210,18 +209,18 @@ assertion is false the agent cannot comply and cannot proceed: it reasons
 correctly, finds two authorities in contradiction, and spends a round asking
 which one wins — or worse, complies with the one that was wrong.
 
-Four instances, each patched on its own before the shape was named: a
-question offered an option needing a gate its concern had never been
-granted; a correction loop re-prompted a submission the runtime had refused
-and would refuse identically; an acceptance criterion asked a worker to
-convert a review note the orchestrator had already deleted, against a
-standing instruction never to write one; and a worker was told to use a
-plugin its worktree did not contain.
+Four instances of the shape: a question offering an option that needs a
+gate its concern was never granted; a correction loop re-prompting a
+submission the runtime refused
+and would refuse identically; an acceptance criterion asking a worker to
+convert a review note the orchestrator already deleted, against a standing
+instruction never to write one; and a worker told to use a
+plugin its worktree does not contain.
 
-The fix is not to warn the agent about the conflict. It is to **check the
+The remedy is not to warn the agent about the conflict. It is to **check the
 instruction against the authority that would refuse it, at the point the
 instruction is declared** — so an impossible one cannot be handed out. A
-question now names the gates its options need and a concern that asks for
+question names the gates its options need and a concern that asks for
 more than it requests fails to validate, which is the shape to copy. Where
 the conflict is genuine and intended, the carve-out belongs in the standing
 instruction rather than in the agent's judgement: say which of the two rules

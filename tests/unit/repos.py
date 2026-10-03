@@ -27,8 +27,8 @@ Carried as `-c` flags on every invocation rather than written once with
 `git config`, and that is the whole point of it. A fixture that misbinds and
 reaches the enclosing checkout writes nothing: `-c` lives for one command,
 where `git config user.email` lands in the repository's shared config, which
-every worktree cut from it inherits. It happened — commits made hours later in
-other sessions carried a fixture's name until somebody noticed the authorship.
+every worktree cut from it inherits — so commits made hours later in other
+sessions carry a fixture's name until somebody notices the authorship.
 `lup.devtools.gitguard` is the check that catches the next one; this is the shape that
 stops the identity half from being possible.
 """

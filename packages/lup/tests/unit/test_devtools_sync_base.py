@@ -3,9 +3,9 @@
 `sync_base` fetches the base and merges it, and the fetch is the half that can
 fail on its own -- a read-only sibling worktree inside a container refuses the
 `FETCH_HEAD` write, and the merge that follows succeeds anyway. Both outcomes
-print `merged` and neither used to print anything else, so the JSON a caller
-reads was identical for a current base and a stale one. The rebase workflow
-resets onto that answer.
+print `merged`, so a JSON answer saying nothing else would read identically for
+a current base and a stale one — and the rebase workflow resets onto that
+answer.
 """
 
 import json
@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from lup.devtools.dev import pr
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 
 def build_history(root: Path) -> Path:
@@ -46,13 +46,13 @@ def test_a_base_nothing_fetched_is_merged_and_reported_as_unrefreshed(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """The distinction the JSON could not carry, on the shape that produced it.
+    """The JSON carries whether the base was refreshed, on the shape that hides it.
 
     No worktree holds the base here, so nothing fetched it and nothing knows
     it is current -- the same position a contained session is in when the
     boundary refuses the fetch. The merge still happens, because it is still
     the merge that was asked for and still correct against the base as it
-    stands; what changes is that the answer now says so.
+    stands; and the answer says the base went unrefreshed.
     """
     monkeypatch.chdir(build_history(tmp_path))
 

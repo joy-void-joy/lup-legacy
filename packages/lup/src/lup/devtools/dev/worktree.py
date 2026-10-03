@@ -9,6 +9,7 @@ import sh
 import typer
 from pydantic import BaseModel, ValidationError
 
+from lup.execution.git import GitError, Repository, Worktree
 import lup.devtools.dev.records as records
 from lup.coordination.identity import session_member_id
 from lup.coordination.repository import RepositoryPeers
@@ -97,32 +98,26 @@ def sync_dependencies(worktree_path: Path) -> None:
 
 def branch_exists(branch: str) -> bool:
     """Check if a git branch exists (local only)."""
-    try:
-        git("rev-parse", "--verify", f"refs/heads/{branch}")
-        return True
-    except sh.ErrorReturnCode:
-        return False
+    return Repository(Path.cwd()).resolves(f"refs/heads/{branch}") is not None
 
 
 def worktree_is_registered(path: Path) -> bool:
     """Check if a path is registered as a git worktree (even if dir is missing)."""
-    resolved = str(path.resolve())
-    return any(
-        line == f"worktree {resolved}"
-        for line in git.lines("worktree", "list", "--porcelain")
-    )
+    resolved = path.resolve()
+    return any(listed.path == resolved for listed in Repository(Path.cwd()).worktrees())
 
 
 def adopt_records() -> None:
     """Empty lup's own keys out of the shared config, saying what moved.
 
-    Reads answer from either place, so a clone that never runs this behaves
-    exactly as one that did. What it buys is a shared ``config`` holding
-    nothing lup wrote — which is what lets that file, whose keys name
-    programs git runs on the host, stop having to be writable by a worker.
+    Reads answer from the record alone, so a base still held in ``config``
+    counts for nothing until this moves it. The move also leaves a shared
+    ``config`` holding nothing lup wrote — which is what lets that file,
+    whose keys name programs git runs on the host, stop having to be
+    writable by a worker.
     """
     refuse_blocked_config_writes()
-    moved = list(records.adopt_legacy_records())
+    moved = list(records.adopt_config_records())
     for line in moved:
         typer.echo(line)
     typer.echo(f"Adopted {len(moved)} record(s) out of the shared config.")
@@ -172,12 +167,12 @@ def report_a_blocked_registration(root: Path | None = None) -> bool:
 
     A clone that cannot -- the shared `config` is held read-only in every
     contained session, and the registration is a host's act -- is told so and
-    given the worktree anyway. Refusing it protected nothing: the driver
+    given the worktree anyway. Refusing it would protect nothing: the driver
     decides how a *merge* of the generated trees resolves, which a worktree
     cut without it meets no sooner than every worktree of this clone already
-    does, and what the refusal cost was the work itself, measured twice over
-    -- a documentation branch that fell back to plain `git worktree add`, and
-    a resolver run that could not lease its first concern inside the sandbox.
+    does, and what a refusal costs is the work itself -- a branch falling back
+    to plain `git worktree add`, or a resolver run unable to lease its first
+    concern inside the sandbox.
     Where the write would simply happen, nothing is said.
 
     Answers whether the registration is blocked, which the setup step reads
@@ -414,8 +409,8 @@ def commits_ahead(branch: str, other: str) -> int:
     if not branch:
         return 0
     try:
-        return int(git.out("rev-list", "--count", f"{other}..{branch}"))
-    except sh.ErrorReturnCode:
+        return Repository(Path.cwd()).count(f"{other}..{branch}")
+    except GitError:
         return 0
 
 
@@ -703,7 +698,7 @@ class WorktreeHold(BaseModel, frozen=True):
     creates: it was launched in another checkout and writes into the new one
     by absolute path, so the roster never names it as that checkout's user.
     Once its work is committed the checkout reads as clean and spent, and a
-    lander removed it while the session was still writing there.
+    lander would remove it while the session is still writing there.
 
     So creation locks the checkout with this as the reason. A lock is where
     every removal here already looks, and a plain `git worktree remove` meets
@@ -802,15 +797,6 @@ def finish(steps: Sequence[SetupStep]) -> Iterator[SetupStep]:
             yield step
 
 
-def descends_from(branch: str, base: str) -> bool:
-    """Whether `base` is already in `branch`'s history."""
-    try:
-        git("merge-base", "--is-ancestor", base, branch)
-        return True
-    except sh.ErrorReturnCode:
-        return False
-
-
 def register_worktree(name: str, worktree_path: Path, base_branch: str | None) -> None:
     """Register the worktree itself, the one step nothing else can precede."""
     git("worktree", "prune")
@@ -821,7 +807,11 @@ def register_worktree(name: str, worktree_path: Path, base_branch: str | None) -
     # is, so the flag reaches nothing -- and the caller then writes against a
     # tree they did not ask for, which is the expensive way to find out. The
     # branch is never moved to answer this: whatever sits on it would go.
-    if already_exists and base_branch and not descends_from(name, base_branch):
+    if (
+        already_exists
+        and base_branch
+        and not Repository(Path.cwd()).is_ancestor(base_branch, name)
+    ):
         typer.echo(
             f"{name} already exists and does not descend from {base_branch}, "
             f"so --base {base_branch} would reach nothing: re-attaching takes "
@@ -923,7 +913,7 @@ def create(
     # which is why `sync base` reports "Base guessed" long afterwards, on a
     # topology that has since moved. A base nobody can name is refused here
     # instead, where the answer is a flag rather than archaeology.
-    current = git.out("branch", "--show-current")
+    current = Repository(Path.cwd()).branch()
     integration = get_integration_branch()
     base = BranchBase(
         branch=name,
@@ -1037,56 +1027,29 @@ def worktree_status(path: str) -> str:
         return "?"
 
 
-class WorktreeEntry(BaseModel):
-    """One record of ``git worktree list --porcelain``."""
-
-    path: str = ""
-    head: str = ""
-    branch: str = ""
-    bare: bool = False
-    prunable: bool = False
-
-
 def list_worktrees() -> None:
     """List all git worktrees with branch and status info."""
     refuse_redirected_pointers()
-    entries: list[WorktreeEntry] = []  # lup: ignore[empty-collection] — record fold
-    current = WorktreeEntry()
-
-    for line in git.lines("worktree", "list", "--porcelain"):
-        if not line:
-            if current.path:
-                entries.append(current)
-                current = WorktreeEntry()
-            continue
-        match line.split(maxsplit=1):
-            case ["worktree", path]:
-                current.path = path
-            case ["HEAD", sha]:
-                current.head = short_sha(sha)
-            case ["branch", ref]:
-                current.branch = ref.removeprefix("refs/heads/")
-            case ["bare"]:
-                current.bare = True
-            case ["prunable", *_]:
-                current.prunable = True
-
-    if current.path:
-        entries.append(current)
+    entries = Repository(Path.cwd()).worktrees()
 
     if not entries:
         typer.echo("No worktrees found")
         return
 
-    cwd = str(Path.cwd().resolve())
+    cwd = Path.cwd().resolve()
 
-    def row(entry: WorktreeEntry) -> list[str]:
+    def row(entry: Worktree) -> list[str]:
         branch = entry.branch or ("(bare)" if entry.bare else "(detached)")
         marker = "* " if entry.path == cwd else "  "
-        in_dir = not entry.bare and Path(entry.path).is_dir()
-        dirtiness = worktree_status(entry.path) if in_dir else ""
+        in_dir = not entry.bare and entry.path.is_dir()
+        dirtiness = worktree_status(str(entry.path)) if in_dir else ""
         flag = " [prunable]" if entry.prunable else ""
-        return [f"{marker}{branch}", entry.head, dirtiness, f"{entry.path}{flag}"]
+        return [
+            f"{marker}{branch}",
+            short_sha(entry.head),
+            dirtiness,
+            f"{entry.path}{flag}",
+        ]
 
     typer.echo(f"\n=== Worktrees ({len(entries)}) ===\n")
     typer.echo(

@@ -207,12 +207,12 @@ class Called(BaseModel):
     shown, and the hook overwrites whatever arrives in it with its own
     payload's answer. No tool server's environment tells a session's
     conversations apart — every one of them shares the session's — so without
-    it a subagent's call is indistinguishable from the session's —
-    which is how a subagent's description came to replace its orchestrator's.
+    it a subagent's call is indistinguishable from the session's, and a
+    subagent describing itself would replace its orchestrator's description.
 
     Empty is the session's own conversation, and is also what a call no hook
     stamped reads as, so a runtime carrying no caller hook acts as the session
-    it always did.
+    itself.
     """
 
     caller: SkipJsonSchema[Caller] = Field(

@@ -125,8 +125,8 @@ def test_a_command_that_changed_nothing_leaves_no_new_snapshot(
     Git addresses content, so an unchanged tree writes a byte-identical tree
     object -- and naming the ref after that tree makes the second write an
     overwrite rather than an addition. Measured against the alternative: a
-    trigger that fired on the classifier's verdict produced sixty refs in one
-    session, fifty-seven of them in front of a `grep`.
+    trigger firing on the classifier's verdict produces dozens of refs in one
+    session, nearly all of them in front of a `grep`.
     """
     (checkout / "new.txt").write_text("present\n", encoding="utf-8")
     undo_snapshot(checkout, "one")

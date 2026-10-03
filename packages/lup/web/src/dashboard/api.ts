@@ -1,4 +1,4 @@
-import type { MessagePage, MessageRequest, ReplyOutcome, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
+import type { KeyBindings, KeyLine, KeyTry, MessagePage, MessageRequest, ReplyOutcome, ReviewAnswer, ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, StreamFrame } from "../generated/views";
 
 /** Where this origin keeps the operator's capability, and the key a storage event names. */
 export const TOKEN_KEY = "lup-dashboard-token";
@@ -176,4 +176,24 @@ export async function* followDashboard(token: string, signal: AbortSignal, resum
       reader.releaseLock();
     }
   }
+}
+
+async function posted<Reply>(path: string, body: unknown, token: string): Promise<Reply> {
+  return (await accepted(await fetch(path, {
+    method: "POST",
+    headers: { ...authorization(token), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }))).json();
+}
+
+/** The person's keys with this tab's `:map` lines checked over them, by the same catalog their config is checked against. */
+export async function tryKeys(lines: KeyLine[], token: string): Promise<KeyBindings> {
+  const tried: KeyTry = { lines };
+  return posted("api/keys/try", tried, token);
+}
+
+/** Write this tab's `:map` lines into `[dashboard.keys]` of the person's lup config, its comments kept. */
+export async function writeKeys(lines: KeyLine[], token: string): Promise<KeyBindings> {
+  const tried: KeyTry = { lines };
+  return posted("api/keys", tried, token);
 }

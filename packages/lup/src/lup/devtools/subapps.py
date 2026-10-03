@@ -138,9 +138,19 @@ def unowned(owned: list[str], defaults: list[SubAppSpec]) -> SubAppSelection:
 
 
 def compose(root: typer.Typer, subapps: list[SubApp]) -> None:
-    """Wire every resolved sub-app into one root Typer application."""
+    """Wire every resolved sub-app into one root Typer application.
+
+    The root's callback is the library's too: it says what to run instead
+    where the project's manifest is conflicted, which every CLI composed from
+    the library wants and none should restate. Imported here rather than at
+    the top, so the sub-app modules this one is read from inside stay free of
+    the conflict tooling's imports.
+    """
+    from lup.devtools.dev.conflicts import report_conflicted_manifest
+
     for entry in resolved(subapps):
         root.add_typer(entry.app, name=entry.spec.name, help=entry.spec.help)
+    root.callback()(report_conflicted_manifest)
 
 
 def subapp_summary(specs: list[SubAppSpec]) -> str:

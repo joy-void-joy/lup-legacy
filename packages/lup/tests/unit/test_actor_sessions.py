@@ -157,7 +157,7 @@ async def test_mail_heads_the_next_turn_and_is_carried_once(tmp_path: Path) -> N
 async def test_a_turn_that_never_happened_does_not_consume_the_message(
     tmp_path: Path,
 ) -> None:
-    """The run this was written for died of a spend limit between the two.
+    """A run can die of a spend limit between reading a message and its turn.
 
     Collecting is not delivering: the position moves when the message joins
     a turn, so an interrupt after the read leaves it queued for the turn

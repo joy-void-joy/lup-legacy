@@ -93,9 +93,9 @@ def test_a_command_prefix_assignment_still_binds_nothing() -> None:
 def test_a_reference_the_shell_never_expands_is_never_expanded() -> None:
     """Single quotes and a quoted heredoc keep `$S` as the characters it is.
 
-    Words reached the binding pass with their quoting already removed, so the
-    `$S` inside a sed script was expanded into it and the script judged was
-    one the command never runs.
+    Words reaching the binding pass with their quoting already removed would
+    expand the `$S` inside a sed script, and the script judged would be one
+    the command never runs.
     """
     command = "S=src.py; sed -i 's/$S/x/' $S"
     assert shell_sed_rewrites(command, VOCABULARY) == [
@@ -119,3 +119,26 @@ def test_a_value_that_would_split_or_may_be_skipped_binds_nothing() -> None:
     """Whitespace splits a reference into more words; `&&` may skip the assignment."""
     assert shell_write_targets('X="tmp/a b"; cat > $X') == ["$X"]
     assert shell_write_targets("X=tmp/a; true && X=/etc/p; cat > $X") == ["$X"]
+
+
+def test_an_assignment_in_a_chain_binds_the_rest_of_that_chain() -> None:
+    """`&&` runs what follows only where everything before it ran and succeeded.
+
+    So `cd w && F=<path> && sed -i … $F` rewrites that path whatever `F` held
+    before, and is judged as the same `sed` spelled with it -- where it was
+    left unread, and a boundary settled a rewrite of a protected file.
+    """
+    command = "cd w && F=src.py && sed -i 's/a/b/' $F"
+    assert shell_path_verb_targets(command, VOCABULARY) == ["w/src.py"]
+    assert shell_write_targets("true && P=tmp && G=$P/t.py && cat > $G") == ["tmp/t.py"]
+
+
+def test_a_chain_s_assignment_holds_for_nothing_an_or_or_the_next_item_runs() -> None:
+    """Past an `||`, or once the chain ends, the name holds whichever value ran."""
+    for command in (
+        "X=tmp/a; true && X=/etc/p; cat > $X",
+        "X=tmp/a; true && X=/etc/p || cat > $X",
+        "X=tmp/a; true || X=/etc/p && cat > $X",
+    ):
+        assert shell_write_targets(command) == ["$X"], command
+    assert shell_write_targets("X=tmp/a; cat > $X && true && X=/etc/p") == ["tmp/a"]

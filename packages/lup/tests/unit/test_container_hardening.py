@@ -1,12 +1,12 @@
 """What a session's processes may hold inside their container, and may come to hold.
 
-Measured in a session container this hardening did not yet cover: the agent
-ran as the operator's uid with an empty effective set, under the engine's
-default bounding set (``00000000800405fb`` on rootless podman) and with
-``NoNewPrivs`` off, beside thirteen setuid-root binaries (``su``, ``mount``,
-``passwd`` among them). The flags close the way back up; the entrypoint clears
-what an engine hands a non-root user in its inheritable and ambient sets, which
-is how a capability given back for ``sudo`` reached the agent itself.
+Measured in a session container without this hardening: the agent runs as the
+operator's uid with an empty effective set, under the engine's default bounding
+set (``00000000800405fb`` on rootless podman) and with ``NoNewPrivs`` off,
+beside thirteen setuid-root binaries (``su``, ``mount``, ``passwd`` among
+them). The flags close the way back up; the entrypoint clears what an engine
+hands a non-root user in its inheritable and ambient sets, through which a
+capability given back for ``sudo`` would reach the agent itself.
 """
 
 import shutil

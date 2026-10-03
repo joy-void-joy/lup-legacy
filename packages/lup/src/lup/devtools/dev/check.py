@@ -18,6 +18,7 @@ import sh
 import typer
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.providers.settings_schema import unclassified_settings
 from lup.providers.harness import (
     claude_prompt_renderer,
@@ -89,7 +90,7 @@ from lup.web.build import BUN, restore_dependencies
 # computes — its system time runs to roughly twice its user time — so it
 # parallelizes well, and goes on doing so past the point a worker's own
 # interpreter boot would be expected to cancel the return. Measured on a
-# 32-core host, the root suite alone ran in 673s serial, 102s under 8 workers,
+# 32-core host, the root suite alone runs in 673s serial, 102s under 8 workers,
 # 97s under 16, and 88s under 24: more workers is still winning at this cap.
 #
 # Capped regardless, because the gate is not one suite running alone. It puts
@@ -300,14 +301,13 @@ def sweep_pyright_scratch(root: Path, older_than: timedelta) -> list[Path]:
     base's relative ``include`` and each ``executionEnvironments`` root against
     the file that declares them, so one written elsewhere analyses a different
     tree. Measured rather than assumed: extending this repository's own base
-    from a temporary directory analysed 1092 files and reported 60 missing
+    from a temporary directory analyses 1092 files and reports 60 missing
     imports that are not missing.
 
     Living at the root means a run that is killed rather than returned from
     leaves its file behind — the `finally` that unlinks it never executes —
     and they accumulate as untracked junk that every later `git status` and
-    every drift check reports. This checkout held three, the oldest eleven
-    days.
+    every drift check reports.
 
     Swept by age because the alternative is worse. Several sessions check this
     repository at once, and a sweep of *every* such file would delete a
@@ -341,7 +341,7 @@ def pyright_check(
     reconstruct wrongly.
 
     Handed no ``--threads``, so it checks on one core. Measured over lup and
-    an adopter on a shared 32-core host, ``--threads 8`` mostly cut the wall
+    an adopter on a shared 32-core host, ``--threads 8`` mostly cuts the wall
     time by a third to three quarters, for two to five times the CPU and three
     times the memory: each thread is a forked process holding its own program,
     half a gigabyte to a gigabyte of it. In the full gate that buys nothing —
@@ -510,11 +510,11 @@ class TestRoot(BaseModel):
 
         Scheduled by work stealing rather than xdist's default, because a
         suite costs its busiest worker. The default hands each worker its
-        share up front, and a share holding a module of git-driving tests left
-        one worker running for a minute after the rest were idle — measured,
-        the library suite's busiest worker at 1.7 to 2.8 times the median,
-        where stealing held it to 1.1 to 1.3, and the template suite's from
-        1.2 to 1.05.
+        share up front, and a share holding a module of git-driving tests
+        leaves one worker running for a minute after the rest are idle —
+        measured, the library suite's busiest worker at 1.7 to 2.8 times the
+        median, where stealing holds it to 1.1 to 1.3, and the template
+        suite's from 1.2 to 1.05.
         """
         if workers < 2:
             return []
@@ -704,8 +704,8 @@ def absent_selections(selections: list[str]) -> list[str]:
     """The named tests nothing on disk answers, spelled as they were named.
 
     A node id names its test after the file holding it, so the file is what
-    is looked for. Handed a name nothing answers, pytest collected nothing,
-    and the run reported "no tests ran" and a failed suite without saying
+    is looked for. Handed a name nothing answers, pytest collects nothing,
+    and the run reports "no tests ran" and a failed suite without saying
     which name was wrong.
     """
     return [
@@ -974,22 +974,22 @@ def scaffold_budget_report(
 
 
 def branch_record_reports(pending: list[str]) -> list[CheckReport]:
-    """What lup's branch bookkeeping earns while it still sits in two places.
+    """What lup's branch bookkeeping earns while some of it sits in the config.
 
-    Advisory rather than gating. Every read falls back to the shared config
-    per field, so a clone that never adopts its records answers exactly as
-    one that did: there is no defect here to refuse a branch over. The
-    command that finishes it writes the shared git directory, which is the
-    host's, so a gating row would be red in every worktree until somebody
-    stood somewhere no session reaches — and a gate whose resting colour is
-    red is a gate a reader stops reading.
+    Advisory rather than gating. Reads answer from the records alone, so a
+    branch whose base sits only in the shared config detects its base from
+    the topology instead — a weaker answer rather than a defect to refuse a
+    branch over. The command that finishes the move writes the shared git
+    directory, which is the host's, so a gating row would be red in every
+    worktree until somebody stood somewhere no session reaches — and a gate
+    whose resting colour is red is a gate a reader stops reading.
 
     Nothing at all once no branch is left, rather than a permanent ok, for
     the same reason: this is one move with an end, and a row that can only
     say ok from then on is a line everybody learns to skip. The gate prints
     the lines a check hands back, so handing back no check is how a row
     leaves — the shape the borrowed-environment and unlanded-sibling rows
-    already use.
+    use.
     """
     if not pending:
         return []
@@ -1001,7 +1001,8 @@ def branch_record_reports(pending: list[str]) -> list[CheckReport]:
             lines=[
                 f"branch records: {len(pending)} branch(es) still recorded in "
                 "the shared git config (advisory)",
-                "  every read falls back to those keys, so nothing is broken",
+                "  nothing reads them there: those branches detect their base "
+                "from the topology",
                 "  `lup-devtools git worktree adopt-records` moves them, "
                 "once per clone",
                 f"  it writes the shared git directory's `{destination}/`, "
@@ -1091,8 +1092,8 @@ def named_gate_base(named: str, option: str = "--base") -> str:
     The merge base rather than the tip. What a branch took away is judged from
     where it started, and a base that has moved on since carries changes this
     branch never made — read against the tip they come back as capabilities
-    this branch removed, which is how naming `dev` directly reported 504 gone
-    on a branch that had removed none. What a branch changed is the same
+    this branch removed, so naming `dev` directly would report hundreds gone
+    on a branch that removed none. What a branch changed is the same
     question asked of files, and ``option`` is the flag the ref came through,
     for the refusal to name.
 
@@ -1138,7 +1139,7 @@ def change_base(named: str | None, integration: str) -> ChangeBase:
             commit=named_gate_base(named, "--since"),
             reached=f"the merge base with {named}",
         )
-    current = git.out("branch", "--show-current")
+    current = Repository(Path.cwd()).branch()
     siblings = [
         branch
         for branch in git.lines("branch", "--format=%(refname:short)")
@@ -1365,8 +1366,8 @@ def scan_reports(
         # tree is answerable for rather than reading every file and setting
         # most of the findings aside. A lease holds one concern's changes and
         # its gate answers "is this change good?" — a whole-repository read
-        # made every lease's verdict depend on state no worker controls, and
-        # cost the whole repository's resolve to reach it.
+        # would make every lease's verdict depend on state no worker controls,
+        # and cost the whole repository's resolve to reach it.
         yield antipattern_report(project, scope)
 
         # A document naming a node is held to what the node says now, so prose
@@ -1786,8 +1787,8 @@ def run_checks(
     A gate with no suite to run says so in a row of its own, where the suites
     would have reported. A tally counting only what ran reads the same
     whether the tests passed or nobody declared any, and a project whose code
-    all sits in a nested one met exactly that: every check passed while the
-    nested suite, run by nobody, had been failing. Advisory, because declaring
+    all sits in a nested one meets exactly that: every check passes while the
+    nested suite, run by nobody, fails. Advisory, because declaring
     none is a choice the gate reports rather than refuses.
     """
     started = perf_counter()

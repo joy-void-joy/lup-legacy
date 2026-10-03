@@ -1,12 +1,11 @@
 """The migrations gate reads its base where a clone has one, and says when it has none.
 
-Measured on every push since the gate was written: a CI clone holds the one
-branch it checks out, the base detector exits the process on finding no other
-local branch, and that exit took the whole report with it -- the log held one
-line and an exit code, naming no check. The gate now judges the integration
-branch from the release branch, a feature branch from its own base, reads the
-remote's copy where only the remote carries it, and reports a checkout with no
-base at all as skipped.
+A CI clone holds the one branch it checks out, and the base detector exits
+the process on finding no other local branch -- an exit that would take the
+whole report with it, leaving a log of one line and an exit code naming no
+check. So the gate judges the integration branch from the release branch, a
+feature branch from its own base, reads the remote's copy where only the
+remote carries it, and reports a checkout with no base at all as skipped.
 """
 
 from pathlib import Path

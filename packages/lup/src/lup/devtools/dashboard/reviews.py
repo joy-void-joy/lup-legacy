@@ -39,9 +39,10 @@ from typing import TYPE_CHECKING
 import httpx
 import sh
 import typer
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, JsonValue, PrivateAttr
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
+from lup.execution.git import GitError
 from lup.devtools.dashboard.address import AdvertisedDashboard
 from lup.devtools.dashboard.companion import (
     Dashboard,
@@ -405,7 +406,8 @@ class ReviewStore(BaseModel, frozen=True):
 
         Asked of every waiting review on every look, and again when one is
         opened or answered, since a file moves without the queue changing --
-        which is how a review turned unapprovable in front of the operator.
+        and a review asked only when the queue changes turns unapprovable in
+        front of the operator.
         A stale review leaves the queue at once and its requester is told to
         ask again; what moved is read through a stat-keyed watch against the
         digest each preimage is recorded by, so a waiting review whose files
@@ -853,6 +855,7 @@ def dashboard_app(
     from starlette.datastructures import MutableHeaders
     from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+    from lup.devtools.dashboard.keys import DashboardKeys, KeyBindings, KeyTry
     from lup.devtools.dashboard.live import MessagePage, earlier_messages
     from lup.devtools.dashboard.stream import LiveFeed
     from lup.devtools.dashboard.supervision import supervision_routes
@@ -863,7 +866,7 @@ def dashboard_app(
     def anchor(root: Path) -> Path:
         try:
             return repository_layout(root).common.resolve()
-        except (OSError, ValueError, sh.ErrorReturnCode):
+        except (OSError, ValueError, GitError):
             # Keep unavailable selections so scans report them and can recover.
             return root
 
@@ -885,11 +888,14 @@ def dashboard_app(
     def watched() -> list[KnownRepository]:
         return [*named, *(registry.repositories() if registry is not None else [])]
 
+    keys = DashboardKeys(config)
     feed = (
         feed
         if feed is not None
         else LiveFeed(
-            watched, ReviewStore(roots=roots, discover=discover, registry=registry)
+            watched,
+            ReviewStore(roots=roots, discover=discover, registry=registry),
+            keys=keys,
         )
     )
     store = feed.reviews
@@ -997,6 +1003,24 @@ def dashboard_app(
             raise HTTPException(status_code=404, detail="No repository has that key")
         return earlier_messages(known, before)
 
+    @app.post("/api/keys/try")
+    def try_keys(tried: KeyTry) -> KeyBindings:
+        """The person's keys with one tab's ``:map`` lines checked over them, as the config is."""
+        return keys.tried(tried.lines)
+
+    @app.post("/api/keys")
+    def write_keys(tried: KeyTry) -> KeyBindings:
+        """Write one tab's ``:map`` lines into ``[dashboard.keys]``, keeping the file's comments."""
+        written = keys.tried(tried.lines)
+        tab: dict[tuple[str, ...], JsonValue | None] = {
+            ("dashboard", "keys", each.action): list(each.keys)
+            for each in written.changed
+            if each.origin == "tab"
+        }
+        if tab:
+            keys.config.record(tab)
+        return keys.tried([])
+
     @app.get("/api/setup")
     def setup_panes() -> list[SetupPane]:
         return panes.listed() if panes is not None else []
@@ -1068,7 +1092,7 @@ def named_repositories(roots: tuple[Path, ...]) -> list[KnownRepository]:
     def known(root: Path) -> KnownRepository:
         try:
             repository = repository_layout(root).common.resolve()
-        except (OSError, ValueError, sh.ErrorReturnCode):
+        except (OSError, ValueError, GitError):
             repository = root
         return KnownRepository(repository=repository, checkout=root)
 
@@ -1210,6 +1234,35 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
             )
 
         refused("reopen", settled)
+
+    @app.command("keys")
+    def keys_cmd() -> None:
+        """Print the dashboard's keys as your `[dashboard.keys]` leaves them, and every entry it refused."""
+        from lup.devtools.dashboard.keys import DashboardKeys, KeymapCatalog
+
+        catalog = KeymapCatalog()
+        read = DashboardKeys(UserConfigFile(), catalog)()
+        typer.echo(read.source or "No lup config: every key is lup's own.")
+        if read.unread:
+            typer.echo(f"Unread, so lup's keys stand: {read.unread}")
+        yours = {each.action: each for each in read.changed}
+        for entry in catalog.actions:
+            mine = yours.get(entry.name)
+            shown = mine.keys if mine is not None else entry.keys
+            spoken = ", ".join(catalog.pretty(each) for each in shown) or "unbound"
+            mark = (
+                f"  (yours; lup's is {', '.join(entry.keys) or 'unbound'})"
+                if mine
+                else ""
+            )
+            typer.echo(f"{entry.name:26} {spoken}{mark}")
+        for refusal in read.report.refused:
+            way = f" — {refusal.way}" if refusal.way else ""
+            typer.echo(
+                f"refused {refusal.action or refusal.what}: `{refusal.what}` {refusal.why}{way}"
+            )
+        for wait in read.report.waits:
+            typer.echo(f"waits: {wait}")
 
     @app.command("restart")
     def restart_cmd() -> None:

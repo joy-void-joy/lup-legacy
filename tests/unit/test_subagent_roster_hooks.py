@@ -54,10 +54,10 @@ RUNTIMES = pytest.mark.parametrize(
 
 Claude Code applies a PreToolUse ``updatedInput`` carrying no decision, and the
 coordination tools keep whatever permission the project gave them — measured
-on 2.1.283, where the rewrite reached the tool server even for a key the
+on 2.1.283, where the rewrite reaches the tool server even for a key the
 tool's schema forbids. Codex applies one only beside ``permissionDecision:
-"allow"`` — measured on 0.158.0, where the same rewrite with no decision was
-dropped and the call ran as the model wrote it.
+"allow"`` — measured on 0.158.0, where the same rewrite with no decision is
+dropped and the call runs as the model wrote it.
 """
 
 

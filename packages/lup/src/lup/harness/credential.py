@@ -66,6 +66,7 @@ from urllib.parse import urlsplit
 import sh
 from pydantic import BaseModel, Discriminator, Field
 
+from lup.execution.git import Repository
 from lup.devtools.utils import gh
 from lup.execution.shell import git
 from lup.harness.environment import NON_INTERACTIVE_SHELL_ENV
@@ -383,7 +384,7 @@ def parse_remote(url: str) -> RemoteAddress | None:
     as a path with no scheme at all -- so it cannot even be used to tell the
     two apart, let alone to take either one apart correctly.
 
-    The obvious PyPI parser was tried and refuted for this job. ``giturlparse``
+    The obvious PyPI parser does not do this job, measured. ``giturlparse``
     does handle scp-like syntax, but validates against a roster of known
     forges, so it answers ``valid: False`` for a URL spelled through an ssh
     config alias -- which is precisely the case this exists for.
@@ -511,21 +512,6 @@ def same_repository(left: str, right: str) -> bool:
             return False
 
 
-def remote_url(root: Path, name: str) -> str:
-    """One remote's URL as git resolves it, or nothing when it cannot be had.
-
-    Through ``get-url`` rather than by reading a listing, because git already
-    has a command whose whole output is the value -- and because it applies
-    the resolution: an ``insteadOf`` already in play is followed to the URL
-    the remote actually reaches rather than matched on whatever somebody
-    typed.
-    """
-    try:
-        return git.out("-C", str(root), "remote", "get-url", name).strip()
-    except sh.ErrorReturnCode:
-        return ""
-
-
 def remote_rewrites(
     root: Path, host: str, transport: ForgeTransport
 ) -> list[RemoteRewrite]:
@@ -555,7 +541,7 @@ def remote_rewrites(
         address
         for name in names
         if name
-        for address in [parse_remote(remote_url(root, name))]
+        for address in [parse_remote(Repository(root).remote_url(name) or "")]
         if address is not None and not transport.carries(address, host)
     ]
     found = {
@@ -1358,11 +1344,11 @@ class GitAccess(BaseModel, frozen=True):
     ) -> list[Notice]:
         """What the launch says about the forge, which is one line when all is well.
 
-        The selected credential names itself and stops. Everything that used
-        to travel beside it -- how many spellings were rewritten, that the
+        The selected credential names itself and stops. Everything else that
+        could travel beside it -- how many spellings are rewritten, that the
         agent can read the token, what a token should be scoped to, who
-        commits are authored as -- was true and was noise: five paragraphs in
-        which the one sentence that decides whether the session can work sat
+        commits are authored as -- is true and is noise: five paragraphs in
+        which the one sentence that decides whether the session can work sits
         indistinguishable from four that do not. The rationale is in this
         module and in ``docs/permissions.md``; the launch carries the verdict.
 

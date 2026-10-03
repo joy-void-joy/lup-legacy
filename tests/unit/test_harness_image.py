@@ -1,9 +1,9 @@
 """What the rendered image must keep true, pinned where a change is visible.
 
-Every assertion here corresponds to something that was measured against a real
-container rather than reasoned about, and several correspond to a defect the
-first draft shipped. A test that only restated the declaration would pass on
-the broken version too.
+Every assertion here corresponds to something measured against a real
+container rather than reasoned about, and several to a defect a plausible
+declaration ships. A test that only restated the declaration would pass on the
+broken version too.
 """
 
 from pathlib import Path
@@ -36,8 +36,7 @@ def test_nothing_in_the_rendered_image_fetches_code_it_does_not_verify() -> None
     """The property the base image was chosen for, and the one easiest to lose.
 
     A single `curl | bash` puts an unreviewed remote script inside the build
-    of the thing that is supposed to *be* the boundary. The first draft of
-    this declaration had three.
+    of the thing that is supposed to *be* the boundary.
     """
     rendered = Image().dockerfile(
         Manifest(
@@ -95,7 +94,7 @@ def test_declared_tooling_is_the_images_alone_and_not_the_manifests() -> None:
     """The two audiences a package list has, kept apart.
 
     `Manifest.packages` feeds an image *and* answers for what a machine is
-    expected to have; merging the two produced `apt-get install -y uv` against
+    expected to have; merging the two produces `apt-get install -y uv` against
     a runner that cannot satisfy it. Tooling is the image's alone, so nothing
     reading the manifest learns a new prerequisite from it.
     """
@@ -108,7 +107,7 @@ def test_declared_tooling_is_the_images_alone_and_not_the_manifests() -> None:
 
 
 def test_globally_installed_executables_are_reachable_by_directory() -> None:
-    """Measured: linking the CLI by name left `tsc` installed and unreachable."""
+    """Measured: linking the CLI by name leaves `tsc` installed and unreachable."""
     assert "ENV PATH=/opt/bun/bin:$PATH" in Image().dockerfile(Manifest())
 
 
@@ -141,9 +140,9 @@ def test_the_package_manager_that_installs_is_the_one_with_a_cache() -> None:
     """A cache volume for a tool the image never installs is a mount for nothing.
 
     Both registries here are `bun` and `uv`; the baseline carries `nodejs` and
-    not `npm`, so nothing in this image has ever run npm. Caching for it while
-    the manager that does the installing re-fetched every package was the
-    accretion this declaration now has to answer for.
+    not `npm`, so nothing in this image runs npm. Caching for it while the
+    manager that does the installing re-fetches every package spends a volume
+    on nothing and a download on everything.
     """
     cached = {cache.variable for cache in Image().caches}
     assert "BUN_INSTALL_CACHE_DIR" in cached
@@ -158,8 +157,8 @@ def test_every_cache_volume_says_what_needed_it() -> None:
 def test_the_interpreters_uv_installs_outlive_the_container() -> None:
     """A project pinning a Python the image lacks keeps the one uv downloaded.
 
-    Left on the container's throwaway layer, every start downloaded it again
-    and rebuilt the environment linking to it. Its own volume rather than a
+    Left on the container's throwaway layer, every start downloads it again
+    and rebuilds the environment linking to it. Its own volume rather than a
     corner of uv's cache, which `uv cache clean` empties whole.
     """
     image = Image()
@@ -175,8 +174,8 @@ def test_the_interpreters_uv_installs_outlive_the_container() -> None:
 def test_the_trust_seed_names_no_host_path() -> None:
     """A portable image cannot carry one machine's filesystem layout.
 
-    Enumerating the sibling worktrees was tried and baked thirty-one paths in,
-    several of which were not checkouts. The container's own working directory
+    Enumerating the sibling worktrees bakes in every path one machine has,
+    some of them not checkouts at all. The container's own working directory
     is the answer, and only the entrypoint can know it.
     """
     rendered = Image().dockerfile(Manifest())
@@ -232,9 +231,9 @@ def test_the_registry_managers_are_installed_before_they_are_used() -> None:
 def test_the_baseline_carries_a_font_family_so_headless_text_renders() -> None:
     """With no face fontconfig can see, headless text draws nothing.
 
-    Measured in a contained session: `fc-list` listed none, and headless
-    Chromium failed every `@font-face` page text asked for, measuring the text
-    0 px wide, and Pillow drew nothing.
+    Measured in a contained session without one: `fc-list` lists none,
+    headless Chromium fails every `@font-face` page text asks for, measuring
+    the text 0 px wide, and Pillow draws nothing.
     """
     assert "ttf-liberation" in Image().baseline
 
@@ -244,8 +243,7 @@ def test_docker_is_never_handed_podmans_identity_flag() -> None:
 
     It exits with `--userns: invalid USER mode` before the daemon is reached,
     so a launcher that spelled podman's requirement unconditionally could not
-    start a session under Docker at all. The first draft of `run_arguments`
-    did exactly that.
+    start a session under Docker at all.
     """
     started = Image().run_arguments(Path("/checkout"), 1000, 1000, Docker())
     assert "--userns=keep-id" not in started
@@ -292,7 +290,7 @@ def test_the_project_environment_is_keyed_per_project_rather_than_per_machine() 
     project into a shared environment uninstalls the first and its
     dependencies. Relative is what makes `uv` do the keying, and it has to
     reach the container as-is -- resolved to an absolute path on the way out
-    would restore the collision while still reading as a fix.
+    it is the collision again, while reading as deliberate.
     """
     image = Image()
     assert not Path(image.project_environment).is_absolute()
@@ -315,7 +313,7 @@ def test_the_build_cannot_pre_create_a_project_relative_environment() -> None:
 
 
 def test_each_mounted_project_gets_its_own_environment_directory() -> None:
-    """One shared environment is the collision; one per root is the fix.
+    """One shared environment is the collision; one per root keeps them apart.
 
     Two roots, two private directories, each bound at the environment's name
     inside its own tree -- so a `uv sync` in either reaches only its own.
@@ -348,7 +346,7 @@ def test_an_environment_mount_is_emitted_after_the_bind_it_sits_inside() -> None
 
     Measured on podman 6.1.0: a nested mount emitted first still wins. Pinned
     anyway, because the day an engine applies the list in order is the day
-    the environment silently becomes the host's `.venv` again -- and nothing
+    the environment silently becomes the host's `.venv` -- and nothing
     else in a session would report it.
     """
     started = Image().session_arguments(
@@ -416,11 +414,11 @@ def test_the_config_home_is_container_private_and_carries_across_launches() -> N
 def test_the_credential_crosses_as_one_read_only_file_outside_the_config_home() -> None:
     """The config home holds every project's session state; the login is one file.
 
-    Offered beside the config home rather than over it. Mounted at the path
-    the CLI keeps a login, read-only, it looked right and was not: that file
-    is written back both when a sign-in completes and when an expiring token
-    renews, so the mount refused both, and it shadowed the config volume's
-    own copy so a login made inside vanished at the next launch.
+    Offered beside the config home rather than over it. Mounted read-only at
+    the path the CLI keeps a login, it looks right and is not: that file is
+    written back both when a sign-in completes and when an expiring token
+    renews, so the mount refuses both, and it shadows the config volume's own
+    copy so a login made inside vanishes at the next launch.
     """
     image = Image()
     started = image.session_arguments(
@@ -458,9 +456,9 @@ def test_the_entrypoint_uses_the_fingerprinted_login_handoff() -> None:
 def test_the_entrypoint_reads_the_config_home_the_image_baked() -> None:
     """One image starts every runtime, and they disagree about the variable.
 
-    It read `CLAUDE_CONFIG_DIR` with a fallback to `$HOME/.claude`, so a
-    Codex session -- started with `CODEX_HOME` pointed at the same mount --
-    seeded its trust into a directory nothing was reading.
+    Reading `CLAUDE_CONFIG_DIR` with a fallback to `$HOME/.claude`, a Codex
+    session -- started with `CODEX_HOME` pointed at the same mount -- would
+    seed its trust into a directory nothing reads.
     """
     entrypoint = Image().dockerfile(Manifest())
     assert f"config={Image().config_home}" in entrypoint
@@ -497,18 +495,18 @@ def test_a_real_docker_client_is_not_mistaken_for_podman() -> None:
 
 
 def test_every_baked_variable_is_a_line_the_dockerfile_parser_accepts() -> None:
-    """The check that was missing, and the shape of what it missed.
+    """The artifact is parsed, not only the declaration that renders it.
 
     `ENV name=value` takes whitespace as separating *more* pairs, so a value
     with a space in it makes the rest of that value into names with no
     values -- `ENV GIT_SSH_COMMAND=ssh -o BatchMode=yes` fails the whole file
     with `can't find = in "-o"`.
 
-    Nothing caught it for as long as the tests asked what `environment()`
-    returned. That is the declaration; the Dockerfile is the artifact, and a
-    variable can be perfectly correct in the first and unparseable in the
-    second. Generation does not build, so the image stayed broken through a
-    green `harness generate all` and was found by a build.
+    Asking what `environment()` returns cannot catch it. That is the
+    declaration; the Dockerfile is the artifact, and a variable can be
+    perfectly correct in the first and unparseable in the second. Generation
+    does not build, so a broken image passes a green `harness generate all`
+    and is found by a build.
     """
     baked = [
         pair.strip().removesuffix(" \\")

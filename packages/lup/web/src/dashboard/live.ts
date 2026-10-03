@@ -1,4 +1,4 @@
-import type { Feature, LiveMessage, LiveRepository, LiveSession, MessagePage, ReviewSnapshot, ReviewSummary, RunningCode, StreamFrame, UserRow } from "../generated/views";
+import type { Feature, KeyBindings, LiveMessage, LiveRepository, LiveSession, MessagePage, ReviewSnapshot, ReviewSummary, RunningCode, StreamFrame, UserRow } from "../generated/views";
 
 /**
  * Everything live the page shows, as the stream has moved it so far.
@@ -20,10 +20,58 @@ export type LiveState = {
   code: RunningCode;
   users: ReadonlyMap<string, UserRow>;
   served: readonly Feature[];
+  keys: KeyBindings;
 };
 
 /** What a dashboard that has not said which code it runs is taken to run. */
 export const UNSAID: RunningCode = { source: "", root: "", since: null, older: false, failing: "", restarted: "" };
+
+/** What a dashboard that has not said the person's keys is taken to say: every key lup's own. */
+export const NO_KEYS: KeyBindings = { source: "", unread: "", changed: [], report: { applied: [], refused: [], waits: [] } };
+
+/** One line of what the stream moved, as a repository's page logs it, newest last. */
+export type Moved = { repository: string; text: string };
+
+/**
+ * What one frame moved, in words: an agent arriving, starting a call or
+ * stopping, a message posted, a review parked or leaving the queue. The page
+ * writes its live log from the frames it applies; a snapshot says what it
+ * handed over whole.
+ */
+export function moved(previous: LiveState | null, frame: StreamFrame): Moved[] {
+  const event = frame.event;
+  const name = (repository: string, id: string) => called(previous ?? applied(null, frame), repository, id);
+  switch (event.type) {
+    case "snapshot":
+      return [{ repository: "", text: `the stream handed this tab the whole state: ${event.repositories.length} ${event.repositories.length === 1 ? "repository" : "repositories"}, ${event.sessions.length} members, ${event.messages.length} messages, ${event.reviews.reviews.filter((row) => row.state === "pending").length} waiting reviews` }];
+    case "session": {
+      const before = previous?.sessions.get(event.session.key);
+      const session = event.session;
+      const who = session.name || session.id;
+      if (before === undefined) return [{ repository: session.repository, text: `${who} arrived` }];
+      if (before.running && !session.running) return [{ repository: session.repository, text: `${who} stopped${session.summary || session.error ? `: ${session.summary || session.error}` : ""}` }];
+      if (session.activity.calling !== "" && session.activity.calling !== before.activity.calling) return [{ repository: session.repository, text: `${who} calling ${session.activity.calling}` }];
+      if (session.doing !== before.doing && session.doing !== "") return [{ repository: session.repository, text: `${who} is on: ${session.doing}` }];
+      return [];
+    }
+    case "message": {
+      if (previous?.messages.has(event.message.key) === true) return [];
+      const message = event.message;
+      return [{ repository: message.repository, text: `${message.sender === "" ? message.door : name(message.repository, message.sender)} → ${name(message.repository, message.recipient)}: ${message.text}` }];
+    }
+    case "review": {
+      const was = previous?.reviews.reviews.find((row) => row.key === event.review.key);
+      if (was === undefined && event.review.state === "pending") return [{ repository: "", text: `review ${event.review.id.slice(0, 8)} parked by ${event.review.session || event.review.requester}` }];
+      if (was !== undefined && was.state !== event.review.state) return [{ repository: "", text: `review ${event.review.id.slice(0, 8)} is ${event.review.state === "rejected" ? "declined" : event.review.state}` }];
+      return [];
+    }
+    case "session_gone": {
+      const gone = previous?.sessions.get(event.key);
+      return gone === undefined ? [] : [{ repository: gone.repository, text: `${gone.name || gone.id} left the roster` }];
+    }
+    default: return [];
+  }
+}
 
 /**
  * What the page says of the dashboard it follows: the code it runs, where
@@ -71,9 +119,10 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
       code: event.code,
       users: keyed(event.users),
       served: event.served,
+      keys: event.keys,
     };
   }
-  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), earlier: new Map(), reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, users: new Map(), served: [] }), cursor: frame.cursor };
+  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), earlier: new Map(), reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, users: new Map(), served: [], keys: NO_KEYS }), cursor: frame.cursor };
   switch (event.type) {
     case "repository": return { ...base, repositories: set(base.repositories, event.repository.key, event.repository) };
     case "repository_gone": return { ...base, repositories: without(base.repositories, event.key) };
@@ -90,6 +139,7 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
     case "user": return { ...base, users: set(base.users, event.user.key, event.user) };
     // A followed transcript is read where it is shown, never held as state.
     case "transcript": return base;
+    case "keys": return { ...base, keys: event.keys };
   }
 }
 
@@ -103,33 +153,6 @@ export function paged(state: LiveState, repository: string, before: number, page
   if (state.earlier.get(repository) !== before) return state;
   const messages = new Map([...page.messages.map((message): [string, LiveMessage] => [message.key, message]), ...state.messages]);
   return { ...state, messages, earlier: new Map(state.earlier).set(repository, page.earlier) };
-}
-
-/** One session and the subagents running inside it. */
-export type SessionNode = { session: LiveSession; subagents: LiveSession[] };
-
-/** One repository's sessions, each with its subagents beneath it, working ones first. */
-export type RepositorySessions = { repository: LiveRepository; sessions: SessionNode[] };
-
-function byStanding(left: LiveSession, right: LiveSession): number {
-  return Number(right.running) - Number(left.running) || (left.name || left.id).localeCompare(right.name || right.id);
-}
-
-export function sessionTree(state: LiveState): RepositorySessions[] {
-  const sessions = [...state.sessions.values()];
-  return [...state.repositories.values()]
-    .sort((left, right) => left.name.localeCompare(right.name))
-    .map((repository) => {
-      const here = sessions.filter((each) => each.repository === repository.key);
-      const ids = new Set(here.map((each) => each.id));
-      return {
-        repository,
-        sessions: here
-          .filter((each) => each.parent === "" || !ids.has(each.parent))
-          .sort(byStanding)
-          .map((session) => ({ session, subagents: here.filter((each) => each.parent === session.id).sort(byStanding) })),
-      };
-    });
 }
 
 function oldestFirst(messages: LiveMessage[]): LiveMessage[] {

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from lup.channels.models import Door, publish_atomic, utc_now
 from lup.coordination.mailbox import RecordedAnswer
 from lup.execution.shell import git
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from lup.resolver.join_desk import JoinDesk
 from lup.resolver.record import IntegrationRecoveredEvent, Journal
 from lup.resolver.mailbox import PendingQuestion, QuestionMailbox
@@ -132,17 +132,7 @@ class IntegrationRecoveryDesk:
                         "adoption requires a recorded integration result; finish or "
                         "restore the interrupted join sequence first"
                     )
-                merge = worktrees.launcher.launch(
-                    LaunchRequest(
-                        arguments=["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"],
-                        cwd=lease.root,
-                    )
-                )
-                if merge.code not in {0, 1}:
-                    raise StateTransitionError(
-                        "cannot inspect the integration merge state"
-                    )
-                if merge.code == 0 or worktrees.uncommitted(lease):
+                if worktrees.merging(lease) is not None or worktrees.uncommitted(lease):
                     raise StateTransitionError(
                         "adoption requires a clean, committed worktree"
                     )
@@ -189,20 +179,22 @@ class IntegrationRecoveryDesk:
         )
         publish_atomic(evidence / "request.json", recovery)
         worktrees.require(
-            LaunchRequest(
-                arguments=["git", "update-ref", recovery.backup_ref, before, ""],
-                cwd=lease.root,
-            ),
+            lease.root,
             "cannot preserve the pre-recovery integration commit",
+            "update-ref",
+            recovery.backup_ref,
+            before,
+            "",
         )
         match mode:
             case IntegrationRecoveryMode.RESTORE:
                 self.preserve_worktree(lease, evidence, worktrees, recovery.backup_ref)
                 worktrees.require(
-                    LaunchRequest(
-                        arguments=["git", "reset", "--hard", after], cwd=lease.root
-                    ),
+                    lease.root,
                     f"cannot restore integration; recovery evidence is in {evidence}",
+                    "reset",
+                    "--hard",
+                    after,
                 )
                 self.repository.save_locked(state)
             case IntegrationRecoveryMode.ADOPT:
@@ -381,10 +373,10 @@ class IntegrationRecoveryDesk:
             if (admin / name).is_file():
                 shutil.copy2(admin / name, metadata / name)
         shared = worktrees.require(
-            LaunchRequest(
-                arguments=["git", "rev-parse", "--shared-index-path"], cwd=lease.root
-            ),
+            lease.root,
             "cannot inspect the split integration index",
+            "rev-parse",
+            "--shared-index-path",
         ).stdout.strip()
         if shared:
             shared_path = lease.root / shared
@@ -407,19 +399,14 @@ class IntegrationRecoveryDesk:
             ):
                 reference = f"{PurePosixPath(backup_ref).parent}/{name}/{index}"
                 worktrees.require(
-                    LaunchRequest(
-                        arguments=[
-                            "git",
-                            "-c",
-                            "core.fsync=reference",
-                            "update-ref",
-                            reference,
-                            object_id,
-                            "",
-                        ],
-                        cwd=lease.root,
-                    ),
+                    lease.root,
                     f"cannot retain saved {name} object; recovery evidence is in {evidence}",
+                    "-c",
+                    "core.fsync=reference",
+                    "update-ref",
+                    reference,
+                    object_id,
+                    "",
                 )
                 references.append(
                     RecoveryReference(
@@ -432,16 +419,11 @@ class IntegrationRecoveryDesk:
         # A copied index can reference staged blobs no commit retains. Pack those
         # objects as well, so garbage collection cannot make the snapshot useless.
         objects = worktrees.require(
-            LaunchRequest(
-                arguments=[
-                    "git",
-                    "ls-files",
-                    "--sparse",
-                    '--format={"mode":"%(objectmode)","object_id":"%(objectname)"}',
-                ],
-                cwd=lease.root,
-            ),
+            lease.root,
             "cannot enumerate staged integration objects",
+            "ls-files",
+            "--sparse",
+            '--format={"mode":"%(objectmode)","object_id":"%(objectname)"}',
         ).stdout
         retained = [
             entry.object_id
@@ -462,11 +444,4 @@ class IntegrationRecoveryDesk:
     def admin_path(
         self, lease: WritableRootLease, worktrees: WorktreeOrchestrator
     ) -> Path:
-        return Path(
-            worktrees.require(
-                LaunchRequest(
-                    arguments=["git", "rev-parse", "--absolute-git-dir"], cwd=lease.root
-                ),
-                "cannot locate the integration index",
-            ).stdout.strip()
-        )
+        return worktrees.repository(lease.root).git_dir()

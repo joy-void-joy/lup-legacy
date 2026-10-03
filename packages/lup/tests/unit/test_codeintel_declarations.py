@@ -37,7 +37,7 @@ def test_a_column_on_the_name_is_answered(tmp_path: Path) -> None:
 
 
 def test_the_default_column_on_an_indented_line_is_refused(tmp_path: Path) -> None:
-    """The mistake the default invites, and the one that read as an answer.
+    """The mistake the default invites, and the one that would read as an answer.
 
     Column zero is the first character of the line, which is indentation for
     everything inside a block. Answered emptily, that reads as a symbol
@@ -69,8 +69,8 @@ def test_a_field_no_position_carries_is_refused(tmp_path: Path) -> None:
     """A dropped argument is a question answered about somewhere else.
 
     `symbol` is the plausible spelling for what this input calls `column`,
-    and ignoring it left the default column standing while the caller
-    believed they had named the symbol.
+    and ignoring it would leave the default column standing while the caller
+    believes they named the symbol.
     """
     with pytest.raises(ValidationError):
         PositionInput.model_validate(

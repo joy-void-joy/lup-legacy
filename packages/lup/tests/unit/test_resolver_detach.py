@@ -4,11 +4,11 @@ from lup.devtools.harness.resolve import forwardable_arguments
 
 
 def test_every_flag_but_detach_reaches_the_detached_run() -> None:
-    """Re-listing the flags is what lost them; deriving them cannot.
+    """Re-listing the flags loses them; deriving them cannot.
 
-    `--adopt-config` was the reported casualty — a moved run could not be
-    resumed detached at all — but the rebuild forwarded only adapter, run id
-    and answers, so `--no-issues`, `--admit*` and `--wait` went with it.
+    A rebuild forwarding only adapter, run id and answers drops
+    `--adopt-config` — so a moved run cannot be resumed detached at all — and
+    `--no-issues`, `--admit*` and `--wait` with it.
     """
     forwarded = forwardable_arguments(
         [

@@ -14,6 +14,7 @@ from lup.devtools.dashboard.reviews import (
     ReviewRemarkRequest,
     ReviewSnapshot,
 )
+from lup.devtools.dashboard.keys import KeyBindings, KeymapCatalog, KeyTry
 from lup.devtools.dashboard.live import MessagePage
 from lup.devtools.dashboard.supervision import supervision_models
 from lup.devtools.dashboard.panes import SetupPane
@@ -71,12 +72,16 @@ DASHBOARD = Surface(
         ReviewRemarkRequest,
         MessagePage,
         SetupPane,
+        KeymapCatalog,
+        KeyTry,
+        KeyBindings,
         *supervision_models(),
     ],
 )
 """The operator's dashboard: the live stream, parked reviews, captured changes, exact
-decisions, an older page of a repository's messages, setup panes, and every write and
-read the operator supervises agents with."""
+decisions, an older page of a repository's messages, setup panes, the keymap with a
+person's keys tried over it, and every write and read the operator supervises agents
+with."""
 
 
 # lup: ignore[library-default] — the surfaces this library authors, so the

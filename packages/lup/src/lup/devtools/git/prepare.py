@@ -6,6 +6,7 @@ from pathlib import Path
 import sh
 from pydantic import BaseModel
 
+from lup.execution.git import Repository
 from lup.devtools.dev.worktree import OWNERSHIP_MERGE_DRIVER
 from lup.devtools.utils import decode_stderr
 from lup.execution.shell import git
@@ -29,12 +30,13 @@ def prepare(base: str, root: Path, regenerate: Callable[[], None]) -> PreparedBr
     """
     if git.lines("-C", str(root), "status", "--porcelain"):
         raise RuntimeError("Commit pending changes before preparing the PR branch.")
-    branch = git.out("-C", str(root), "branch", "--show-current")
+    repository = Repository(root)
+    branch = repository.branch()
     if not branch:
         raise RuntimeError("Preparing a PR requires an attached feature branch.")
-    base_commit = git.out(
-        "-C", str(root), "rev-parse", "--verify", f"{base}^{{commit}}"
-    )
+    base_commit = repository.resolves(base)
+    if base_commit is None:
+        raise RuntimeError(f"{base} names no commit to prepare the PR branch against.")
     try:
         git(
             "-C",
@@ -52,7 +54,7 @@ def prepare(base: str, root: Path, regenerate: Callable[[], None]) -> PreparedBr
         # resolve the files, or fix why git refused — so a refusal saying only
         # "needs repair" sends a reader to look for conflicts that a failed
         # merge did not leave. What git printed is the half that tells them
-        # apart, and it read as an empty working tree until it was relayed.
+        # apart, and without it the failure reads as an empty working tree.
         spoken = decode_stderr(error).strip()
         raise RuntimeError(
             "Base merge needs repair. Run `git conflict status --json` through "
@@ -61,9 +63,7 @@ def prepare(base: str, root: Path, regenerate: Callable[[], None]) -> PreparedBr
             + (f"\ngit said: {spoken}" if spoken else "")
         ) from error
     regenerate()
-    merging = (
-        Path(git.out("-C", str(root), "rev-parse", "--absolute-git-dir")) / "MERGE_HEAD"
-    ).is_file()
+    merging = repository.merging() is not None
     committed = merging or bool(git.lines("-C", str(root), "status", "--porcelain"))
     if committed:
         git("-C", str(root), "add", "-A")

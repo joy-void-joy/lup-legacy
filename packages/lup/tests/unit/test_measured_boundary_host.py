@@ -1,8 +1,8 @@
 """What a session may believe about its own boundary, read inside the dispatcher.
 
-The half that closes the gap the whole layer is named for. `contained` used to
-read `LUP_CONTAINED`, a constant an image bakes — and a constant answers yes for
-any container built from that image, for a bare `run` holding none of the lease,
+The half the whole layer is named for. `contained` is not read off a constant
+an image bakes, such as `LUP_CONTAINED` — a constant answers yes for any
+container built from that image, for a bare `run` holding none of the lease,
 and for an uncontained session whose launcher forwarded a variable the operator
 happened to export. Each of those is a session reporting a boundary nothing put
 under it.
@@ -213,8 +213,8 @@ def test_a_grant_declared_from_a_home_is_read_in_the_home_reading_it(
 
     The declared sandbox grants join the lease spelled as they were declared,
     because they answer for whichever home reads them. Read without expanding,
-    `~` named a directory called `~` under the working directory, and the
-    toolchain cache every `uv` command writes was refused as outside the
+    `~` would name a directory called `~` under the working directory, and the
+    toolchain cache every `uv` command writes would be refused as outside the
     boundary it was granted into.
     """
     home = tmp_path / "home"
@@ -280,7 +280,7 @@ def test_a_directory_is_held_only_where_it_is_itself_a_read_only_mount(
 def test_a_ledger_claiming_a_container_nothing_holds_loses_that_claim(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The forgery this closes: a script on the host writing its own ledger.
+    """A script on the host writing its own ledger cannot claim a container.
 
     The directory is writable wherever no container holds it, so a ledger
     read through no read-only mount says what whoever wrote it said. Its

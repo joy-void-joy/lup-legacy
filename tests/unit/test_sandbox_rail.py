@@ -130,7 +130,7 @@ def test_no_path_is_leased_writable_and_read_only_at_once(
 def test_a_checkout_inside_the_shared_directory_is_not_bound_a_second_time(
     tmp_path: Path,
 ) -> None:
-    """The mount that outlived the worktree it held, and the reason it did.
+    """A mount that would outlive the worktree it holds, and the reason it would.
 
     Where a bare repository keeps its checkouts beneath itself, the shared
     directory's own mount already reaches every one of them at the same path
@@ -138,8 +138,7 @@ def test_a_checkout_inside_the_shared_directory_is_not_bound_a_second_time(
     observe and costs what no session can undo: a mount point is not
     removable from inside its own namespace, so `git worktree remove` empties
     the checkout, `rmdir` fails with a busy device, and the directory outlives
-    the branch. They accumulated one per landed branch until nobody could say
-    which of sixty were live.
+    the branch -- one per landed branch, until nobody can say which are live.
     """
     bare = tmp_path / "repo.git"
     source = tmp_path / "source"
@@ -228,16 +227,16 @@ def test_a_commit_survives_everything_the_lease_leaves_unwritable(
     """The claim above, run rather than asserted about a list of names.
 
     A lease that names the paths a commit needs can always miss one, and
-    `logs` is the one it missed: a ref update appends to
+    `logs` is the one easiest to miss: a ref update appends to
     `logs/refs/heads/<branch>` wherever that file already exists, git fails
-    the whole update when it cannot, and a contained session could not commit
+    the whole update when it cannot, and a contained session cannot commit
     at all -- with the reflog this module's docstring rests its case on never
-    written either. Comparing names could not catch that, because the name
+    written either. Comparing names cannot catch that, because the name
     nobody thought of is the one missing from both sides.
 
     Withholding write permission from exactly what the lease calls read-only
     is the cheapest faithful model of the mount table, and it is the only
-    shape of test that could have caught a path nobody thought to name.
+    shape of test that catches a path nobody thought to name.
 
     For a withheld *file* the model is only half of one, which is why the
     contents are compared as well. A read-only bind refuses the rename git
@@ -253,8 +252,7 @@ def test_a_commit_survives_everything_the_lease_leaves_unwritable(
     # Every file too, not only the directories holding them. A directory with
     # its write bit off still lets an existing file inside it be rewritten,
     # which a read-only mount does not -- and modelling only the directories
-    # is what let a first version of this test pass against the very bug it
-    # was written for.
+    # would let this test pass against the very bug it is for.
     withheld = [
         found
         for found in [layout.common, *layout.common.rglob("*")]
@@ -335,7 +333,7 @@ def test_a_sibling_worktree_can_be_removed_under_the_lease(
     entry, so a lease holding either read-only refuses it -- and refuses it
     with an errno about a filesystem, which reads as a broken disk rather
     than as confinement. A sweep that lands every branch then cannot clear
-    any of them, which is where this was found.
+    any of them.
 
     Run rather than asserted about names, for the reason the two above are.
     """
@@ -445,12 +443,12 @@ def test_paths_are_mounted_at_the_names_the_host_calls_them(
 def test_a_human_owned_path_stays_writable_and_the_policy_asks(
     repository: Path,
 ) -> None:
-    """The mount that held `README.md` refused every fast-forward touching it.
+    """A mount holding `README.md` would refuse every fast-forward touching it.
 
     Git replaces a file by unlinking it, which a mount point refuses, so the
-    merge that landed a branch was the user's from a host terminal each time.
-    What the mount protected, the policy protects by asking, which a mount
-    cannot do.
+    merge landing a branch would be the user's from a host terminal each
+    time. What a mount would protect, the policy protects by asking, which a
+    mount cannot do.
     """
     readme = repository / "mine" / "README.md"
     readme.write_text("x", encoding="utf-8")

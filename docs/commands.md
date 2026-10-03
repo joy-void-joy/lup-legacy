@@ -52,6 +52,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dashboard status` | Say whether the dashboard runs, where, for how many sessions, and what waits. |
 | `dashboard line` | Print what a session&#x27;s status line shows: which session, what waits on you, and the dashboard. |
 | `dashboard reopen` | Whether a review parking while no tab is open reopens the page in the browser. |
+| `dashboard keys` | Print the dashboard&#x27;s keys as your `[dashboard.keys]` leaves them, and every entry it refused. |
 | `dashboard restart` | Restart the running dashboard onto its checkout&#x27;s code, keeping its address. |
 | `dashboard stop` | Stop the running dashboard; it stays stopped until a restart or a launch. |
 
@@ -206,7 +207,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `harness profile add` | Register a runtime configuration home under a name, in this checkout. |
 | `harness profile use` | Select the profile a launch uses when none is named, in this checkout. |
 | `harness profile remove` | Forget a profile in this checkout, leaving its configuration home on disk. |
-| `harness profile migrate` | Move this checkout&#x27;s profiles, and the old ~/.lup registry&#x27;s, to global. |
+| `harness profile migrate` | Move this checkout&#x27;s profiles, and the ~/.lup registry&#x27;s, to global. |
 | `harness codex-plugin install` | Install the declared plugin and verify native discovery in the selected home. |
 | `harness codex-home migrate` | Move each worktree&#x27;s Codex home out of the checkout, into lup&#x27;s state. |
 
@@ -296,7 +297,7 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `setup profile add` | Register a runtime configuration home under a name, in this checkout. |
 | `setup profile use` | Select the profile a launch uses when none is named, in this checkout. |
 | `setup profile remove` | Forget a profile in this checkout, leaving its configuration home on disk. |
-| `setup profile migrate` | Move this checkout&#x27;s profiles, and the old ~/.lup registry&#x27;s, to global. |
+| `setup profile migrate` | Move this checkout&#x27;s profiles, and the ~/.lup registry&#x27;s, to global. |
 
 ## `sync`
 

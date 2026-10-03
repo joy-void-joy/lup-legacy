@@ -170,12 +170,12 @@ class ResolveRun:
     ) -> None:
         """Persist one concern's terminal transition and its outcome together.
 
-        Progress and outcome are two records of the same fact, and writing
-        them apart let an interruption land between: the run then claimed a
-        success it could not integrate, because every surface that counts
-        progress read the higher number while the batch that would have
-        gathered the outcome never returned. Recorded under one lock, the
-        two cannot disagree.
+        Progress and outcome are two records of the same fact, and written
+        apart they let an interruption land between: the run would then claim
+        a success it cannot integrate, because every surface that counts
+        progress reads the higher number while the batch that would gather
+        the outcome never returns. Recorded under one lock, the two cannot
+        disagree.
 
         Replace-or-append by concern id, because a resumed run re-executes a
         concern whose outcome was already written and must overwrite that

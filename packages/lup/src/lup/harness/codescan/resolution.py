@@ -32,7 +32,7 @@ refuted — a rule about mappings has nothing to say about a value nobody can
 show is one, and denying there is denying on a guess with a directive as the
 only way past. The two carry different evidence, so a reader can tell which
 happened. Without an oracle nothing resolves, nothing is refuted, and every
-broad verdict stands exactly as it did before the checker existed.
+broad verdict stands as the matcher alone gives it.
 """
 
 from pathlib import Path

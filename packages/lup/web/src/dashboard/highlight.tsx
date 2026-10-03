@@ -93,7 +93,33 @@ export function highlightedLines(text: string, language: string | null): Token[]
     }
   }
   walk(tree.children, "");
-  return lines;
+  return lines.map(marked);
+}
+
+/** A `# lup:` marker's head, as the repository spells each kind. */
+const MARKER = /lup:\s*(defer(?:\[[^\]]*\])?:|solved:|template:|ignore\[[^\]]*\]|)/;
+
+function markerKind(head: string): string {
+  if (head.startsWith("defer")) return "defer";
+  if (head.startsWith("solved")) return "solved";
+  if (head.startsWith("template")) return "template";
+  if (head.startsWith("ignore")) return "ignore";
+  return "note";
+}
+
+/** One line's tokens with each `# lup:` marker inside a comment drawn in its kind's colour. */
+function marked(tokens: Token[]): Token[] {
+  return tokens.flatMap((token) => {
+    if (!token.classes.includes("hljs-comment")) return [token];
+    const found = MARKER.exec(token.text);
+    if (found === null) return [token];
+    const at = found.index;
+    return [
+      { text: token.text.slice(0, at), classes: token.classes },
+      { text: found[0], classes: `${token.classes} mk mk-${markerKind(found[1] ?? "")}` },
+      { text: token.text.slice(at + found[0].length), classes: token.classes },
+    ].filter((piece) => piece.text !== "");
+  });
 }
 
 /** One line's tokens as elements, or the raw text where no grammar read it. */

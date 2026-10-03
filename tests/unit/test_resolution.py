@@ -126,10 +126,9 @@ def test_a_typed_dict_receiver_is_refuted_as_the_modelling_it_is() -> None:
 
     The rule asks for exactly this modelling, so a site that reached it has
     already done what the denial wanted. It is refuted on its own class
-    rather than on a member the checker could not find, which is what the
-    reading before this called it: a `TypedDict`'s `get` is synthesized and
-    declared nowhere, so the finding was dropped for a reason that had
-    nothing to do with the rule.
+    rather than on a member the checker could not find: a `TypedDict`'s `get`
+    is synthesized and declared nowhere, so refuted on the member the finding
+    would be dropped for a reason that has nothing to do with the rule.
     """
     text = "name = row.get('name')\n"
     refuted = refute([source(text)], TableOracle({1: ROW}), PYTHON_ANTI_PATTERNS)
@@ -212,11 +211,10 @@ def test_a_declaration_that_is_no_class_puts_nothing_in_the_family() -> None:
 def test_an_unresolved_receiver_is_refuted_rather_than_denied() -> None:
     """Nothing shown means nothing established, which is not a mapping.
 
-    The reading this replaced denied here: no declaration read as "not
-    refuted", and "not refuted" read as "confirmed mapping". An unannotated
-    parameter, a `json.loads` result, and an object out of a package with no
-    stubs were all refused on that, with a typed directive the only way past
-    each.
+    Denying here would read no declaration as "not refuted", and "not
+    refuted" as "confirmed mapping" -- refusing an unannotated parameter, a
+    `json.loads` result, and an object out of a package with no stubs, with a
+    typed directive the only way past each.
     """
     text = "value = whatever.get('name')\n"
     refuted = refute([source(text)], TableOracle({}), PYTHON_ANTI_PATTERNS)
@@ -230,12 +228,12 @@ def test_an_unresolved_receiver_is_refuted_rather_than_denied() -> None:
 def test_an_unresolved_receiver_leaves_its_directive_standing() -> None:
     """Refuted without being settled: no directive demanded, none called dead.
 
-    The #459 loop in one file. A hook whose checker typed nothing for the
-    receiver reported the marker spurious and deleted it; the sweep, resolving
-    the receiver into the family, reported the line missing the marker; a
-    session restoring it met the hook again. What a checker failed to learn
-    is no evidence against the marker, so the unsettled refutation drops the
-    demand and leaves the directive exactly as written.
+    The loop this prevents, in one file: a hook whose checker types nothing
+    for the receiver reports the marker spurious and deletes it; the sweep,
+    resolving the receiver into the family, reports the line missing the
+    marker; a session restoring it meets the hook again. What a checker
+    failed to learn is no evidence against the marker, so the unsettled
+    refutation drops the demand and leaves the directive exactly as written.
     """
     marked = 'value = whatever.get("name")  # lup: ignore[dict-get] — open map\n'
     bare = 'value = whatever.get("name")\n'
@@ -430,6 +428,7 @@ def test_the_hook_row_declares_that_its_verdict_needs_a_declaration() -> None:
             matcher="dict_get_sites",
             strength="soft",
             resolution="required",
+            roles=["production"],
         )
     ]
 
@@ -466,11 +465,11 @@ def test_the_gate_asks_where_nothing_resolved_the_receiver() -> None:
 
 
 def test_a_resolved_receiver_is_admitted_without_a_directive() -> None:
-    """The answer the audit already gives, reaching the gate that refused it.
+    """The answer the audit gives, reaching the gate.
 
     Refuted here means the same edit needs no marker at all — which is what
-    the rule's own text tells an author to write, and what the gate could not
-    admit while it had no way to know.
+    the rule's own text tells an author to write, and what a gate with no
+    way to know could not admit.
     """
     rows = bundled_antipattern_rows()[".py"]
 

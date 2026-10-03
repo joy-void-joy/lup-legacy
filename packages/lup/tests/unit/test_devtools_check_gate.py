@@ -29,7 +29,7 @@ from lup.devtools.dev.check import (
     named_gate_base,
     spent,
 )
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 
 def test_a_pending_move_names_the_command_and_counts_the_branches() -> None:
@@ -45,9 +45,10 @@ def test_a_pending_move_names_the_command_and_counts_the_branches() -> None:
 
 
 def test_a_pending_move_advises_rather_than_gates() -> None:
-    # Reads fall back to the old keys, so nothing here is a defect — and the
-    # host is where the write happens, which no session standing in a
-    # worktree can reach. A gating row would be red until somebody left.
+    # A branch whose base sits only in the config detects one from the
+    # topology, so nothing here is a defect — and the host is where the write
+    # happens, which no session standing in a worktree can reach. A gating row
+    # would be red until somebody left.
     [report] = branch_record_reports(["topic"])
 
     assert not report.counted

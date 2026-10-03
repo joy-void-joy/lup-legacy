@@ -12,7 +12,7 @@ reads them at the path the host has them and can write none.
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from lup.harness.environment import inside_a_container
+from lup.harness.environment import Placement
 from lup.launch.companions import (
     CompanionLaunch,
     CompanionName,
@@ -45,7 +45,7 @@ class ReviewAnswers(HostCompanion, frozen=True):
 
     @contextmanager
     def held(self, launch: CompanionLaunch) -> Iterator[Contribution]:
-        if inside_a_container(launch.environment):
+        if Placement.of(launch.environment).contained:
             handed = launch.environment
             yield Contribution(
                 environment=(

@@ -410,7 +410,7 @@ class LineFacts(BaseModel, frozen=True):
         """What the pulse says of the session the runtime's input names.
 
         A session the pulse does not list — one the dashboard has not seen
-        yet, or any session in a pulse from before it listed them — is still
+        yet, or any session in a pulse whose dashboard lists none — is still
         placed, by the directory the runtime says it was launched in, and
         named by the repository whose directory holds that.
         """

@@ -3,14 +3,14 @@
 The answer has to be "whenever", and the failure it guards against is a hang
 rather than a wrong value. A resilient turn's event stream spans its cycles:
 each correction switches the stream to a fresh native stream, and the last one
-closes it. Those cycles used to run inside whichever caller awaited the result,
-so a caller who drained the events first — the shape anyone writes who wants to
-print a turn as it happens — waited on a close that only the unasked result
-would have caused, and waited forever.
+closes it. Those cycles run in the turn itself, not inside whichever caller
+awaits the result: run there, a caller who drains the events first — the shape
+anyone writes who wants to print a turn as it happens — would wait on a close
+that only the unasked result causes, and wait forever.
 
-That deadlock was reachable from the public surface with nothing in the type or
-the docstring warning of it: session layers with a `recovery` or a
-`correction` were enough. Each case here runs under a timeout, because a suite
+That deadlock would be reachable from the public surface with nothing in the
+type or the docstring warning of it: session layers with a `recovery` or a
+`correction` are enough. Each case here runs under a timeout, because a suite
 that hangs reports nothing where one that fails names the regression.
 """
 
@@ -170,9 +170,9 @@ async def spoken(events: EventStream | None) -> list[str]:
 async def test_draining_the_events_first_still_reaches_the_result() -> None:
     """The deadlock itself: a caller who watches before it asks.
 
-    Reaching the assertions at all is the property. Before the turn drove
-    itself, the drain below never returned, because the close it waits for
-    happened only inside the result nobody had asked for yet.
+    Reaching the assertions at all is the property. Were the turn not to
+    drive itself, the drain below would never return, because the close it
+    waits for would happen only inside the result nobody has asked for yet.
     """
     factory, _ = corrective_factory(
         [([said("preamble")], None), ([said("done")], Answer(value=3))]

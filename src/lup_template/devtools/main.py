@@ -40,7 +40,6 @@ import typer
 import lup_template.agent.prompts as prompts
 from lup.providers.claude.usage.reader import claude_usage_entry
 from lup.providers.codex.usage.reader import codex_usage_entry
-from lup.devtools.dev import conflicts
 from lup.devtools.dev.commands import CommandSurface, write_command_reference
 from lup.devtools.feedback.models import AgentPrompt
 from lup.devtools.harness.resolve import ConfiguredModel
@@ -48,7 +47,6 @@ from lup.devtools.roster import DevtoolsDeclarations
 from lup_template.kinds import EDGE_KINDS, LAYOUT, NODE_KINDS
 from lup_template.writeups import WRITEUPS
 from lup.devtools.subapps import SubApp, compose
-from lup.workspace.paths import find_nearest_pyproject
 from lup_template.agent.config import engine_for_settings, settings
 from lup_template.devtools.agent import app as agent_app
 import lup_template.devtools.dev.app as dev
@@ -167,20 +165,6 @@ a CLI missing a command the docs promise.
 """
 
 
-def report_a_conflicted_manifest() -> None:
-    """Say what to run when `uv` is about to stop being able to start.
-
-    Every other command here is documented as ``uv run lup-devtools ...``, and
-    a conflicted ``pyproject.toml`` turns all of them into a parse error from
-    a tool that never reached this program. This runs on whichever invocation
-    does get through, so the diagnosis reaches the session before the failure
-    does rather than after.
-    """
-    root = find_nearest_pyproject()
-    if root is not None and conflicts.manifest_conflicted(root):
-        typer.echo(conflicts.conflicted_manifest_notice(root), err=True)
-
-
 def cli(composed: Composition = COMPOSITION) -> typer.Typer:
     """The CLI a project holding *composed* serves: every sub-app it owns, wired.
 
@@ -212,7 +196,6 @@ def cli(composed: Composition = COMPOSITION) -> typer.Typer:
         no_args_is_help=True,
     )
     compose(built, list(roster.values()))
-    built.callback()(report_a_conflicted_manifest)
     return built
 
 

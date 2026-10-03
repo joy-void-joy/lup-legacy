@@ -1,8 +1,8 @@
 """Tests for the usage display, and for both readers that fill it.
 
 The daily breakdown is fed by whatever daily figures a reader supplies, so it
-must render even when the live windows expose no weekly bucket — the bug that
-once hid it in the direct (non-watch) path. The ``--json`` snapshot must
+must render even when the live windows expose no weekly bucket, in the direct
+(non-watch) path as much as under watch. The ``--json`` snapshot must
 surface the same windows and trailing-week tokens as machine-readable counts.
 
 Codex is read the same way through its own account calls, which is the point:

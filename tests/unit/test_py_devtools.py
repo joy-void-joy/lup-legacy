@@ -114,3 +114,22 @@ def test_search_command_includes_project_source(
     assert result.exit_code == 0
     assert "demo.client.repository_only_symbol" in result.output
     assert "matches in project source and 0 packages" in result.output
+
+
+class TestDefinedIn:
+    def test_imported_class_excluded(self) -> None:
+        from lup.devtools.py import common, info
+
+        # common.py imports Path from pathlib; it is not defined there.
+        assert not info.defined_in(common, "Path")
+
+    def test_imported_module_excluded(self) -> None:
+        from lup.devtools.py import common, info
+
+        # common.py imports the importlib module; it is not defined there.
+        assert not info.defined_in(common, "importlib")
+
+    def test_locally_defined_function_included(self) -> None:
+        from lup.devtools.py import common, info
+
+        assert info.defined_in(common, "resolve_object")

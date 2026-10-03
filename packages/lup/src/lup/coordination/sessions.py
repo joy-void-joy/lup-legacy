@@ -98,9 +98,9 @@ class ActorRecord(BaseModel, frozen=True):
     Keyed by type rather than one per actor, because one actor is legitimately
     asked for more than one: a merger drives a whole join and reports a
     `JoinReport`, then adjudicates the finished tree and reports a
-    `MergeReport`. A single digest read that second ask as the first schema
-    having changed, and refused a conversation whose history is exactly what
-    the second ask needs.
+    `MergeReport`. A single digest would read that second ask as the first
+    schema having changed, and refuse a conversation whose history is exactly
+    what the second ask needs.
     """
 
 
@@ -147,12 +147,11 @@ class ActorMailbox:
     """One conversation's mail, delivered once by whichever path reaches it.
 
     Two paths put a message in front of an actor — the hook that interrupts
-    a live turn, and the collection that heads the next one — and they each
-    held their own in-memory position over the same stream. Two positions
-    over one stream can only agree by luck: both started at whatever the
-    head was when they were constructed, so a message posted while a turn
-    was in flight was already behind both of them, and the run reported it
-    sent.
+    a live turn, and the collection that heads the next one. Two in-memory
+    positions over one stream, one per path, could only agree by luck: each
+    would start at whatever the head is when it is constructed, so a message
+    posted while a turn is in flight would already be behind both of them,
+    and reported sent without ever being read.
 
     One mailbox per conversation, holding the round it is on, is what lets the
     hook record a delivery against the actor that actually received it while
@@ -450,7 +449,7 @@ class ActorSession:
         rather than suspect: the same merger reports a join and then, once the
         tree is whole, adjudicates it. What is worth refusing is a type this
         actor has answered before whose shape has since moved, which is the
-        park-across-a-code-change this guard was built for.
+        park-across-a-code-change this guard exists for.
         """
         digest = schema_digest(output)
         if digest is None:

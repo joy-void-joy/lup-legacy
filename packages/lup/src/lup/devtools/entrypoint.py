@@ -70,7 +70,6 @@ def conflict_application() -> typer.Typer:
     """Build only the library modules needed to repair a conflicted tree."""
     from lup.devtools.dev import conflicts
     from lup.devtools.dev.conflict_app import create_conflict_app
-    from lup.workspace.paths import find_nearest_pyproject
 
     root_app = typer.Typer(
         help="lup-devtools: conflict-safe repair commands",
@@ -88,13 +87,7 @@ def conflict_application() -> typer.Typer:
         name="git",
         help="Conflict-safe git repair",
     )
-
-    @root_app.callback()
-    def report_conflicted_manifest() -> None:
-        """Name the launcher that remains available when the manifest is broken."""
-        project_root = find_nearest_pyproject()
-        if project_root is not None and conflicts.manifest_conflicted(project_root):
-            typer.echo(conflicts.conflicted_manifest_notice(project_root), err=True)
+    root_app.callback()(conflicts.report_conflicted_manifest)
 
     return root_app
 

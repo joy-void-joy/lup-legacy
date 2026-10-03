@@ -19,8 +19,8 @@ exist for anybody outside one layout.
 
 So the project answers instead, and is asked each time rather than described
 once. Where its environment is and what is installed there are both facts on
-disk, and reading them costs a `stat` — which is less than the guidance it
-replaces cost anybody who did not match the layout it assumed.
+disk, and reading them costs a `stat` — which is less than a written-in
+path costs anybody outside the layout it assumes.
 """
 
 import os

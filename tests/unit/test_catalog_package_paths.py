@@ -2,10 +2,10 @@
 
 `dev init rename-package` rewrites imports and dotted module paths, never a
 path spelled in a string — so a seam declared at
-`Path("src/lup_template/...")` went on naming the old package after the
-rename, and `dev seams` then read a file that was gone. Spelled through the
-layout, the paths are derived from where the package sits and a rename has
-nothing to rewrite.
+`Path("src/lup_template/...")` would go on naming the package a rename left,
+and `dev seams` would read a file that is gone. Spelled through the layout,
+the paths are derived from where the package sits and a rename has nothing to
+rewrite.
 """
 
 import pytest

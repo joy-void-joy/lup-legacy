@@ -17,10 +17,10 @@ subagent's tool events carry its ``agent_id`` — its own thread's id — and
 neither.
 
 How Codex applies the rewrite, measured on 0.158.0: an ``updatedInput``
-beside ``permissionDecision: "allow"`` reached the server as the call's whole
+beside ``permissionDecision: "allow"`` reaches the server as the call's whole
 arguments, from the session and from a subagent alike, even for a tool whose
 schema sets ``additionalProperties: false``; the same rewrite with no decision
-was dropped, and the call ran as the model wrote it with nothing in the exec
+is dropped, and the call runs as the model wrote it with nothing in the exec
 stream, its stderr or the rollout saying so. So the two travel together. The
 ``allow`` settles nothing else: the coordination servers are declared with
 their tools approved already.
@@ -39,8 +39,7 @@ The same opening says which thread spawned this one, under
 where the session spawned it, which the event carries as ``session_id``, or
 the subagent that did, by the ``agent_id`` that subagent's own events carry.
 
-Every failure is silence: a call left unstamped acts as the session, which is
-what every call did before there was anything to stamp.
+Every failure is silence: a call left unstamped acts as the session.
 """
 
 import json

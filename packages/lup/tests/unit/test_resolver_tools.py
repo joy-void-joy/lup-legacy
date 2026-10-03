@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 from lup.tools.mcp import LupMcpTool, ToolError
 from lup.policy.identity import ConcernAllowance
 from lup.coordination.mailbox import AnswerDoor, RecordedAnswer
@@ -326,13 +326,13 @@ async def test_a_path_no_commit_holds_yet_is_still_seen(tmp_path: Path) -> None:
 
 
 async def test_both_directions_arrive_in_one_answer(tmp_path: Path) -> None:
-    """Reporting one at a time is what made the contract oscillate.
+    """Reporting one at a time makes the contract oscillate.
 
     A worker told only that it under-declared corrects by declaring the set
     it expected to touch, and hears about the over-declaration a round
-    later — each verdict correct, the pair of them a trap. One concern spent
-    every round it had crossing back and forth and was marked failed with
-    its six acceptance criteria never once evaluated.
+    later — each verdict correct, the pair of them a trap. A concern can
+    spend every round it has crossing back and forth and be marked failed
+    with its acceptance criteria never once evaluated.
     """
     root = lease_with(tmp_path, tracked="kept.py", edits={"added.py": "new\n"})
 

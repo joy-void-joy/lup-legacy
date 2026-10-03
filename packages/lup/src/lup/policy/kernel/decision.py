@@ -325,8 +325,8 @@ class KernelDecision:
     knows about that answer, and each is a separate axis because each has a
     different answerer: a checkpoint does not consent to a release, an
     approval does not build a host channel, and a rule id is not a review
-    purpose. Composing them into one enum is what made a verdict unreadable
-    at exactly the moment somebody needed to know why it happened.
+    purpose. Composing them into one enum would make a verdict unreadable
+    at exactly the moment somebody needs to know why it happened.
     """
 
     effect: DecisionEffect
@@ -910,8 +910,8 @@ def recovery_dischargeable(decision: KernelDecision) -> bool:
 
     Read over the contributions rather than the join, because the join
     reports the strongest effect and says nothing about how many reasons
-    reached it — which is how a recoverable deletion beside a full-file
-    rewrite would have discharged the rewrite. A question kept for a word
+    reached it — so read over the join, a recoverable deletion beside a
+    full-file rewrite would discharge the rewrite. A question kept for a word
     nobody could read is never retired, whatever loss it names.
     """
     asking = [part for part in contributions(decision) if part.effect == "ask"]

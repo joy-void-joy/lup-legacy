@@ -73,7 +73,7 @@ make costs latency and never the work.
 ## What not to do
 
 **Never create a tracking file.** A `TODO.md` or a backlog parks a decision
-where no workflow surfaces it again. That is what this replaces.
+where no workflow surfaces it again; this skill is where that work goes instead.
 
 **Do not delegate what you can finish now.** A task recorded instead of a
 change is a task somebody reads, decides is stale, and deletes.

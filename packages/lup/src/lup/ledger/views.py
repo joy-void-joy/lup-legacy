@@ -93,9 +93,8 @@ class ExportView(BaseModel, frozen=True):
     """Everything a standalone page needs, so it opens with no server behind it.
 
     The graph, every node's detail and the declared kinds, because a page
-    opened from a file cannot ask for more later — the worked example this
-    came from was an 18 MB single file for exactly this reason, and a memo
-    attachment that needed a server would not be one. Stamped with the moment
+    opened from a file cannot ask for more later, and a memo attachment that
+    needs a server is not one. Stamped with the moment
     it was taken, since what it shows is the log as it was then.
     """
 

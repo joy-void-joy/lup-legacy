@@ -31,12 +31,12 @@ appear on another project's roster.
 
 ## What a directory says about itself
 
-A roster, a message stream and a journal in one directory were a cohort by
-convention, which every reader had to know and a stranger could not read at
-all. `cohort.json` states it — which run, since when, and what for — and
+A roster, a message stream and a journal in one directory are a cohort only by
+convention, which every reader would have to know and a stranger could not
+read at all. `cohort.json` states it — which run, since when, and what for — and
 `cohorts_under` is what a peer that created nothing walks to find one. Nothing
-else moved into it: who is present is still the roster's fold and what is
-queued is still the mail's, because those move and this does not.
+else lives in it: who is present is the roster's fold and what is queued is
+the mail's, because those move and this does not.
 
 ## The person is a member
 
@@ -131,10 +131,10 @@ the same way. It is a full peer that cannot prove who started it.
 **A runtime started from a session's shell is somebody else.** Every process
 the launched runtime starts inherits those two variables — and so does a
 `claude -p`, a `codex exec` or a pipeline run from the session's shell, which
-then joined, described, departed and read mail as that session: its ending
-ended the session's row, its tool calls were handed the session's mail, and
-its prompts, from another transcript, read as the session's conversation
-rewound and cleared what the session said it was doing. The id was minted
+would otherwise join, describe, depart and read mail as that session: its
+ending would end the session's row, its tool calls would be handed the
+session's mail, and its prompts, from another transcript, would read as the
+session's conversation rewound and clear what it said it was doing. The id is minted
 for one runtime, and the row names the runtime it answers for, so each hook
 and tool server asks which runtime it serves — the process feeding its input
 — and a runtime that is neither the one the row names nor the one that

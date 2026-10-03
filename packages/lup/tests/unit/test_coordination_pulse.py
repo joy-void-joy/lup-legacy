@@ -740,10 +740,10 @@ async def test_a_runtime_carrying_another_session_s_id_never_answers_for_it(
     """A runtime started from a session's shell inherits its id, and can outlive it.
 
     Its tool server joins under that id like any other. Answering for the row
-    whenever the row stood, or putting a finished one back, kept a session the
-    person had stopped reading as running for as long as the other runtime
-    lived. It met the session alive, so it is somebody else for good — once
-    the session has stopped as much as before.
+    whenever the row stood, or putting a finished one back, would keep a
+    session the person had stopped reading as running for as long as the
+    other runtime lived. It met the session alive, so it is somebody else for
+    good — after the session stops as much as while it runs.
 
     Its runtime is one the session's did not start, as a spawned runtime is
     to the session's: the session's runtime is not beneath it, which is the

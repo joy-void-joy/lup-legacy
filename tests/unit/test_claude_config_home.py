@@ -572,7 +572,7 @@ def test_a_readable_document_is_no_fault(tmp_path: Path) -> None:
 def test_a_home_that_cannot_keep_a_session_environment_says_which_boundary(
     tmp_path: Path,
 ) -> None:
-    """The failure a run used to discover by losing Bash in every worker at once.
+    """Named up front, rather than found by losing Bash in every worker at once.
 
     A session keeps each shell call's environment under `session-env` and
     makes its own entry at startup, so a home that refuses a write there

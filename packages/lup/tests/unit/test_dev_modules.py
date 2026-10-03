@@ -2,7 +2,7 @@
 
 The table exists to show what a project decided about each module, and its
 first total is what that decision costs the always-loaded document. Summed
-from the modules as they declare themselves, it reported prose a project had
+from the modules as they declare themselves, it would report prose a project
 retired as still carried — every section of `core` gone from the document,
 and all of its bytes still on the row — while leaving out the sections the
 project wrote itself. These pin the table to what the composition renders,

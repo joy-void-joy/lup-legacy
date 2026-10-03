@@ -1,9 +1,9 @@
 """A word nobody can read is judged as the strictest command it could stand for.
 
 A verb or a flag built by an expansion -- `$OP`, a `$(...)` result, `set$X`,
-`--ret$X` -- names no row as it is spelled, and so reached whatever the words
-before it fell back to: a registry widening and an operator-only verb were
-allowed, and a guarded flag slipped past its guard. Each is judged now as
+`--ret$X` -- names no row as it is spelled, and so would reach whatever the
+words before it fall back to: a registry widening and an operator-only verb
+allowed, and a guarded flag slipping past its guard. So each is judged as
 every command it could stand for, and keeps the strictest of those verdicts,
 with a reason saying which word could not be read and what it could be.
 

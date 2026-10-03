@@ -2,7 +2,7 @@
 
 The index names one version as its latest, and where every version it holds
 is a pre-release that one is a release candidate. Reported as "released", it
-became the version a new project was told to pin — a candidate taken by
+would be the version a new project is told to pin — a candidate taken by
 accident, which is the one thing publishing it as a pre-release is for
 preventing. A candidate is reported as what it is, with the opt-in beside it.
 """

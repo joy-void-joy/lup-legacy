@@ -95,7 +95,7 @@ def test_the_reader_and_the_typed_writer_meet_in_one_mailbox(tmp_path: Path) -> 
 
     The typed sender and the bare reader agree because they call the same
     shipped module, so there is no pair of spellings left to keep in step by
-    hand — which is what a test used to stand in for.
+    hand — which a test would otherwise have to stand in for.
     """
     ActorMail(tmp_path).send(member_ref("abc123"), "from the typed half")
 

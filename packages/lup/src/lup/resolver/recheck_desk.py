@@ -2,9 +2,9 @@
 
 Every other phase of a run skips work it has already done — the worker phase
 from ``state.outcomes``, the join sequence from its landing checkpoint — and
-the re-check needs its own record. Without one a resume re-examines all of it:
-one measured run spent 47 reviewer turns on 21 concerns across a handful of
-interruptions, and re-running a reviewer does not only cost a turn, it can
+the re-check needs its own record. Without one a resume re-examines all of it —
+measured, a run with a handful of interruptions spends 47 reviewer turns on 21
+concerns — and re-running a reviewer does not only cost a turn, it can
 return a different verdict for the same unchanged tree and wedge the run on a
 question already asked another way.
 
@@ -43,10 +43,9 @@ class RecheckRecord(BaseModel, frozen=True):
     """When the re-check finished, so the phase watching this can say a rate.
 
     Left empty by whoever builds one and filled in by :meth:`RecheckDesk.record`,
-    which is the moment it becomes true. Defaulted rather than required for the
-    same reason it survives a read: a run already part way through this phase
-    wrote its earlier records before the field existed, and those are exactly
-    the records a resume must still be able to reuse.
+    which is the moment it becomes true. A record carrying none is still
+    reused by a resume: the stamp feeds a rate, and the verdict stands
+    without it.
     """
 
 

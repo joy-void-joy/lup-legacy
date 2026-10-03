@@ -31,6 +31,7 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, ValidationError
 
 from lup.devtools.dashboard.companion import KnownRepository
+from lup.devtools.dashboard.keys import KeyBindings
 from lup.devtools.dashboard.live import (
     Feature,
     LiveMessage,
@@ -96,6 +97,8 @@ class SnapshotEvent(StreamEvent, frozen=True):
 
     served: list[Feature] = []
     """What supervision this server serves, as the page names each piece."""
+    keys: KeyBindings = KeyBindings()
+    """The person's own keys in effect, and what their table refused."""
 
     def moves(self, state: "LiveState") -> None:
         """Nothing: a snapshot is read off the state, never applied to it."""
@@ -128,6 +131,16 @@ class TranscriptEvent(StreamEvent, frozen=True):
     def moves(self, state: "LiveState") -> None:
         """Nothing: a transcript is followed, never held."""
         del state
+
+
+class KeysEvent(StreamEvent, frozen=True):
+    """The person's ``[dashboard.keys]`` changed: the keys in effect, and what it refused."""
+
+    type: Literal["keys"] = "keys"
+    keys: KeyBindings
+
+    def moves(self, state: "LiveState") -> None:
+        state.keys = self.keys
 
 
 class ServiceEvent(StreamEvent, frozen=True):
@@ -243,7 +256,8 @@ type DashboardEvent = Annotated[
     | ReviewScopeEvent
     | ServiceEvent
     | UserEvent
-    | TranscriptEvent,
+    | TranscriptEvent
+    | KeysEvent,
     Field(discriminator="type"),
 ]
 """Everything one frame of the stream can carry, told apart by its ``type``."""
@@ -344,6 +358,7 @@ class Observation(BaseModel, frozen=True):
     users: list[UserRow] = []
     transcripts: list[TranscriptEvent] = []
     """What each followed transcript recorded since the last look."""
+    keys: KeyBindings = KeyBindings()
 
 
 class LiveState:
@@ -366,6 +381,7 @@ class LiveState:
         self.errors: list[ReviewError] = []
         self.history = 0
         self.code = RunningCode()
+        self.keys = KeyBindings()
 
     def observed(self, seen: Observation) -> list[DashboardEvent]:
         """Every difference between what the sources say and this state, applied to it."""
@@ -401,6 +417,7 @@ class LiveState:
                 if self.users.get(each.key) != each
             ],
             *seen.transcripts,
+            *([KeysEvent(keys=seen.keys)] if seen.keys != self.keys else []),
         ]
         for event in events:
             event.moves(self)
@@ -473,6 +490,7 @@ class LiveState:
             code=self.code,
             users=list(self.users.values()),
             served=list(self.served),
+            keys=self.keys,
         )
 
 
@@ -484,7 +502,8 @@ class LiveFeed:
     mail record — and every ``review_every`` looks at the review queues,
     expiring those no session waits on every ``sweep_every``. What differs is
     numbered and kept for replay; the last ``kept`` of them are replayable.
-    ``code`` says which code the dashboard runs, where it knows. A
+    ``code`` says which code the dashboard runs, where it knows, and
+    ``keys`` the person's own keys, as their config says on each look. A
     transcript a tab follows is read on every look for as long as some tab
     renews it within ``lease`` seconds.
     """
@@ -500,10 +519,12 @@ class LiveFeed:
         heartbeat: float = HEARTBEAT_SECONDS,
         code: Callable[[], RunningCode] = RunningCode,
         lease: float = FOLLOW_SECONDS,
+        keys: Callable[[], KeyBindings] = KeyBindings,
     ) -> None:
         self.repositories = repositories
         self.reviews = reviews
         self.code = code
+        self.keys = keys
         self.interval = interval
         self.review_every = review_every
         self.sweep_every = sweep_every
@@ -568,6 +589,7 @@ class LiveFeed:
             code=self.code(),
             users=[watch.user(now) for watch in self.watches.values()],
             transcripts=self.transcribed(now),
+            keys=self.keys(),
         )
 
     def follow_transcripts(

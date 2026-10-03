@@ -32,12 +32,11 @@ import logging
 import shutil
 from pathlib import Path
 
-import sh
 import typer
 from pydantic import BaseModel
 
-from lup.devtools.utils import decode_stderr, output_json
-from lup.execution.shell import git
+from lup.execution.git import GitError, Repository
+from lup.devtools.utils import output_json
 from lup.workspace.paths import notes_path, project_root
 from lup.workspace.shared_directory import ARCHIVE_DIRECTORY_NAME
 
@@ -85,13 +84,12 @@ def archive_root(name: str = ARCHIVE_DIRECTORY_NAME) -> Path:
     -- where no worktree removal reaches it and no commit can pick it up.
     """
     try:
-        common = Path(git.out("rev-parse", "--git-common-dir"))
-    except sh.ErrorReturnCode as error:
+        common = Repository(Path.cwd()).common_dir()
+    except GitError as error:
         logger.exception("Could not locate the repository's common directory")
-        typer.echo(decode_stderr(error))
+        typer.echo(error.status.stderr.strip())
         raise typer.Exit(1) from error
-    resolved = common if common.is_absolute() else (Path.cwd() / common).resolve()
-    return resolved / name
+    return common / name
 
 
 def notes_within(worktree: Path) -> Path:

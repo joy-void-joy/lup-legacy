@@ -177,7 +177,7 @@ async def test_a_session_opened_the_way_an_application_opens_one() -> None:
     directory, and none of the hook trust the CLI accumulated in the personal
     home. If the policy still refuses here, the generated tree governs agents
     as well as terminals; if it does not, it governs only terminals, and the
-    arm above was measuring the plugin the personal home happened to hold.
+    arm above measures the plugin the personal home happens to hold.
     """
     observed = await attempt_as_lup_opens_one(DENIED)
 

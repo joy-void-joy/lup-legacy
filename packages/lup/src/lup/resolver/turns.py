@@ -266,7 +266,7 @@ class TurnRunner:
 
         A recipe rather than an opened session, because opening is the
         cohort's: it announces the round as it opens one, and a caller that
-        opened its own left the population record with nothing to say about
+        opens its own leaves the population record with nothing to say about
         the agent now working in it.
 
         The gates are published to this lease's document and the session is
@@ -379,9 +379,9 @@ class TurnRunner:
                 )
             case _, True:
                 # A lease whose branch already carries commits is a re-entry
-                # that lost its round record, not a fresh concern. Two workers
-                # reported spending a whole turn re-deriving a verification an
-                # earlier session had already done, because a re-lease and a
+                # that lost its round record, not a fresh concern. Told nothing,
+                # a worker spends a whole turn re-deriving a verification an
+                # earlier session already did, because a re-lease and a
                 # rejection arrive as byte-identical assignments.
                 prompt = (
                     "Round 1, re-entered. This lease's branch already carries "
@@ -415,7 +415,7 @@ class TurnRunner:
     ) -> ReviewReport:
         invocation = self.invocation_renderer.render(self.spec.review_skill)
         # The whole range, not the head: a round's work regularly spans
-        # several commits, and a reviewer handed one spent its round
+        # several commits, and a reviewer handed one spends its round
         # discovering the others.
         span = f"Commits under review: {base[:12]}..{commit[:12]} — every one."
         rulings = self.rulings_for(concern.id)
@@ -435,13 +435,13 @@ class TurnRunner:
         if round_number > 1:
             # This reviewer wrote the criticism the worker was revising, so it
             # knows what it asked for, and re-reading its whole concern cold on
-            # every round was one of the costs of a one-shot session. The
+            # every round is the cost a one-shot session would pay. The
             # criteria are the exception, carried every round: the acceptance
             # guard checks `criteria_met` against these exact ids, and a
             # reviewer whose session did not survive a resumed run has nowhere
-            # to read them — one reconstructed the ids from the concern's
-            # answered questions, and the guard refused an acceptance it had
-            # already argued for. A round that cannot name what it is judged
+            # to read them — one left to reconstruct the ids from the concern's
+            # answered questions gets an acceptance it already argued for
+            # refused by the guard. A round that cannot name what it is judged
             # against fails identically however often it is retried.
             prompt = (
                 "The worker revised in response to your review. Review the "
@@ -470,10 +470,10 @@ class TurnRunner:
 
         The plan goes over in full — every tip, the concern behind it, and
         the paths it wrote — because the alternative is a merger that
-        discovers the shape of the work parent by parent. One measured run
-        had three branches rewriting a single module and met the third at
-        parent nine, with the first two already resolved in ways it would
-        not have chosen knowing about it.
+        discovers the shape of the work parent by parent: where three
+        branches rewrite a single module, it meets the third at parent nine,
+        with the first two already resolved in ways it would not choose
+        knowing about it.
 
         What the orchestrator would otherwise interleave is in the tools instead,
         so nothing is traded for the foreknowledge: ``land_parent`` refuses a

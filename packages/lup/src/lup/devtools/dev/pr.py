@@ -24,6 +24,7 @@ import sh
 import typer
 from pydantic import BaseModel, Field
 
+from lup.execution.git import Repository
 import lup.devtools.dev.records as records
 from lup.devtools.dev.branches import (
     delete_branch,
@@ -68,9 +69,9 @@ class ChecksState(StrEnum):
     A check that has not finished is neither passing nor failing, and two
     names force it under one of them: filtering to the completed checks and
     asking ``all()`` answers "passing" for a PR whose only check is still
-    running, because nothing is left to disagree. That is how a run that
-    concluded as a failure was presented as the one clean branch of three.
-    The third name is what lets a reader wait rather than decide.
+    running, because nothing is left to disagree, and a run about to
+    conclude as a failure is presented as a clean branch. The third name is
+    what lets a reader wait rather than decide.
     """
 
     passing = "passing"
@@ -89,7 +90,8 @@ class ChecksState(StrEnum):
 
 
 def current_branch() -> str:
-    return git.out("branch", "--show-current")
+    """The branch this checkout stands on, empty on a detached head."""
+    return Repository(Path.cwd()).branch()
 
 
 class ReviewInfo(BaseModel):
@@ -745,8 +747,7 @@ def sync_base(
             sync_complaint=complaint,
         )
     except sh.ErrorReturnCode:
-        unmerged = git.lines("diff", "--name-only", "--diff-filter=U", _ok_code=[0, 1])
-        conflicts = [f for f in unmerged if f]
+        conflicts = [str(path) for path in Repository(Path.cwd()).conflicted()]
         result = SyncBaseResult(
             feature_branch=feature,
             base_branch=base_branch,

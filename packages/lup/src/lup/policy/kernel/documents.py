@@ -45,10 +45,9 @@ from .lex import (
     simple_commands,
     substitutions,
     verb_path_words,
-    writes_to_a_stream,
     written_verb_words,
 )
-from .roles import spells_its_path
+from .roles import spells_its_path, writes_to_a_stream
 from .rows import (
     EditOperation,
     RewriteReading,
@@ -418,6 +417,9 @@ def verb_steps(
             if not operands["inert"] or len(landed) < 2 or None in landed:
                 return ran
             *sources, target = [path for path in landed if path is not None]
+            # A copy into a stream leaves no document; a move still replaces it.
+            if executable == "cp" and writes_to_a_stream(target):
+                return []
             clobbers = not any(
                 "n" in word[1:]
                 for word in words[1:]
@@ -1258,7 +1260,7 @@ def rewrite_reading(
     A copy over a file is handed on the same way, under the spelling it
     lands at, for the classifier that judges `cp` as the edit it makes. One
     nothing worked out is left out rather than named: a copy the classifier
-    finds no document for is judged as it always was.
+    finds no document for is judged by its row, with nothing handed on.
     """
     documents = {document["path"]: document for document in reading["documents"]}
     return RewriteReading(

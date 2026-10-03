@@ -526,8 +526,8 @@ def test_a_preflight_probe_beside_the_suite_is_not_the_suites_doing(
     """`dev check` probes the checkpoint store while the suites run beside it.
 
     The probe writes a ref named for its process under the preflight
-    namespace and deletes it again, so whichever worker happened to be
-    between tests just then reported a ref created that no fixture wrote.
+    namespace and deletes it again, so whichever worker happens to be
+    between tests just then would report a ref created that no fixture wrote.
     """
     git = guarded_repository(tmp_path)
     before = repository_state(tmp_path)
@@ -567,7 +567,7 @@ def test_a_suite_watching_its_own_namespace_still_watches_the_real_one(
 
 
 def test_a_fixture_that_writes_a_committer_identity_is_caught(tmp_path: Path) -> None:
-    """The quieter half, and the one that actually bit.
+    """The quieter half, and the costlier one.
 
     A fixture setting `user.email` on the enclosing repository is inherited by
     every worktree cut from it, so work committed hours later in another
@@ -649,8 +649,8 @@ def test_a_watch_lays_a_change_at_the_door_of_the_test_that_saw_it(
     """The window that saw the change answers for it; the ones after do not.
 
     A difference closed once per session lands on whichever test the worker
-    ran last, which is how a policy row about `gh pr create` was blamed for
-    a branch. Settling per test names the window, and moves the baseline so
+    ran last, so a policy row about `gh pr create` would be blamed for a
+    branch. Settling per test names the window, and moves the baseline so
     the next window is not blamed for the same branch again.
     """
     git = guarded_repository(tmp_path)
@@ -752,8 +752,7 @@ def test_the_report_names_the_reading_the_refs_cannot_rule_out() -> None:
     Asserting the fixture reasons that a developer can rule out having moved
     a branch themselves. Where several sessions share a clone that stops
     holding, and a reader handed only that reading spends the length of a
-    gate hunting a fixture that is not there — measured on this repository,
-    twice in one session.
+    gate hunting a fixture that is not there.
     """
     said = guard_report(
         {"refs/heads/feat-a": "1111111"}, {"refs/heads/feat-a": "2222222"}

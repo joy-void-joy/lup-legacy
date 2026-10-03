@@ -7,16 +7,16 @@ A `--base` that re-attaching cannot honour is refused, not dropped.
 only the first can act on a base. The second takes the branch where it already
 stands, so the flag reaches nothing — and dropping it silently is worse than
 unhelpful: the caller reads "worktree ready" beside the base they asked for and
-starts writing against files that came from somewhere else. A session asked for
-`--base feat-boundary`, was re-attached to a branch on `dev`, and only noticed
-because the files it meant to edit were absent.
+starts writing against files that came from somewhere else. A session asking
+for `--base feat-boundary` and re-attached to a branch on `dev` notices only
+when the files it means to edit are absent.
 
 And a base nobody named is guessed only where guessing cannot be wrong. New
 work belongs on the integration branch, a continuation belongs on the
-checkout's own branch, and the two arrive through identical arguments: one
-session's branch was cut from a feature checkout and opened a pull request
-carrying commits it never asked for, another's was cut from `main` while
-standing on `lup-0-3-0` and had to be reset onto it by hand. Where the checkout
+checkout's own branch, and the two arrive through identical arguments: a
+branch cut from a feature checkout opens a pull request carrying commits it
+never asked for, and one cut from `main` while standing on a release branch
+has to be reset onto it by hand. Where the checkout
 carries nothing the integration branch lacks the two answers are one line and
 the later point on it is taken; where it is ahead, the question is asked before
 there is anything to undo.
@@ -27,13 +27,13 @@ from pathlib import Path
 import pytest
 import typer
 
+from lup.execution.git import Repository
 from lup.devtools.dev.worktree import (
     BranchBase,
     commits_ahead,
-    descends_from,
     register_worktree,
 )
-from lup.harness.process import LaunchRequest, LocalProcessLauncher
+from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 
 def run_git(cwd: Path, *arguments: str) -> None:
@@ -98,8 +98,8 @@ def test_a_base_the_existing_branch_already_carries_is_not_worth_refusing(
     work = build_history(tmp_path)
     monkeypatch.chdir(work)
 
-    assert descends_from("feature", "dev")
-    assert not descends_from("dev", "feature")
+    assert Repository(work).is_ancestor("dev", "feature")
+    assert not Repository(work).is_ancestor("feature", "dev")
 
 
 def test_a_branch_ahead_of_the_integration_branch_is_counted(

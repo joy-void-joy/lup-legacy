@@ -72,7 +72,7 @@ class TestSessionDirsAcrossRoots:
     def test_a_relocated_process_finds_nothing_without_being_told(
         self, tmp_lup_project: Path
     ) -> None:
-        """The failure this closes, pinned before the fix for it."""
+        """A walk following the override alone searches inside this session."""
         wanted = session_dir(tmp_lup_project / "notes")
         relocate(tmp_lup_project)
 

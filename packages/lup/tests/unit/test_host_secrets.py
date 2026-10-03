@@ -177,7 +177,7 @@ def test_a_launch_hands_its_session_none_of_the_store_s_keys(
     monkeypatch.setattr(claude_launch, "settle_claude_theme", lambda *_a, **_k: None)
     HostSecrets.for_checkout(root).write({"GEMINI_API_KEY": "secret"})
     monkeypatch.setenv("GEMINI_API_KEY", "exported-by-the-shell")
-    request = launch.LaunchRequest(sandbox=LaunchSandbox.INNER)
+    request = launch.LaunchArguments(sandbox=LaunchSandbox.INNER)
 
     if runtime == "claude":
         launch.launch_claude(composition(root, "claude"), request, profiles(), False)

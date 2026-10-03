@@ -29,7 +29,7 @@ import lup.devtools.dev.worktree as worktree
 from lup.devtools.dev.conflict_app import create_conflict_app
 from lup.devtools.dev.declarations import DevDeclarations
 from lup.devtools.harness.launch import relocation_hint
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from lup.policy.vocabulary import protected_branches
 from lup.workspace.paths import project_root
 from lup.devtools.git.prepare import prepare
@@ -173,12 +173,8 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         """Move lup's `branch.*.lup-*` config keys into the shared `lup/` directory.
 
         Once per clone, and on the host: it is the one step that writes the
-        shared config, and reads answer from either place until it has run.
-
-        Every worktree of the clone answers from the records afterwards, so
-        run it once each of them is at a version that reads them: a checkout
-        older than the records reads the config alone, and a branch it was
-        cut from is a fact it stops finding once that config is empty.
+        shared config. Reads answer from the records alone, so a base still
+        held in the config counts for nothing until this has run.
         """
         worktree.adopt_records()
 

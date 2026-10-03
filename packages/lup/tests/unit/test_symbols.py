@@ -87,11 +87,11 @@ def test_a_method_is_qualified_so_a_namesake_does_not_excuse_it() -> None:
 
 
 def test_a_type_alias_is_a_definition_like_the_assignment_it_replaced() -> None:
-    """`type X = ...` parses to its own node, which is how it went missing.
+    """`type X = ...` parses to its own node, so a walk over assignments misses it.
 
-    The older spelling of the same declaration, `X = Literal[...]`, is an
-    ordinary assignment and was always found. Two ways to write one thing,
-    one of them tracked, and nothing saying which you had written.
+    The other spelling of the same declaration, `X = Literal[...]`, is an
+    ordinary assignment. Two ways to write one thing are both tracked, so
+    which one you wrote changes nothing.
     """
     source = "type Urgency = str\nNetworkMode = str\n"
 
@@ -102,11 +102,11 @@ def test_a_type_alias_is_a_definition_like_the_assignment_it_replaced() -> None:
 
 
 def test_a_dropped_type_alias_is_reported_lost() -> None:
-    """The failure the gap allowed, in the direction this module exists for.
+    """A lost alias is reported, in the direction this module exists for.
 
-    A merge that took the side without the alias reported having lost
-    nothing, so the rule against silently dropping code during conflict
-    resolution had no instrument for this whole class of declaration.
+    Unread, a merge taking the side without the alias would report having
+    lost nothing, leaving the rule against silently dropping code during
+    conflict resolution no instrument for this whole class of declaration.
     """
     before = "type Verdict = str\n\n\ndef judge() -> None:\n    pass\n"
     after = "def judge() -> None:\n    pass\n"

@@ -18,17 +18,18 @@ declined carries nothing.
 
 Three more are cut from Claude Code 2.1.283 sessions, keeping the keys the
 fold reads and shortening the prose it does not. ``transcript-claude-fork``
-is a fork's: its parent's history, then its own run, whose stop the old fold
-refused naming three siblings it never started. One inherited line — the
-parent's backgrounded `Bash` — is borrowed from that parent's later history
-to stand for shell work a fork inherits. ``transcript-claude-handback`` is a
-subagent reporting through `SubagentHandback`: it backgrounded the full gate
-and ended its turn to wait, the old fold refused that, and it armed a
-monitor to wait instead before handing back. ``payloads-claude-park`` and
-``transcript-claude-park`` are a probe's: a subagent that started a
-background subagent and ended its turn while that one ran. The stop
-payloads for the first two were not recorded, so each test builds its own
-from the ids and commands the recording names.
+is a fork's: its parent's history, then its own run, whose stop a fold
+crediting it with inherited lines refuses, naming three siblings it never
+started. One inherited line — the parent's backgrounded `Bash` — is borrowed
+from that parent's later history to stand for shell work a fork inherits.
+``transcript-claude-handback`` is a subagent reporting through
+`SubagentHandback`: it backgrounds the full gate and ends its turn to wait, a
+fold blind to the hand-back refuses that, and it arms a monitor to wait
+instead before handing back. ``payloads-claude-park`` and
+``transcript-claude-park`` are a probe's: a subagent that starts a background
+subagent and ends its turn while that one runs. The recording holds no stop
+payload for the first two, so each test builds its own from the ids and
+commands the recording names.
 
 ``payloads-codex.jsonl`` is the same kind of recording from Codex 0.155.1,
 where the two halves of the leak came apart: the work outlives the report and
@@ -221,8 +222,8 @@ SIBLINGS = {
     "aae1435e50f1a97bb": "Triage G5 policy and codex issues",
     "abd5e022b32dde6d0": "Check adlib report items against dev",
 }
-"""The fork's siblings, still running, that the old fold told it to stop — by
-the ids and descriptions its recorded refusal names."""
+"""The fork's siblings, still running, which are not its to stop — by the ids
+and descriptions its recorded refusal names."""
 HANDBACK_ID = "a142a8740cb9a255b"
 
 
@@ -324,13 +325,13 @@ def test_a_task_the_subagent_did_not_arm_is_not_its_to_stop(tmp_path: Path) -> N
 
 
 def test_a_fork_is_not_credited_with_what_its_parent_started(tmp_path: Path) -> None:
-    """Measured on 2.1.283: the fold told a fork to stop three siblings it never started.
+    """A fork is never told to stop siblings its parent started, recorded on 2.1.283.
 
     A fork's transcript opens with its parent's whole history, spawns and
     shell work included, and the runtime attributes every assistant line to
-    the type that wrote it — the parent's, and `fork` on the fork's own. The
-    refusal it met displaced its plain-text report as its last message, so
-    its caller was handed a line about the siblings instead.
+    the type that wrote it — the parent's, and `fork` on the fork's own. A
+    refusal there displaces its plain-text report as its last message, so
+    its caller is handed a line about the siblings instead.
     """
     guard = laid_out(tmp_path / "plugin")
     lines = transcript("transcript-claude-fork.jsonl")
@@ -384,13 +385,13 @@ def test_a_fork_reports_in_plain_text_whatever_its_parent_was_told(
 def test_a_stop_waiting_on_its_own_work_before_the_hand_back_goes_through(
     tmp_path: Path,
 ) -> None:
-    """Measured on 2.1.283: the fold refused a subagent waiting on the gate it backgrounded.
+    """A subagent waiting on the gate it backgrounded is not refused, recorded on 2.1.283.
 
     It reports through `SubagentHandback`, so ending its turn delivers
     nothing: the runtime tells its caller it "has not reported yet: it is
     waiting on its own background work" and wakes it when that work
-    completes. The recorded subagent answered the refusal by arming a monitor
-    to wait instead, the duplicate the refusal cost.
+    completes. Refused, the recorded subagent arms a monitor to wait instead,
+    a duplicate wait that is all the refusal buys.
     """
     guard = laid_out(tmp_path / "plugin")
     lines = transcript("transcript-claude-handback.jsonl")[:5]
@@ -432,8 +433,8 @@ def test_a_subagent_it_started_is_never_its_to_stop(tmp_path: Path) -> None:
     """Recorded on 2.1.283: a subagent ended its turn while the one it started ran.
 
     A subagent ends on its own and reports through its own hand-back, and
-    `TaskStop` refuses one that was resumed — adlib met "owned by" itself —
-    so the fold names none, whoever started it.
+    `TaskStop` refuses one that was resumed, answering "owned by", so the
+    fold names none, whoever started it.
     """
     guard = laid_out(tmp_path / "plugin")
     [parent, _child] = recorded(
@@ -627,8 +628,8 @@ def test_the_start_event_tells_the_subagent_what_it_verifies_and_commits(
     that the full gate is what has to be green — and nothing there says it is
     not the one to run it. So it is told the scoped pair is its to run and
     the gate is whoever lands it. Whether it commits depends on whose tree it
-    is in: a builder dispatched into a worktree of its own was told to leave
-    the commit to its caller while its brief said to commit, and followed the
+    is in: a builder dispatched into a worktree of its own, told to leave
+    the commit to its caller while its brief says to commit, follows the
     brief — so the sentence names both places rather than assuming one.
     """
     guard = laid_out(tmp_path / "plugin", target, plugin)

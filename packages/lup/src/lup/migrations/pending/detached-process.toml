@@ -1,0 +1,14 @@
+subjects = ["CompanionSlot.logged", "SharedProcess.spawned"]
+reason = """
+the dashboard's setup panes re-wrote a shared companion's start — its own \
+session, a log, a wait until it answers — and chose their ports outside the \
+lock companions choose under, so both now start through \
+`lup.launch.companions.DetachedProcess.start`, which waits for readiness and \
+says where its output begins"""
+
+[[steps]]
+instruction = """
+Start a program apart from its starter with `DetachedProcess.start(argv, \
+cwd, environment, log, ready, within)` and stop it where `answered` is false; \
+`SharedProcess.spawned` returns that `DetachedProcess`, already waited on, \
+rather than a `Running`, and `CompanionSlot.logged()` is its `output`."""

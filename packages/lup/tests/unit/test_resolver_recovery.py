@@ -19,7 +19,7 @@ from lup.coordination.mailbox import (
 )
 from lup.coordination.questions import QuestionAnswer
 from lup.execution.shell import git
-from lup.harness.process import LocalProcessLauncher
+from lup.execution.process import LocalProcessLauncher
 from lup.resolver.core import resolver_config_digest
 from lup.resolver.join_desk import JoinDesk, JoinLanding, JoinPlan
 from lup.resolver.record import IntegrationRecoveredEvent, Journal

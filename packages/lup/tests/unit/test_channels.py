@@ -181,9 +181,9 @@ def test_an_uncapped_stream_never_refuses_to_record(tmp_path: Path) -> None:
 def test_writers_racing_on_one_file_never_publish_a_torn_one(tmp_path: Path) -> None:
     """Each stages under a name of its own, so the file is always one writer's whole bytes.
 
-    A staging name they shared was truncated by the next writer while the
-    first was still filling it, and the first's rename then published a file
-    whose front was NUL bytes.
+    A staging name they shared would be truncated by the next writer while
+    the first is still filling it, and the first's rename would then publish
+    a file whose front is NUL bytes.
     """
     path = tmp_path / "state.json"
     bodies = [bytes([ord("a") + number]) * 200_000 for number in range(16)]

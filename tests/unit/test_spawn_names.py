@@ -134,10 +134,10 @@ def test_a_named_spawn_is_left_to_the_runtime() -> None:
 
 
 def test_a_hyphen_is_normalized_rather_than_refused() -> None:
-    """Measured on Codex 0.155.1: a hyphenated name produced no PostToolUse at all.
+    """Measured on Codex 0.155.1: a hyphenated name produces no PostToolUse at all.
 
-    The model retried with underscores unprompted, having learned the shape
-    by guessing. Sending it out in that shape is the guess made for it.
+    The model retries with underscores unprompted, learning the shape by
+    guessing. Sending it out in that shape is the guess made for it.
     """
     decision = decide(spawn("Leak-Probe"))
 
@@ -213,7 +213,7 @@ def test_a_refusal_escalates_into_the_question_the_caller_asked_for(
     """The marker rides in the prompt, the one input a caller writes prose into."""
     payload = spawn(
         None,
-        prompt="# lup: escalate: measuring the hook\nReply ok.",
+        prompt="# lup: escalate[decision]: measuring the hook\nReply ok.",
         description="探针",
     )
     payload.update(

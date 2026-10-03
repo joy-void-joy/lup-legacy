@@ -2,10 +2,10 @@
 
 The session that runs `git worktree create` is rarely standing in what it
 creates: it was launched in another checkout and writes into the new one by
-absolute path. The roster therefore never named it as that checkout's user,
-and once its work was committed and fast-forwarded the checkout read as clean
-and spent — so a lander removed it while the session was still writing there,
-and the next write failed as though the path had been mistyped.
+absolute path. Unheld, the roster never names it as that checkout's user, and
+once its work is committed and fast-forwarded the checkout reads as clean and
+spent — so a lander removes it while the session is still writing there, and
+the next write fails as though the path had been mistyped.
 
 What is pinned here: creation holds the checkout for the creating session,
 `git delete` and `git worktree remove` refuse it by name while that session is

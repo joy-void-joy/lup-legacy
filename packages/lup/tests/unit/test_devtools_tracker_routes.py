@@ -188,12 +188,12 @@ def test_an_unreadable_origin_grants_nothing() -> None:
 def test_a_report_goes_to_whoever_owns_the_component_it_names(
     component: str, expected: str
 ) -> None:
-    """Routed by what the defect is in, not by where the session was standing.
+    """Routed by what the defect is in, not by where the session is standing.
 
-    Measured downstream: four friction reports, every one of them a defect in
-    the framework, all four filed against the consuming repository — where
-    the resolver's intake then takes them as evidence for a run that cannot
-    reach the code. The components named in those reports are the rows above.
+    A friction report about a defect in the framework, filed against the
+    consuming repository, is taken by the resolver's intake as evidence for a
+    run that cannot reach the code. The rows above are components such
+    reports name.
 
     A prefix claims what continues it at a word boundary, so `lupine` is
     somebody else's and a component nobody claims stays where it was found.
@@ -280,11 +280,11 @@ def test_each_verb_is_spelled_as_gh_spells_it(
 
 
 def test_a_tracker_that_takes_no_issues_names_the_ones_that_do() -> None:
-    """Measured downstream: the report was lost and the recovery was manual.
+    """A refused report is not lost: the route that would take it is named.
 
-    The route existed the whole time. Named rather than taken, because
-    re-filing somebody's report on another project's tracker unasked moves it
-    out of sight of everyone watching the first one.
+    Named rather than taken, because re-filing somebody's report on another
+    project's tracker unasked moves it out of sight of everyone watching the
+    first one.
     """
     spoken = "the 'acme/widget' repository has disabled issues"
 

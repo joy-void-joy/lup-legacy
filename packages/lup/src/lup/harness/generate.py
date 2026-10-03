@@ -414,7 +414,7 @@ def published_documents(
 
 
 def managed_paths(desired: ArtifactTree, prior: OwnershipManifest | None) -> list[Path]:
-    """Combine desired and formerly owned paths for deletion detection."""
+    """Combine desired paths with the prior manifest's, for deletion detection."""
     paths = [artifact.path for artifact in desired.artifacts]
     if prior is not None:
         paths.extend(item.path for item in prior.files)

@@ -1,11 +1,11 @@
 """A launch in a project it has never seen opens the way the person left it.
 
-The complaint this answers: every new repository reset the account, the
-theme and the defaults, because each was kept per checkout or left to a CLI
-starting from nothing. A launch reads them from the person's lup config
-instead, so a fresh project inherits them; a project's mode and a flag on the
-command line still overrule it, in that order. `harness claude|codex` reaches
-all of it through the declaration it launches, as a program does.
+Kept per checkout, or left to a CLI starting from nothing, the account, the
+theme and the defaults would reset in every new repository. A launch reads
+them from the person's lup config instead, so a fresh project inherits them;
+a project's mode and a flag on the command line still overrule it, in that
+order. `harness claude|codex` reaches all of it through the declaration it
+launches, as a program does.
 """
 
 import json
@@ -89,7 +89,7 @@ def claude(
     """``harness claude`` in the fresh project, over the person's accounts."""
     launch.launch_claude(
         composition(project, "claude"),
-        launch.LaunchRequest(
+        launch.LaunchArguments(
             model=model, effort=effort, profile=profile, sandbox=sandbox
         ),
         accounts or profile_directory(CLAUDE_LOGIN, config),
@@ -101,7 +101,7 @@ def codex(project: Path) -> None:
     """``harness codex`` in the fresh project."""
     launch.launch_codex(
         composition(project, "codex"),
-        launch.LaunchRequest(sandbox=LaunchSandbox.INNER),
+        launch.LaunchArguments(sandbox=LaunchSandbox.INNER),
         None,
         False,
         False,

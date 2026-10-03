@@ -49,6 +49,7 @@ from pathlib import Path
 import sh
 from pydantic import BaseModel
 
+from lup.execution.git import GitError, Repository, Worktree
 from lup.harness.toolchain import preflight_namespace
 from lup.policy.assets.host import undo_namespace
 
@@ -120,16 +121,16 @@ def repository_refs(root: Path, ref_format: str = REF_FORMAT) -> dict[str, str]:
     one that stays quiet.
     """
     try:
-        listed = sh.Command("git")(
-            "-C", str(root), "for-each-ref", f"--format={ref_format}", _tty_out=False
-        )
-    except (sh.ErrorReturnCode, sh.CommandNotFound):
+        listed = Repository(root).run("for-each-ref", f"--format={ref_format}")
+    except sh.CommandNotFound:
+        return {}
+    if listed.code != 0:
         return {}
     pairs = [
         # lup: ignore[string-split] — git's own for-each-ref output, whose two
         # fields REF_FORMAT put either side of one space
         line.split(" ", 1)
-        for line in str(listed).splitlines()
+        for line in listed.stdout.splitlines()
         if line
     ]
     return {pair[0]: pair[1] for pair in pairs if len(pair) == 2}
@@ -151,15 +152,15 @@ def watched_config(
     under, which is the spelling a reader knows it by.
     """
     try:
-        listed = sh.Command("git")(
-            "-C", str(root), "config", "--local", "--list", "-z", _tty_out=False
-        )
-    except (sh.ErrorReturnCode, sh.CommandNotFound):
+        listed = Repository(root).run("config", "--local", "--list", "-z")
+    except sh.CommandNotFound:
+        return {}
+    if listed.code != 0:
         return {}
     declared = {setting.lower(): setting for setting in settings}
     # lup: ignore[string-split] — git's own `-z` listing, one `key\nvalue`
     # entry per NUL by that format's definition
-    entries = [entry.partition("\n") for entry in str(listed).split("\0") if entry]
+    entries = [entry.partition("\n") for entry in listed.stdout.split("\0") if entry]
     return {
         f"config {declared[key]}": value for key, _, value in entries if key in declared
     }
@@ -171,13 +172,13 @@ def repository_state(root: Path, namespace: str = "") -> dict[str, str]:
     Minus the two namespaces this repository's own tooling *writes by design*
     while a suite runs. The permission dispatcher takes an undo snapshot in
     front of every command an agent is allowed, so a suite an agent starts has
-    refs appearing under that namespace throughout — measured, twenty-four in
-    the ninety seconds around one `dev check`, and eight identical teardown
-    failures, one per xdist worker, naming refs no fixture had touched. And
+    refs appearing under that namespace throughout — measured, two dozen in
+    the ninety seconds around one `dev check`, each read as a teardown
+    failure by every xdist worker, naming refs no fixture touched. And
     `dev check` runs its harness rows beside the two test suites, one of which
     probes the checkpoint store by writing a ref under the preflight namespace
-    and deleting it again, which the worker running a test just then reported
-    as that test's doing.
+    and deleting it again, which the worker running a test just then would
+    report as that test's doing.
 
     Excluded rather than reported, on the strength of what the namespaces are.
     A ref moving in either carries no evidence either way: it is written from
@@ -252,20 +253,12 @@ class RefStore(BaseModel, frozen=True):
     def located(cls, root: Path) -> "RefStore | None":
         """The store behind the checkout enclosing ``root``, or ``None`` outside one."""
         try:
-            listed = sh.Command("git")(
-                "-C",
-                str(root),
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-common-dir",
-                "--git-dir",
-                _tty_out=False,
-            )
-        except (sh.ErrorReturnCode, sh.CommandNotFound):
+            located = Repository(root).located("--git-common-dir", "--git-dir")
+        except (GitError, sh.CommandNotFound):
             return None
-        match str(listed).splitlines():
+        match located:
             case [common, own]:
-                return cls(common=Path(common), own=Path(own))
+                return cls(common=common, own=own)
             case _:
                 return None
 
@@ -459,8 +452,8 @@ class ForeignCheckouts(BaseModel, frozen=True):
         Read at both ends of a watch, because a worktree cut while the suite
         runs holds its branch at the end and not at the start: a map read
         only at the start reports that branch as appearing from nowhere,
-        which is how a sibling session's `worktree create` failed a check it
-        never touched. A worktree removed mid-run is the mirror case, and the
+        so a sibling session's `worktree create` would fail a check it never
+        touched. A worktree removed mid-run is the mirror case, and the
         map read at the start still holds what it held.
         """
         return ForeignCheckouts(holders=self.holders | other.holders)
@@ -493,36 +486,23 @@ class ForeignCheckouts(BaseModel, frozen=True):
         rather than passing on everything.
         """
         try:
-            listed = sh.Command("git")(
-                "-C", str(root), "worktree", "list", "--porcelain", _tty_out=False
-            )
-        except (sh.ErrorReturnCode, sh.CommandNotFound):
+            listed = Repository(root).worktrees()
+        except (GitError, sh.CommandNotFound):
             return cls()
-        held = cls.declared(str(listed), root.resolve())
+        held = cls.declared(listed, root.resolve())
         return cls(holders=held | cls.tracked(root, held))
 
     @classmethod
-    def declared(cls, listing: str, own: Path) -> dict[str, str]:
-        """Each `branch` line of a porcelain listing, minus ``own``'s entry.
+    def declared(cls, worktrees: list[Worktree], own: Path) -> dict[str, str]:
+        """Each branch a worktree holds, by its ref, minus ``own``'s.
 
-        The format is one stanza per worktree, `worktree <path>` opening each
-        and `branch <ref>` naming what it holds; a detached or bare entry
-        simply carries no branch line and so claims no ref.
+        A detached or bare entry holds no branch, and so claims no ref.
         """
-        held: dict[str, str] = {}  # lup: ignore[empty-collection] — stanza fold
-        at = Path()
-        for line in listing.splitlines():
-            # lup: ignore[string-split] — git's own porcelain, whose key and
-            # value sit either side of one space by that format's definition
-            key, _, value = line.partition(" ")
-            match key:
-                case "worktree":
-                    at = Path(value).resolve()
-                case "branch" if at != own:
-                    held[value] = str(at)
-                case _:
-                    continue
-        return held
+        return {
+            f"refs/heads/{worktree.branch}": str(worktree.path.resolve())
+            for worktree in worktrees
+            if worktree.branch and worktree.path.resolve() != own
+        }
 
     @classmethod
     def tracked(
@@ -535,7 +515,7 @@ class ForeignCheckouts(BaseModel, frozen=True):
         branch. Only the branch half carries a worktree in `git worktree
         list` though, because a remote-tracking ref is checked out by nobody
         -- so without this it reads as a ref that appeared from nowhere, and
-        the routine event fails the run exactly as before.
+        the routine event fails the run as a fixture's leak would.
 
         Which remote ref belongs to which branch is asked of git as
         `upstream` rather than assembled from the two names: a branch may
@@ -575,10 +555,12 @@ class ForeignCheckouts(BaseModel, frozen=True):
         answer falls back to failing on everything rather than passing on it.
         """
         try:
-            listed = sh.Command("git")("-C", str(root), "remote", _tty_out=False)
-        except (sh.ErrorReturnCode, sh.CommandNotFound):
+            listed = Repository(root).run("remote")
+        except sh.CommandNotFound:
             return []
-        return [line for line in str(listed).splitlines() if line]
+        if listed.code != 0:
+            return []
+        return [line for line in listed.stdout.splitlines() if line]
 
 
 class GuardVerdict(BaseModel, frozen=True):

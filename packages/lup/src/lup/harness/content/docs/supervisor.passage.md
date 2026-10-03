@@ -57,10 +57,10 @@ one of them blocks:
 | a gate your concern was not approved for | `request_allowance` | yes, and resumes where you stopped |
 | anything else worth saying | `send_message` | no |
 
-Measured, in #202: two workers in one run blocked on material questions that
-carried no decision — one needed to delete scratch files it had created
-itself, the other needed to fix its own virtual environment. Both were
-refusals of ordinary commands, and neither was a thing a human had an opinion
+Measured: workers block on material questions that carry no decision — one
+deleting scratch files it created itself, another fixing its own virtual
+environment. Both are
+refusals of ordinary commands, and neither is a thing a human has an opinion
 about. A worker that reaches for the blocking tool because it is the only one
 it was told about spends the run's time on housekeeping.
 
@@ -75,9 +75,9 @@ printing the same flag-carrying rerun recipe. Ctrl-C is the dirty one:
 does not catch it.
 
 **Draining is the other verb, for a run that is working rather than waiting.**
-A worker inside a model turn waits on nothing, so park never reached one and
-killing was the only way to end a busy run — which discards the uncommitted
-edits of each interrupted round along with its reviewer feedback and round
+A worker inside a model turn waits on nothing, so park never reaches one, and
+killing a busy run discards the uncommitted edits of each interrupted round
+along with its reviewer feedback and round
 counter. `resolve drain` is observed at the top of a round, after the
 previous one is committed, and at the boundary between dependency batches.
 Nothing is failed and nothing is written off, so resuming costs only the turns
@@ -144,8 +144,8 @@ Both halves live in `lup.web.loopback` and the setup page keeps the same
 posture, because what a local surface is worth attacking is decided by what it
 writes: this one answers a resolver's questions and decides its review branch,
 and that one writes the user's credentials into `.env.local`. A surface that
-took the bind without the header check was reachable by any page the user
-happened to have open, and had no way of knowing it.
+takes the bind without the header check is reachable by any page the user
+happens to have open, and has no way of knowing it.
 
 CSRF needs no separate defense: mutating routes take JSON bodies, a
 cross-origin `fetch` with `application/json` is preflighted, and no CORS

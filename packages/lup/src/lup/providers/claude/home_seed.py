@@ -72,7 +72,7 @@ class ClaudeHomeSeed(BaseModel, frozen=True):
         """The seed an account and a person's lup config make together.
 
         The account's settings as they stand, each preference the settings
-        files now carry filled in from the document's legacy copy where the
+        files carry filled in from the document's own copy where the
         settings leave it out — the order the CLI itself reads them in —
         then the lup config over them: its ``[claude.settings]`` table, the
         editor and the theme it names, and the model and effort it declares.

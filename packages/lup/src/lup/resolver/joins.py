@@ -380,10 +380,9 @@ class Joiner:
         stack rather than fanning out from the base. A parent inside another
         is in the tree the moment that one lands, and merging it separately
         buys nothing: a verification, and a merger turn where the session
-        cannot tell "already joined" from "something upstream is wrong". In
-        one measured run, 8 of 21 parents were inside a sibling, and two of
-        the three joins spent before it was stopped were on such a parent —
-        one of them contained in five different siblings.
+        cannot tell "already joined" from "something upstream is wrong".
+        Measured on one run, 8 of 21 parents sit inside a sibling, one of
+        them inside five different siblings.
         """
 
         def container_of(parent: str) -> str | None:
