@@ -724,6 +724,163 @@ headed with who sent it and its post, and `--take` takes them as read.
 so the reply comes back to you, and `--reply-to <post>` puts it in that post's
 thread.
 
+## Budgets
+
+The dashboard every launch holds also keeps a budget over the accounts its
+sessions draw on, the way a torrent client limits a link: a speed limit, a
+reserve kept back for the person's own use, a cap on how many agents work at
+once, priorities, per-agent caps, a schedule, and a slower set of limits one
+key turns on. It judges at every look of its herald, whether or not a page is
+open, so a limit holds with nobody watching. The person's own sessions —
+every session no other session's shell opened — are never held, nor counted
+against a slot; their subagents, and the sessions an agent opens, are.
+
+### What it meters
+
+An account is one runtime's login under one profile — `claude:work`,
+`codex:default`, `default` naming the home no profile selects — and the
+dashboard reads every one the served repositories can launch on, each
+profile's included, every `poll_seconds`. Its windows are what the provider
+meters it in: Claude's 5-hour and weekly windows from the OAuth usage
+endpoint, Codex's two self-describing windows from the app-server, and between
+reads a Codex session's rollout, which carries its account's windows with
+every token count. Each window shows how much of it is used, where even pace
+stands — as much of it used as has gone by — how fast it filled over the last
+hour of readings, and when it clears.
+
+What each agent spends comes from what its runtime emits. A Claude session
+launched with the dashboard sends its telemetry to the dashboard's own port
+(8776 where it is free), bearing a token of its own rather than the page's
+capability: each request's `api_request` event carries its cost and its token
+counts, and its `claude_code.llm_request` span names the subagent that made it,
+the two joined by the request id. That is what Claude Code 2.1.285 was
+measured to emit; its metrics name a subagent only by its type, so they are
+not exported, and the span needs `CLAUDE_CODE_ENHANCED_TELEMETRY_BETA`, which
+the launch sets. A Codex session's spend is the token counts its rollout
+records, and Codex prices nothing, so a Codex agent's rate and caps are in
+tokens.
+
+Every charge lands, once per request, in the budget's ledger at
+`$XDG_STATE_HOME/lup/budget/ledger.json` (`~/.local/state/lup/budget/` by
+default), beside each agent's priority and caps. A pipeline running in
+process charges and waits on the same ledger through
+`FinancialBudgetConfig(state_path=…, limits=…)`, so it shares one budget with
+every launched session.
+
+A launch says when the budget cannot see its session's spend: a container
+joining no network reaches no dashboard, and a person who already exports
+Claude Code telemetry somewhere keeps theirs. That session's account is still
+metered and its limits still hold; only its own spend reads as none, and the
+meter says `no telemetry` where the dashboard receives none at all.
+
+### Limits
+
+`[budget]` in the person's lup config sets them, never a project's:
+
+```toml
+# ~/.config/lup/config.toml
+[budget]
+pace = "even"        # hold agents spending a window faster than it passes
+tolerance = 5        # points past a speed limit normal agents still work
+reserve = 10         # the last 10% of every window is kept for you
+max_active = 3       # at most three agents work at once
+poll_seconds = 120   # how often each account's windows are read
+
+[[budget.ceilings]]  # a speed limit on one window, in percent of it an hour
+window = "5-hour"
+per_hour = 15
+
+[budget.accounts.work]  # every runtime's login of the work profile
+max_active = 6          # or name one: [budget.accounts."claude:work"]
+
+[[budget.schedule]]  # working hours, local to this machine
+days = ["mon", "tue", "wed", "thu", "fri"]
+from = "09:00"
+to = "18:00"
+reserve = 30
+
+[budget.turtle]      # the slower limits the turtle puts in place
+max_active = 1
+```
+
+The limits on an account are layered: the table's own, then its account's
+entry, then every schedule entry holding now — one whose `to` is before its
+`from` runs overnight, and `accounts` narrows one to the accounts it names —
+then the turtle's while it is on, each layer replacing only what it names.
+The turtle is even pace and one agent at a time unless `[budget.turtle]` says
+otherwise. A `[budget]` lup cannot read holds nothing but a window used up,
+and the meter says why.
+
+Each agent is weighed against its account's limits, and the first that
+applies holds it, saying why on its row and to the agent:
+
+1. **A window used up** — every agent drawing on it, until it clears: `5-hour
+   window used up until 14:20`.
+2. **The reserve** — once a window reaches it, until it clears: `reserve
+   reached: …, the last 10% kept for you until 14:20`.
+3. **Its total cap** — until the operator raises or clears it; the operator is
+   told once, as a desktop notice.
+4. **Its rate cap** — until its last hour's spend falls back under it.
+5. **The speed limit** — even pace, or a window's ceiling: low-priority agents
+   hold as soon as the account passes it, normal ones once it is `tolerance`
+   points past, high ones at twice that.
+6. **A slot** — `max_active` working agents per account; the rest wait, high
+   priority first and then whoever wanted one first. An agent that stopped
+   calling keeps its slot for ninety seconds, so one thinking between two
+   calls is not overtaken.
+
+The hold is the pause's: an agent the budget holds waits at its next tool
+call and goes on, unprompted, once the limit allows. A dashboard with no hold
+store to place its holds in judges and shows, and nothing waits: the stream's
+`holds` says which, the meter says `not holding`, and each row says what
+`would hold` its agent.
+
+### On the page
+
+The meter heads the page: each account's windows as bars with a mark where
+even pace stands, how fast each fills and when it clears, the limits in force,
+how many agents draw on it and how many are held, and the turtle. On a phone
+it folds into the top bar, one line an account, its fullest window. `Space b
+t` or `:turtle [on|off]` turns the turtle, kept in the person's config so it
+outlives the dashboard, and the status line shows `🐢 turtle` while it is on.
+
+An agent's tree row says what holds it and what it spends — `$1.84/h · $7.94`,
+or tokens where nothing priced it — and its priority where it is not normal.
+Its context says the same at length, with its priority and caps editable in
+place: `Space b p` or `:priority [agent] high|normal|low`, and `Space b c` or
+`:cap [agent] $2/h $10` — dollar amounts or token counts (`500k/h 2M`), `/h`
+making one a rate, every cap at once, nothing clearing them. The routes behind
+them are `POST /api/budget/turtle` (`{on}`) and `POST
+/api/repositories/<key>/sessions/<member-id>/budget` (`{priority, caps}`).
+
+From a terminal, `dashboard budget` prints the same accounts and what this
+repository's agents spent, and `dashboard turtle on|off`, `dashboard priority
+<agent> <level>` and `dashboard cap <agent> --rate-usd … --total-tokens …`
+set what the page sets, by an agent's name or id in the repository of the
+working directory. The three that change something are the operator's, from a
+terminal outside any agent session, as the page is.
+
+### Switching profile
+
+When an account's window is used up, the page says so once, sticky until it
+clears, and names the profiles of that runtime with room — `:switch home moves
+a repository's contained sessions to it`. It never moves anything by itself:
+the providers' terms rule out moving work to another account automatically
+when one runs out, so the switch is always the operator's.
+
+`:switch <profile> [claude|codex]` on an agent's repository, or `harness
+profile switch <profile> [--runtime codex]` in a checkout of it, hands the
+profile's login to the container volume every contained session of that
+runtime in the repository shares (`POST /api/repositories/<key>/profile`).
+Claude Code reads its login file at every request, measured on 2.1.285, so a
+contained Claude session runs on the new account from its next request. A
+Codex session keeps the login it started with until it is opened again, and a
+host session runs in its own account's home, which no volume reaches; each is
+answered with the command that opens it again on the profile, and the page
+keeps that answer in a notice. A contained launch on a profile other than
+the one the repository's volume holds would move every session running on it,
+so it refuses, saying how many, unless `--move-sessions` says that is meant.
+
 ## Reviews
 
 Reviews are grouped by repository, then by the session that asked, named as the

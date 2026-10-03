@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+### Agents spend within limits you set, on accounts you choose
+
+The dashboard every launch holds keeps a budget over every account its
+sessions draw on — each runtime's login under each profile — and holds an
+agent that would spend past your limits at its next tool call, the way a
+torrent client limits a link (`docs/dashboard.md`, Budgets).
+
+- Each account's windows are read every `poll_seconds`: Claude's 5-hour and
+  weekly windows from the OAuth usage endpoint, Codex's two from the
+  app-server, and between reads from each Codex rollout's token counts.
+- Each agent's spend is charged to a ledger at
+  `$XDG_STATE_HOME/lup/budget/ledger.json`, once per request. A Claude session
+  sends its telemetry to a port of the dashboard's own (8776), bearing a token
+  of its own: each request's `api_request` event, joined by request id to the
+  `claude_code.llm_request` span naming the subagent that made it, measured
+  on Claude Code 2.1.285. A Codex agent is charged the token counts its
+  rollout records, without cost, since Codex prices nothing a session sees.
+  A pipeline in process charges and waits on the same ledger through
+  `FinancialBudgetConfig(state_path=…, limits=…)`.
+- `[budget]` in your lup config sets a speed limit (even pace, or a window's
+  ceiling in percent an hour), a reserve kept for you, how many agents work
+  at once, per account and by a weekly schedule, and the turtle's slower
+  limits. Each agent's priority (`high`, `normal`, `low`) and caps (a rate and
+  a total, in dollars or tokens) are set live from the page (`:priority`,
+  `:cap`, `Space b`) or from a terminal (`dashboard priority`, `dashboard
+  cap`). `dashboard budget` prints what holds now. Your own sessions are
+  never held.
+- The page's meter shows each account's windows with an even-pace mark, how
+  fast each fills and when it clears, and the turtle (`:turtle`, `dashboard
+  turtle on|off`), which the status line shows as `🐢 turtle`. Each agent's
+  row says what it spends and what holds it.
+- A held agent waits through the pause's hold; a dashboard with no hold store
+  shows what it would hold, says `not holding`, and holds nobody.
+
+When an account runs out, the page names the profiles with room and leaves
+the switch to you. `:switch <profile>` on the page, or `harness profile switch
+<profile>`, hands the profile's login to the volume a repository's contained
+sessions share: Claude Code reads its login at every request, so a contained
+Claude session moves at its next one, and a Codex or host session is told the
+command that opens it again on the profile. Run from a session, the switch
+asks you first.
+
+- A contained launch on a profile other than the one its repository's volume
+  holds refuses rather than move the sessions running on it, saying how many,
+  unless `--move-sessions` says it is meant.
+- Each launch records the account its session opened on, so the budget
+  charges a session to the account it draws on.
+- A derived home keeps a copy of the profile's login, re-seeded whenever the
+  profile's login changes, instead of a link Claude Code's rename-on-write
+  replaced with a file nothing kept in step.
+- `setup profile` is gone: profiles are curated with `harness profile`, the
+  same tree (`migrations/pending/setup-profile-tree-gone.toml`).
+
 ### Another session's stash no longer fails the test suite
 
 The suites' guard against a test writing into the real checkout

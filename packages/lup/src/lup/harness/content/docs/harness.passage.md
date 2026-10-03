@@ -778,6 +778,11 @@ reopen = true               # a review parking with no tab open reopens the page
 origins = ["https://their.proxy.name"]   # also answered, where a reverse proxy
                             # serves the page: whole origins, no path
 
+[budget]                    # what the dashboard lets agents spend: docs/dashboard.md
+pace = "even"               # no window spent faster than it passes
+reserve = 10                # the last 10% of every window kept for you
+max_active = 3              # agents working at once, per account
+
 [container]                 # what every contained session is granted: over the
 network = "bridge"          # project's, under a mode and the command line
 memory = "75%"              # an amount such as "12GiB", or a share of the engine's
@@ -959,6 +964,19 @@ time; a home registered somewhere of the person's own is linked rather than
 moved; a name already present keeps what it holds and the source is left and
 reported; the selection either place holds is carried where `config.toml`
 records none.
+
+`harness profile switch NAME` moves the running sessions of this repository
+onto a profile rather than selecting one for later: it hands the profile's
+login to the container volume the repository's contained sessions of one
+runtime share (`--runtime codex` for Codex's). Claude Code reads its login file
+at every request, so a contained Claude session runs on the new account from
+its next one; a Codex session, and any host session, is answered with the
+command that opens it again on the profile. A contained launch naming another
+profile than the volume holds refuses rather than move the sessions running on
+it, saying how many, unless `--move-sessions` says that is meant. Run from a
+session, the switch is put to the operator first, as any change to the login
+sessions run as is; the dashboard's `:switch` is the operator's own. Nothing
+makes it by itself: when an account runs out, the dashboard suggests one.
 
 No profile may name Claude Code's default home, `~/.claude`, however it is
 spelled or reached — a symlinked directory profile included. A profile exports
