@@ -1727,9 +1727,13 @@ the interpreter and importing the kernel are time the runtime counts. The
 dispatcher opens one deadline five seconds short of the timeout. The
 language server an anti-pattern rule consults, a destination's accepted
 evaluator, and every Git and `sed` call take what is left rather than a
-timeout of their own, and one cut short reads as the failure it already
-answers — no checker looked, so the gate asks; Git could not say, so no
-capture is claimed. What nothing can hand a timeout to — a review-queue
+timeout of their own. A checker or `sed` cut short reads as the failure it
+already answers — no checker looked, so the gate asks. A question only Git
+answers is never read as its "no" when it went unanswered: "not tracked",
+"touches nothing" and "no repository" each let through a write the answer
+would have asked about, so a Git question the deadline cut short ends the
+judgement there, and the call is refused unjudged
+(`host.refuse_unanswered`). What nothing can hand a timeout to — a review-queue
 lock another writer holds, a read that never returns, the classifier itself
 — is stopped by an alarm two seconds past the deadline, and the dispatcher
 refuses the call as one it could not judge. What no alarm reaches — a read

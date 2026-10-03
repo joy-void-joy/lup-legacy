@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### A Git question the deadline left unanswered refuses the call
+
+With its deadline starved, the policy hook read a Git question that got no
+answer as its "no": a path Git never said was tracked was taken as
+untracked, a patch Git never read as touching nothing, a path Git never
+placed as this project's own. Measured on both dispatchers: `date >
+<tracked file>`, and the same after a heredoc into scratch, were allowed with
+the deadline starved, where in time they ask.
+
+- A Git question the hook's deadline cut short now ends the judgement: the
+  call is refused as one the policy could not judge in time
+  (`host.refuse_unanswered`). Git's own answer, a non-zero exit included,
+  reads as it did, and outside a hook — a review waiter, the dashboard —
+  nothing changes.
+- A language server that never answers still reads as no checker having
+  looked, but once it has spent the hook's time the Git questions after it
+  end the judgement, so such an edit is refused rather than asked.
+
+What changes for a session: on a loaded machine a call may be refused as
+unjudged where it used to be allowed on an answer nobody gave; retry it once.
+
 ### A policy judgement that does not finish in time refuses the call
 
 Claude Code and Codex both run a call once its `PreToolUse` hook overruns

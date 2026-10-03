@@ -38,7 +38,7 @@ from lup.providers.codex.hooks import (
 )
 from lup.types import JsonObject
 from lup_template.harness.catalog import declared_hook_set
-from tests.unit.repos import initialized_repo
+from tests.unit.repos import commit_file, git_in, initialized_repo
 
 INHERITED = 3.0
 """Seconds from now the test's own deadline stands, which the hook inherits."""
@@ -148,15 +148,16 @@ def started_ago(seconds: float) -> dict[str, str]:
     return {"LUP_HOOK_STARTED": str(int(time.time() - seconds))}
 
 
-def test_a_language_server_that_never_answers_is_answered_as_one_nobody_ran(
+def test_a_language_server_that_never_answers_leaves_the_hook_refusing_in_time(
     checkout: Path, runtime: str
 ) -> None:
-    """The resolver would hold the hook past the runtime's limit; the gate asks in time.
+    """The resolver would hold the hook past the runtime's limit; the hook refuses in time.
 
     A rule whose verdict turns on a resolved receiver waits on the declared
     resolver, which here sleeps a minute. Cut short at the inherited deadline,
-    it reads as no checker having looked, which the gate answers by asking --
-    and Codex, with no ask at this boundary, by the refusal a parked question is.
+    it reads as no checker having looked -- and the questions the verdict still
+    has to put to Git find no time left, which ends the judgement rather than
+    being read as their answers' "no": the call is refused unjudged.
     """
     resolver = checkout / "stalled-resolver"
     resolver.write_text("#!/bin/sh\nexec sleep 60\n", encoding="utf-8")
@@ -183,8 +184,8 @@ def test_a_language_server_that_never_answers_is_answered_as_one_nobody_ran(
     )
 
     assert elapsed < INHERITED + 5
-    assert effect == ("ask" if runtime == "claude" else "deny")
-    assert "dict-get" in detail
+    assert effect == "deny"
+    assert "could not judge this call in time" in detail
 
 
 @pytest.mark.parametrize("runtime", ["codex"])
@@ -271,6 +272,52 @@ def test_a_hook_started_past_its_answer_limit_refuses_at_once(
     )
 
     assert elapsed < 5
+    assert effect == "deny"
+    assert "could not judge this call in time" in detail
+
+
+TRACKED_CHANGE = (
+    "--- a/tracked.py\n+++ b/tracked.py\n@@ -1 +1 @@\n-value = 1\n+value = 2\n"
+)
+"""A patch over the tracked file, whose targets only Git reads."""
+
+STARVED_CALLS: dict[str, JsonObject] = {
+    "a redirect over a tracked file": {"command": "date > tracked.py"},
+    "a heredoc into scratch, then a redirect over a tracked file": {
+        "command": "cat > tmp/x.py <<'X'\ntext.replace('a', 'b')\nX\ndate > tracked.py"
+    },
+    "a patch whose targets Git reads": {"command": "git apply change.patch"},
+    "a write into another repository": {"command": "date > nested/inner.py"},
+}
+"""Calls whose verdict turns on a question only Git answers: tracked, touched, whose."""
+
+
+@pytest.mark.parametrize("call", sorted(STARVED_CALLS))
+def test_a_question_the_deadline_starved_is_never_read_as_no(
+    checkout: Path, runtime: str, call: str
+) -> None:
+    """With no time left, a question Git did not answer is unknown, not "no".
+
+    Read as "no" -- not tracked, touches nothing, no repository -- each let
+    its call through with the deadline starved, measured on both dispatchers,
+    and over a tracked file that is a write the answer asks about in time. A
+    starved question ends the judgement instead, so each call is refused
+    unjudged rather than judged on an answer nobody gave.
+    """
+    hooks = checkout.parent / "no-hooks"
+    commit_file(git_in(checkout, hooks), checkout, "tracked.py", "value = 1\n", "seed")
+    (checkout / "tmp").mkdir()
+    (checkout / "change.patch").write_text(TRACKED_CHANGE, encoding="utf-8")
+    initialized_repo(checkout / "nested", hooks)
+
+    effect, detail, _ = judged(
+        checkout,
+        runtime,
+        "Bash",
+        STARVED_CALLS[call],
+        {"LUP_HOOK_DEADLINE": repr(time.monotonic() - 1.0)},
+    )
+
     assert effect == "deny"
     assert "could not judge this call in time" in detail
 

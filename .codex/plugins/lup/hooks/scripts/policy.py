@@ -579,6 +579,28 @@ def answered_in_time(
         raise SystemExit(status)
 
 
+def refuse_unanswered(question: str) -> None:
+    """End a hook's judgement at a question it could not get answered in time.
+
+    "No answer" is not "no". A question cut short by the deadline -- is this
+    path tracked, which repository holds it, what does this patch touch --
+    read as its negative answer lets a write through as untracked, as this
+    project's, as touching nothing, where the answer it never got would have
+    asked. Reading every such question strictly one by one is a second
+    policy beside the first; ending the judgement is the one strict reading
+    that needs no second. So under a hook's deadline this moves the deadline
+    to now, which every later step reads as no time left and the refusal
+    names, and raises where the question was asked. Outside a hook -- a
+    review waiter, the dashboard -- nothing is being judged, and it returns
+    for the caller's own answer to a question nobody could answer.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    if "LUP_HOOK_DEADLINE" not in environ:
+        return
+    environ["LUP_HOOK_DEADLINE"] = repr(time.monotonic())
+    raise RuntimeError(f"{question} did not answer before the hook's deadline")
+
+
 def closed_deadline(previous: str) -> None:
     """Disarm :func:`opened_deadline`'s alarm and put back the deadline it replaced."""
     signal.setitimer(signal.ITIMER_REAL, 0)
@@ -2841,8 +2863,9 @@ def shared_git_directory(path_text: str) -> str:
             check=False,
         )
     except subprocess.TimeoutExpired:
-        # Git not answering in the time this hook has left reads as Git
-        # failing, which every caller already answers.
+        # "No repository" read here makes a path in another repository this
+        # project's own, so under a hook an unanswered question ends it.
+        refuse_unanswered("Git")
         return ""
     return str(Path(result.stdout.strip()).resolve()) if result.returncode == 0 else ""
 
@@ -3636,11 +3659,14 @@ def git_answers(
 ) -> list[str] | None:
     """One Git invocation's lines, or None when Git cannot answer.
 
-    Git missing, the path outside a repository, a malformed pathspec, a
-    non-zero exit, and no answer inside ``timeout_seconds`` or the hook's
-    deadline, whichever is nearer, all collapse to None, so a caller reading
-    this as evidence that something is safe to destroy treats an unanswerable
-    question as a no.
+    Git missing, the path outside a repository, a malformed pathspec and a
+    non-zero exit all collapse to None, so a caller reading this as evidence
+    that something is safe to destroy treats an unanswerable question as a
+    no. No answer inside ``timeout_seconds`` or the hook's deadline,
+    whichever is nearer, is different: under a hook it ends the judgement
+    (:func:`refuse_unanswered`), since a caller reading None as "not
+    tracked" or "touches nothing" would let through what the answer would
+    have asked about.
 
     ``overrides`` are merged over the inherited environment rather than
     replacing it, because a replacement drops ``PATH`` and ``HOME`` and the
@@ -3659,11 +3685,14 @@ def git_answers(
             check=False,
             input=input_text,
             env={**environ, **overrides} if overrides else None,
-            # Bounded by what the hook has left: an answer that does not come
-            # in time is the unanswerable question this already reads as no.
+            # Bounded by what the hook has left, and never read as a no when
+            # the answer does not come in time.
             timeout=hook_seconds_left(timeout_seconds),
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError:
+        return None
+    except subprocess.TimeoutExpired:
+        refuse_unanswered("Git")
         return None
     return finished.stdout.splitlines() if finished.returncode == 0 else None
 
