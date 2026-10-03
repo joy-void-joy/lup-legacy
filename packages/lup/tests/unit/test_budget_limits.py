@@ -19,6 +19,7 @@ from lup.sessions.limits import (
     ScheduledLimits,
     Spend,
     Turtle,
+    clock,
     judged,
 )
 
@@ -142,6 +143,8 @@ def test_caps_hold_one_agent_alone() -> None:
     assert verdicts["b"].cause == "rate" and verdicts["b"].until == NOW + timedelta(
         minutes=12
     )
+    clears = clock(NOW + timedelta(minutes=12), NOW)
+    assert verdicts["b"].said.endswith(f", until {clears}")
     assert "c" not in verdicts
 
 

@@ -387,11 +387,13 @@ def judged(
             )
         rate = agent.caps.over_rate(agent.hour)
         if rate:
+            clears = agent.hour_clears
             return Verdict(
                 key=agent.key,
                 cause="rate",
-                said=f"over its rate: {rate}",
-                until=agent.hour_clears,
+                said=f"over its rate: {rate}"
+                + (f", until {clock(clears, now)}" if clears is not None else ""),
+                until=clears,
             )
         return paced(agent, limits, windows)
 
