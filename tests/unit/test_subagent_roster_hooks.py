@@ -35,7 +35,7 @@ from lup.providers.roster_prompt import DEPARTURE_SCRIPT
 from lup.types import JsonObject
 from lup_template.harness.composition import claude_target, codex_target
 from tests.unit.repos import commit_file
-from tests.unit.test_in_process_parity import DISPATCHERS, Session, edited
+from tests.unit.test_in_process_parity import DISPATCHERS, Runtime, Session, edited
 from tests.unit.test_roster_prompt_hook import rendered, shipped
 
 SESSION = "abc123"
@@ -483,6 +483,70 @@ def test_a_subagents_edit_is_judged_against_its_own_row_everywhere(
             "agent_type": "general-purpose",
         }
         assert session.dispatched(runtime, call) == effect
+
+
+def after_the_call(session: Session, runtime: Runtime, call: JsonObject) -> str:
+    """What the writer is told beside the call's result, as its runtime's post-tool hook says it."""
+    result = sh.Command(sys.executable)(
+        "-I",
+        "-S",
+        str(DISPATCHERS[runtime].resolve()),
+        _in=json.dumps(
+            {
+                "session_id": "parity",
+                "hook_event_name": "PostToolUse",
+                "cwd": str(session.checkout),
+                "tool_response": "",
+                **call,
+            }
+        ),
+        _ok_code=[0, 2],
+        _return_cmd=True,
+        _env=session.environment,
+    )
+    assert isinstance(result, sh.RunningCommand)
+    assert result.exit_code == 0, result.stderr.decode()
+    rendered = json.loads(str(result) or "{}")
+    specific = (
+        rendered["hookSpecificOutput"] if "hookSpecificOutput" in rendered else {}
+    )
+    return str(specific["additionalContext"]) if "additionalContext" in specific else ""
+
+
+@pytest.mark.parametrize("runtime", ["claude", "codex"])
+def test_a_writer_is_told_its_own_fork_holds_what_it_wrote(
+    session: Session, runtime: Runtime
+) -> None:
+    """Its own fork's hold lets the write through, and is said beside the result in
+    the same words on both runtimes. A sibling's fork asks before the write instead
+    (test_a_subagents_edit_is_judged_against_its_own_row_everywhere)."""
+    commit_file(session.git, session.checkout, "cli.py", "value = 1\n", "seed")
+    peers = RepositoryPeers(session.checkout)
+    member = mint_member_id()
+    peers.join(member, session.checkout, cli_name="orchestrator")
+    fork = peers.join_subagent(
+        member, store.Caller(agent_id="f0f0f0f0", spawned_by="a0cacac5", name="sweep")
+    )
+    target = session.checkout / "cli.py"
+    peers.lock(fork.id, target)
+    session.environment[MEMBER_ENV] = member
+    # Where Codex keeps the before-image its post-tool hook reads the patch against.
+    session.environment["PLUGIN_DATA"] = str(session.base / "plugin-data")
+    call = {
+        **edited(runtime, target, "value = 1\n", "value = 2\n"),
+        "agent_id": "a0cacac5",
+        "agent_type": "general-purpose",
+        "tool_use_id": "family-call",
+    }
+
+    asked = session.dispatched(runtime, call)
+    target.write_text("value = 2\n", encoding="utf-8")
+    said = after_the_call(session, runtime, call)
+
+    assert asked == "allow"
+    assert said.splitlines() == [
+        "cli.py: your subagent sweep holds this file and is still running"
+    ]
 
 
 def test_what_a_subagent_writes_is_held_on_its_own_row(session: Session) -> None:

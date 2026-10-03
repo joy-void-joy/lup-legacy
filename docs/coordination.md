@@ -113,7 +113,10 @@ there is asked, and so is every member outside the family. A member is not
 asked about what its own descendants hold — a subagent it spawned, that
 subagent's forks at any remove, a runtime its shell started — since that is
 its own work further on, nor a subagent about its own session's claims, since
-the session dispatched it into that work. `dev policy` run from a subagent's shell carries
+the session dispatched it into that work. Such a write is allowed, and the
+writer is told beside the call's result, in the post-tool context both
+runtimes add, one line a hold: `<file>: your subagent <name> holds this file
+and is still running` — "still running" only where it is. `dev policy` run from a subagent's shell carries
 only the session's id; it reads as that subagent while the subagent's command
 is the one the session's family has running — the dispatcher opens a window
 keyed by the calling conversation around each command — and as the session

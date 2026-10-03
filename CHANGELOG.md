@@ -42,7 +42,9 @@
   where it was a plain sibling with an empty `spawned_by`. A member writes
   what its own descendants hold without being asked, a session included
   under its subagents; the hold still shows, and a sibling or anyone outside
-  the family is still asked.
+  the family is still asked. The writer is told beside the call's result,
+  the same on both runtimes: `<file>: your subagent <name> holds this file
+  and is still running`, saying "still running" only where it is.
 - A redirect a wake carried still refuses the agent's next tool call. A wake
   that reached used to hand the redirect over with everything else, so the
   delivery hook never saw it and the next call went through.

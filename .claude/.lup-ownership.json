@@ -730,7 +730,7 @@
     {
       "path": ".claude/plugins/lup/hooks/scripts/policy.py",
       "category": "generated",
-      "sha256": "b90af001ad04a399e70048704bdf04a80105c511b1eb74a33d9748d5dcc66baa",
+      "sha256": "04262abfb7f071f919baa71a154afd8648eb7a1898830f4e336c33d47e30b6ef",
       "semantic_id": "hooks.lup-policy",
       "executable": true
     },
@@ -744,7 +744,7 @@
     {
       "path": ".claude/plugins/lup/hooks/scripts/policy_evaluator.py",
       "category": "generated",
-      "sha256": "621ad2955b0d369a5650697d8817f718a42e65498782ffe1a3ad30b77a1b3565",
+      "sha256": "8b632c87f52a5fa121a05ce8fb6fef58bf309d2d14ab59fc47ba99bc709124d3",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },
@@ -814,7 +814,7 @@
     {
       "path": "docs/coordination.md",
       "category": "generated",
-      "sha256": "b49e2e873fa8032f21777425d8461d5189aac1a69b67f94b8a9e26e136f48730",
+      "sha256": "c74a13b2fd762b7e09f7eed8827cd884ba5f43246c3427216dee2fc34a10dc67",
       "semantic_id": "docs.coordination",
       "executable": false
     },
@@ -891,7 +891,7 @@
     {
       "path": "docs/platform-differentiation.md",
       "category": "generated",
-      "sha256": "06fefdf2ebc762aa63d2276a56adbd48202f280a8ecf2395024fe9d1f10a410b",
+      "sha256": "6dbc2fcaecdf4ef45a8cdc19d39079fde14ca9bed0b6749521cfd2c32a5d5d79",
       "semantic_id": "docs.platform-differentiation",
       "executable": false
     },
