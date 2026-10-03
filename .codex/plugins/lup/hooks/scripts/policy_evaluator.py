@@ -12,6 +12,7 @@ import ast
 import csv
 import fcntl
 import os
+import select
 import signal
 from hashlib import sha256
 import tempfile
@@ -332,6 +333,29 @@ def destination_policy_binding(path_text: str, root: Path | None) -> str:
     return ""
 
 
+def hook_started() -> float:
+    """When this hook began, on the monotonic clock: where the guard stamped it, else now.
+
+    A runtime counts its timeout from the moment it starts the hook, and by
+    the time the dispatcher's first line runs the interpreter has started,
+    compiled the script and imported the kernel -- time the runtime counts
+    and a deadline opened from inside would not. So the guard stamps the
+    wall clock as it starts, in whole seconds since that is what every
+    `date` prints, and every deadline here counts from the stamp: never
+    later than the hook began, and at most a second earlier. Without a
+    stamp, as when something other than the guard starts the dispatcher,
+    the hook began now.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    stamp = environ["LUP_HOOK_STARTED"] if "LUP_HOOK_STARTED" in environ else ""
+    now = time.monotonic()
+    try:
+        elapsed = time.time() - float(stamp) if stamp else 0.0
+    except ValueError:
+        elapsed = 0.0
+    return now - max(elapsed, 0.0)
+
+
 def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     """Give this hook, and every process it starts, one deadline: returns the one before.
 
@@ -339,17 +363,18 @@ def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     timeout, so a hook that is still waiting when that comes has answered
     nothing, and nothing is the one answer a gate may not give. Everything a
     verdict may wait on -- a language server, a destination's evaluator, Git,
-    `sed` -- shares the deadline set here, where the hook starts, and asks
-    :func:`hook_seconds_left` rather than spending a timeout of its own; one
-    cut short reads as the failure it already answers, so the verdict is
-    reached in time.
+    `sed` -- shares the deadline set here, counted from when the hook
+    started, and asks :func:`hook_seconds_left` rather than spending a
+    timeout of its own; one cut short reads as the failure it already
+    answers, so the verdict is reached in time.
 
     What no step bounds -- a file lock another writer holds, a read that
     never returns, the classifier itself -- is bounded by an alarm ``grace``
     seconds past the deadline. It raises where the hook is, and the
     dispatcher answers that as it answers every call it could not judge: it
     refuses. The grace is what separates the two: a step cut short at the
-    deadline still has time to become the verdict it reads as.
+    deadline still has time to become the verdict it reads as. What an
+    alarm cannot reach either, :func:`answered_in_time` answers for.
 
     Kept in the environment, on the monotonic clock every process on the
     machine shares, so a process this hook starts inherits the deadline and
@@ -357,7 +382,7 @@ def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     """
     environ = os.environ  # lup: ignore[os-environ]
     previous = environ["LUP_HOOK_DEADLINE"] if "LUP_HOOK_DEADLINE" in environ else ""
-    deadline = time.monotonic() + seconds
+    deadline = hook_started() + seconds
     try:
         inherited = float(previous) if previous else deadline
     except ValueError:
@@ -378,6 +403,182 @@ def opened_deadline(seconds: float, grace: float = 2.0) -> str:
     signal.signal(signal.SIGALRM, overran)
     signal.setitimer(signal.ITIMER_REAL, max(held - time.monotonic(), 0.0) + grace)
     return previous
+
+
+def answered_in_time(
+    seconds: float,
+    judged: Callable[[bytes], None],
+    unanswered: Callable[[bytes, BaseException | None], None],
+) -> None:
+    """Answer within ``seconds`` of the hook starting, whatever the judgement does.
+
+    A runtime lets the call through once its policy hook overruns its
+    timeout, and reads nothing the hook said until its process has ended --
+    so the answer has to be written, and this process gone, before then.
+    The deadline :func:`opened_deadline` sets, and the alarm past it, bound
+    every wait that can be interrupted. This bounds the rest: the judgement
+    runs in a child process, and this one only waits on it. Past ``seconds``
+    it stops the child and writes ``unanswered`` itself, so a judgement
+    stuck where no alarm reaches -- a read the kernel will not interrupt,
+    native code that never returns to the interpreter, the verdict being
+    written after its alarm was disarmed -- still meets a refusal in time.
+
+    ``judged`` reads the hook's input and answers as the dispatcher always
+    has: on standard output and error and in its exit status, carried out
+    whole once it ends, and none of it if it does not end in time -- half a
+    verdict is not one. The child holds neither of the runtime's streams,
+    so nothing it leaves running keeps the runtime waiting. A child a signal
+    ended reached no verdict, and is refused as one that could not judge;
+    one that exited keeps the status the guard around this script reads.
+
+    ``unanswered`` takes the input and what failed -- None where the time
+    ran out -- and writes this runtime's refusal on the channel the input's
+    event reads, in the words :func:`unjudged_reason` and
+    :func:`unjudged_recovery` give it. The input is whatever arrived, which
+    is nothing where it did not all arrive in time.
+    """
+    limit = hook_started() + seconds
+
+    def arriving() -> Iterator[bytes]:
+        """The hook's input as it arrives; a TimeoutError where it stops arriving in time."""
+        while (left := limit - time.monotonic()) > 0 and select.select(
+            [0], [], [], left
+        )[0]:
+            chunk = os.read(0, 65536)
+            if not chunk:
+                return
+            yield chunk
+        raise TimeoutError("the hook's input did not arrive in time")
+
+    def status_of(given: bytes) -> int:
+        """Judge here, in the child, and say how it ended as an exit status would."""
+        try:
+            judged(given)
+        except SystemExit as stop:
+            if isinstance(stop.code, str):
+                print(stop.code, file=sys.stderr)
+            return stop.code if isinstance(stop.code, int) else int(bool(stop.code))
+        # The interpreter's own report of what escaped, which a child that
+        # leaves through os._exit has to give itself: the traceback on stderr
+        # and the status the guard reads as a crash.
+        except Exception as escaped:
+            sys.excepthook(type(escaped), escaped, escaped.__traceback__)
+            return 1
+        return 0
+
+    def streamed(stream: int) -> Iterator[bytes]:
+        """What one of the child's streams holds now, without waiting for more."""
+        os.set_blocking(stream, False)
+        try:
+            yield from iter(lambda: os.read(stream, 65536), b"")
+        except BlockingIOError:
+            return
+
+    try:
+        given = b"".join(arriving())
+    except TimeoutError:
+        unanswered(b"", None)
+        return
+    sys.stdout.flush()
+    sys.stderr.flush()
+    said_out, said_in = os.pipe()
+    told_out, told_in = os.pipe()
+    ended, ending = os.pipe()
+    try:
+        child = os.fork()
+    except OSError as error:
+        unanswered(given, error)
+        return
+    if child == 0:
+        for unused in (said_out, told_out, ended):
+            os.close(unused)
+        # Its input stays the runtime's wire, all read already, since which
+        # runtime a hook answers for is read off whose wire that is.
+        for source, target in ((said_in, 1), (told_in, 2)):
+            if source != target:
+                os.dup2(source, target)
+                os.close(source)
+        # Whatever escapes the judgement, the child leaves here: it is a
+        # copy of this process, and returning would run this one's code.
+        status = 1
+        try:
+            status = status_of(given)
+            sys.stdout.flush()
+            sys.stderr.flush()
+        finally:
+            os._exit(status)
+    for unused in (said_in, told_in, ending):
+        os.close(unused)
+    kept: dict[int, list[bytes]] = {said_out: [], told_out: []}
+
+    def ended_with() -> int | None:
+        """The child's exit status, its streams read meanwhile; None past the limit.
+
+        The streams are read as they fill, since a child writing more than a
+        pipe holds waits for a reader. Its end is the one pipe nothing it
+        starts inherits closing, rather than the end of its output, which a
+        process it left running could hold open long after it answered.
+        """
+        watched = [said_out, told_out, ended]
+        while ended in watched:
+            left = limit - time.monotonic()
+            ready = select.select(watched, [], [], left)[0] if left > 0 else []
+            if not ready:
+                return None
+            for stream in ready:
+                chunk = os.read(stream, 65536)
+                if not chunk:
+                    watched.remove(stream)
+                    continue
+                # Only the two streams carry anything: the child never writes
+                # to the pipe whose closing says it ended.
+                kept[stream].append(chunk)
+        while (left := limit - time.monotonic()) > 0:
+            reaped, status = os.waitpid(child, os.WNOHANG)
+            if reaped:
+                return os.waitstatus_to_exitcode(status)
+            time.sleep(min(left, 0.01))
+        return None
+
+    status = ended_with()
+    if status is None or status < 0:
+        try:
+            os.kill(child, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        killed = None if status is None else RuntimeError(f"ended by signal {-status}")
+        unanswered(given, killed)
+        return
+    for stream, chunks in kept.items():
+        chunks.extend(streamed(stream))
+    sys.stdout.buffer.write(b"".join(kept[said_out]))
+    sys.stderr.buffer.write(b"".join(kept[told_out]))
+    sys.stdout.flush()
+    sys.stderr.flush()
+    if status:
+        raise SystemExit(status)
+
+
+def refuse_unanswered(question: str) -> None:
+    """End a hook's judgement at a question it could not get answered in time.
+
+    "No answer" is not "no". A question cut short by the deadline -- is this
+    path tracked, which repository holds it, what does this patch touch --
+    read as its negative answer lets a write through as untracked, as this
+    project's, as touching nothing, where the answer it never got would have
+    asked. Reading every such question strictly one by one is a second
+    policy beside the first; ending the judgement is the one strict reading
+    that needs no second. So under a hook's deadline this moves the deadline
+    to now, which every later step reads as no time left and the refusal
+    names, and raises where the question was asked. Outside a hook -- a
+    review waiter, the dashboard -- nothing is being judged, and it returns
+    for the caller's own answer to a question nobody could answer.
+    """
+    environ = os.environ  # lup: ignore[os-environ]
+    if "LUP_HOOK_DEADLINE" not in environ:
+        return
+    environ["LUP_HOOK_DEADLINE"] = repr(time.monotonic())
+    raise RuntimeError(f"{question} did not answer before the hook's deadline")
 
 
 def closed_deadline(previous: str) -> None:
@@ -402,23 +603,40 @@ def deadline_passed() -> bool:
     return hook_seconds_left(float("inf")) <= 0.0
 
 
-def unjudged_reason(error: Exception, read: bool) -> str:
+def unjudged_reason(error: BaseException | None, read: bool) -> str:
     """Why a call went unjudged, named by what failed rather than by one guess.
 
     Every failure is refused alike -- the call went unjudged, and that is
     the whole of what the verdict can say -- but the reason is what somebody
-    reads to fix it, and each cause has a different fix: a hook that ran
-    out of time, a payload that is not one (``read`` false), and a failure
+    reads to fix it, and each cause has a different fix: a judgement that
+    ran out of time (``error`` None, or anything failing once the deadline
+    has passed), a payload that is not one (``read`` false), and a failure
     judging a payload that was.
     """
-    if deadline_passed():
-        return (
-            "this hook reached its deadline before a verdict, so the call is"
-            " refused unjudged"
-        )
+    if error is None or deadline_passed():
+        return "the policy could not judge this call in time, so it is refused unjudged"
     if not read:
         return f"the hook input is malformed, so the call is refused unjudged: {error}"
     return f"Lup could not judge this call ({type(error).__name__}: {error})"
+
+
+def unjudged_recovery(error: BaseException | None) -> str:
+    """What the agent does about a call that went unjudged, given what failed.
+
+    Only time passes on its own, so only a judgement that ran out of it is
+    worth the same call again. Either way the refusal is the policy's defect
+    rather than the call's once it repeats, and this says where that goes.
+    """
+    report = (
+        "report it with `uv run lup-devtools dev report-friction --component"
+        " lup/policy`, naming the call and this refusal."
+    )
+    if error is None or deadline_passed():
+        return (
+            "Retry the same call once: a slow moment -- load on the machine, a lock"
+            " another session held -- passes.\nRefused again, " + report
+        )
+    return "If it repeats, " + report
 
 
 def hook_seconds_left(ceiling: float) -> float:
@@ -2625,8 +2843,9 @@ def shared_git_directory(path_text: str) -> str:
             check=False,
         )
     except subprocess.TimeoutExpired:
-        # Git not answering in the time this hook has left reads as Git
-        # failing, which every caller already answers.
+        # "No repository" read here makes a path in another repository this
+        # project's own, so under a hook an unanswered question ends it.
+        refuse_unanswered("Git")
         return ""
     return str(Path(result.stdout.strip()).resolve()) if result.returncode == 0 else ""
 
@@ -3428,11 +3647,14 @@ def git_answers(
 ) -> list[str] | None:
     """One Git invocation's lines, or None when Git cannot answer.
 
-    Git missing, the path outside a repository, a malformed pathspec, a
-    non-zero exit, and no answer inside ``timeout_seconds`` or the hook's
-    deadline, whichever is nearer, all collapse to None, so a caller reading
-    this as evidence that something is safe to destroy treats an unanswerable
-    question as a no.
+    Git missing, the path outside a repository, a malformed pathspec and a
+    non-zero exit all collapse to None, so a caller reading this as evidence
+    that something is safe to destroy treats an unanswerable question as a
+    no. No answer inside ``timeout_seconds`` or the hook's deadline,
+    whichever is nearer, is different: under a hook it ends the judgement
+    (:func:`refuse_unanswered`), since a caller reading None as "not
+    tracked" or "touches nothing" would let through what the answer would
+    have asked about.
 
     ``overrides`` are merged over the inherited environment rather than
     replacing it, because a replacement drops ``PATH`` and ``HOME`` and the
@@ -3451,11 +3673,14 @@ def git_answers(
             check=False,
             input=input_text,
             env={**environ, **overrides} if overrides else None,
-            # Bounded by what the hook has left: an answer that does not come
-            # in time is the unanswerable question this already reads as no.
+            # Bounded by what the hook has left, and never read as a no when
+            # the answer does not come in time.
             timeout=hook_seconds_left(timeout_seconds),
         )
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError:
+        return None
+    except subprocess.TimeoutExpired:
+        refuse_unanswered("Git")
         return None
     return finished.stdout.splitlines() if finished.returncode == 0 else None
 

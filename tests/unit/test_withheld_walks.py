@@ -246,4 +246,4 @@ def test_a_reading_in_process_is_bounded_as_a_hook_is(
     assert time.monotonic() - started < 10
     (reading,) = verdict.readings
     assert reading.effect == "deny"
-    assert "deadline" in reading.reason
+    assert "could not judge this call in time" in reading.reason

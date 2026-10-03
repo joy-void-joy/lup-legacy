@@ -7,7 +7,6 @@ repo-relative rules matching inside a sibling worktree.
 """
 
 import importlib.util
-import io
 import json
 import sys
 from collections.abc import Callable
@@ -401,9 +400,7 @@ class TestDispatchedPatches:
             "tool_use_id": "allowed-call",
             "hook_event_name": "PreToolUse",
         }
-        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
-
-        dispatcher.main()
+        dispatcher.judged(json.dumps(payload).encode())
 
         snapshot = dispatcher.patch_snapshot(payload)
         assert snapshot.is_file()
@@ -412,8 +409,7 @@ class TestDispatchedPatches:
         payload["hook_event_name"] = "PermissionRequest"
         target.write_text("a permission request must not replace the preimage\n")
         recorded = snapshot.read_text()
-        monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
-        dispatcher.main()
+        dispatcher.judged(json.dumps(payload).encode())
         assert (
             json.loads(capsys.readouterr().out)["hookSpecificOutput"]["decision"][
                 "behavior"
@@ -534,10 +530,8 @@ class TestDispatchedPatches:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         payload = json.dumps(patch_payload("garbage"))
-        monkeypatch.setattr(sys, "stdin", io.StringIO(payload))
-
         with pytest.raises(SystemExit) as raised:
-            bundled_dispatcher().main()
+            bundled_dispatcher().judged(payload.encode())
 
         assert raised.value.code == 2
 
