@@ -9,6 +9,7 @@ than known by the reader holding a row, as :mod:`lup.providers.interrupts`
 asks one to stop a turn.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -46,6 +47,12 @@ class AccountHome(BaseModel, frozen=True):
     account: Account
     home: Path
     signed_in: bool
+    identity: str = ""
+    """Whose login it is, as the runtime's account document says; empty where it does not."""
+
+    volume: str = ""
+    """The repository volume the login is kept in, where it is kept in one
+    rather than in *home*: *home* is then the checkout whose volume it is."""
 
 
 def account_homes(
@@ -95,13 +102,24 @@ def account_homes(
     return [each for runtime in runtime_logins() for each in homes(runtime)]
 
 
-def account_reader(account: AccountHome) -> UsageReader:
-    """The reader of one account's windows, in its runtime's own terms."""
+def account_reader(
+    account: AccountHome, stored: Callable[[], bytes | None] | None = None
+) -> UsageReader:
+    """The reader of one account's windows, in its runtime's own terms.
+
+    *stored* reads the login to ask with where it is not *home*'s own: the
+    copy a repository's volume keeps, which only a container reaches.
+    """
     match account.account.runtime:
         case "claude":
+            from lup.providers.claude.usage.api import account_record
             from lup.providers.claude.usage.reader import ClaudeUsageReader
 
-            return ClaudeUsageReader(account.home)
+            return ClaudeUsageReader(
+                account.home,
+                record=account_record(account.identity) if account.identity else None,
+                stored=stored,
+            )
         case "codex":
             from lup.providers.codex.usage.reader import CodexUsageReader
 

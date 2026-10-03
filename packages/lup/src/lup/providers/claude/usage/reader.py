@@ -7,7 +7,7 @@ The display itself knows none of it.
 """
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -25,8 +25,11 @@ from lup.providers.claude.usage.api import (
     StatsCache,
     UsageBucket,
     UsageResponse,
+    access_token,
     cached_usage,
     creds_path,
+    fetch_usage,
+    fetch_usage_as,
     load_stats,
 )
 from lup.observability.usage.app import UsageEntry
@@ -274,21 +277,41 @@ class ClaudeUsageReader(UsageReader):
     """
 
     def __init__(
-        self, config_dir: Path, max_age: timedelta = timedelta(minutes=1)
+        self,
+        config_dir: Path,
+        max_age: timedelta = timedelta(minutes=1),
+        record: Path | None = None,
+        stored: Callable[[], bytes | None] | None = None,
     ) -> None:
         self.config_dir = config_dir
         self.max_age = max_age
+        self.record = record
+        """Where the reading is shared: the account's own record where its id is known, else the home's."""
+        self.stored = stored
+        """Reads the login to ask with, where it is not *config_dir*'s own."""
 
     def read(self, detail: bool) -> UsageReport:
         credentials = creds_path(self.config_dir)
-        if not credentials.exists():
+        stored = self.stored
+        if stored is None and not credentials.exists():
             raise UsageUnavailable(
                 f"No credentials at {credentials}. This reads the OAuth usage "
                 "endpoint for a signed-in profile; sign in, or name another "
                 "profile with --profile."
             )
+
+        def asked(home: Path) -> UsageResponse:
+            if stored is None:
+                return fetch_usage(home)
+            login = stored()
+            if login is None:
+                raise RuntimeError(f"no login is kept for {home}")
+            return fetch_usage_as(access_token(login, str(home)))
+
         try:
-            reading = cached_usage(self.config_dir, self.max_age)
+            reading = cached_usage(
+                self.config_dir, self.max_age, record=self.record, fetch=asked
+            )
         except (httpx.HTTPError, RuntimeError, ValidationError) as error:
             raise UsageUnavailable(str(error)) from error
         usage = reading.usage

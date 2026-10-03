@@ -26,20 +26,19 @@ from lup.devtools.dashboard.budget import (
     StoredCalls,
     StoredHolds,
     WaitingCall,
+    drawn_reader,
     held_homes,
     launched_on,
     limit_reset,
     profile_routes,
 )
 from lup.devtools.harness.launch import SwitchOutcome
-from lup.launch.config_volume import (
-    LaunchedAccount,
-    LaunchedAccounts,
-    LoginOwner,
-    VolumeLogin,
-    VolumeLogins,
-)
+from lup.launch.config_volume import LaunchedAccount, LaunchedAccounts, LoginOwner
+from lup.providers.claude.usage import reader as claude_reader
+from lup.providers.claude.usage.api import UsageResponse
 from lup.providers.harness import AdapterName
+from lup.providers.login import ProviderLogin
+from lup.providers.login_sync import LoginCopy, LoginPlace
 from lup.devtools.dashboard.companion import KnownRepository
 from lup.devtools.dashboard.live import RunningAgent
 from lup.devtools.dashboard.telemetry import (
@@ -679,7 +678,31 @@ def test_a_session_s_status_line_reading_stands_in_for_the_provider(
     assert reader.used == [20.0], "a session's fresh reading spares the provider"
 
 
-def test_the_account_a_repositorys_volume_holds_is_read_and_charged(
+class VolumeKept(LoginPlace):
+    """A repository volume as a test keeps it: the login inside, and whose it is."""
+
+    def __init__(self, login: bytes, account: str) -> None:
+        self.login = login
+        self.account = json.dumps(
+            {
+                "oauthAccount": {
+                    "accountUuid": f"uuid-{account}",
+                    "emailAddress": f"{account}@example.com",
+                }
+            }
+        ).encode()
+
+    def named(self) -> str:
+        return "volume lup-claude-lup"
+
+    def read(self) -> LoginCopy:
+        return LoginCopy(login=self.login, account=self.account)
+
+    def write(self, content: bytes, expected: bytes | None) -> None:
+        raise AssertionError("the poller never writes a volume")
+
+
+def test_the_account_signed_in_to_a_volume_is_read_with_the_volumes_own_login(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
@@ -688,36 +711,45 @@ def test_the_account_a_repositorys_volume_holds_is_read_and_charged(
         "state_volume_name",
         lambda root, login: f"lup-{login.state_volume}-lup",
     )
-    volumes = VolumeLogins(tmp_path / "volume-logins")
-    second = tmp_path / "accounts" / "second"
-    second.mkdir(parents=True)
-    (second / ".credentials.json").write_text("{}")
-    volumes.record(
-        VolumeLogin(
-            volume="lup-claude-lup",
-            runtime="claude",
-            owner=LoginOwner(home=second),
-            handed_at=NOW,
+    asked: list[str] = []
+
+    def answered(token: str) -> UsageResponse:
+        asked.append(token)
+        return UsageResponse.model_validate(
+            {
+                "five_hour": {
+                    "utilization": 61.0,
+                    "resets_at": "2026-10-05T14:00:00+00:00",
+                }
+            }
         )
+
+    monkeypatch.setattr(claude_reader, "fetch_usage_as", answered)
+    kept = VolumeKept(
+        json.dumps({"claudeAiOauth": {"accessToken": "volume-token"}}).encode(),
+        "second",
     )
 
-    held = [each for each in held_homes([tmp_path], volumes) if each.home == second]
+    def copy(checkout: Path, login: ProviderLogin) -> LoginPlace:
+        del checkout, login
+        return kept
 
-    assert len(held) == 1 and held[0].signed_in
-    assert held[0].account == Account(runtime="claude", profile=str(second))
+    [volume] = [each for each in held_homes([tmp_path], copy) if each.volume]
+    assert volume.account == Account(runtime="claude", profile="second@example.com")
+    assert (volume.identity, volume.volume) == ("uuid-second", "lup-claude-lup")
     poller = AccountPoller(
         lambda: [tmp_path],
         SpendLedger(tmp_path / "ledger.json"),
         config(tmp_path),
-        homes=lambda roots: held_homes(roots, volumes),
-        reader=lambda each: Reader([60.0]),
+        homes=lambda roots: held_homes(roots, copy),
+        reader=lambda each: drawn_reader(each, copy),
     )
     poller.poll(NOW)
     known = KnownRepository(repository=tmp_path / ".git", checkout=tmp_path)
-    assert launched_on(poller, volumes)(known, session("lead")) == held[0].account
+
+    assert asked == ["volume-token"]
+    assert launched_on(poller)(known, session("lead")) == volume.account
     standing = next(
-        watch.standing(NOW)
-        for watch in poller.standings(NOW)
-        if watch.home.home == second
+        watch.standing(NOW) for watch in poller.standings(NOW) if watch.home.volume
     )
-    assert standing.windows[0].window.utilization_pct == 60.0
+    assert standing.windows[0].window.utilization_pct == 61.0
