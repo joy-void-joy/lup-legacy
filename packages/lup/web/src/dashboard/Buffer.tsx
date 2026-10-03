@@ -18,6 +18,18 @@ import { Clamp } from "./Touch";
 
 const TOKENS = new WeakMap<ReviewFile, Partial<Record<Side, Token[][]>>>();
 
+/** Scrolling the view carries the cursor, as Neovim's does, so the next live update never scrolls back to where it was left. */
+function followScroll(d: Dashboard, pane: 0 | 1, scroller: HTMLElement | null): void {
+  const cur = scroller?.querySelector<HTMLElement>(".r.cur");
+  if (scroller === null || cur === null || cur === undefined) return;
+  const top = scroller.scrollTop;
+  const bottom = top + scroller.clientHeight;
+  if (cur.offsetTop >= top && cur.offsetTop + cur.offsetHeight <= bottom) return;
+  const shown = [...scroller.querySelectorAll<HTMLElement>(".r[data-i]")].filter((row) => row.offsetTop >= top && row.offsetTop + row.offsetHeight <= bottom);
+  const next = cur.offsetTop < top ? shown[0] : shown.at(-1);
+  if (next !== undefined) setCursor(d, pane, Number(next.dataset.i));
+}
+
 /** A file side's lines as the grammar coloured them, read once per file. */
 function tokensFor(file: ReviewFile, side: Side): Token[][] {
   const held = TOKENS.get(file) ?? {};
@@ -306,6 +318,7 @@ export function BufferView({ d, pane, rows, cur, want, active, focused, editing,
 }) {
   const element = useRef<HTMLDivElement>(null);
   const caret = useRef<HTMLSpanElement>(null);
+  const following = useRef(0);
   useLayoutEffect(() => {
     d.elements.panes[pane] = element.current;
     return () => { d.elements.panes[pane] = null; };
@@ -324,6 +337,7 @@ export function BufferView({ d, pane, rows, cur, want, active, focused, editing,
   }, [cur, rows, d, pane]);
   return <div className={`buf pane${active ? " active" : ""}`} ref={element} tabIndex={-1} role="region" aria-label={pane === 0 ? "Buffer" : "Second window"} data-pane={pane}
     style={{ ["--lnw" as string]: numberWidth }}
+    onScroll={() => { cancelAnimationFrame(following.current); following.current = requestAnimationFrame(() => { followScroll(d, pane, element.current); }); }}
     onClick={(event) => {
       const hit = event.target instanceof Element ? event.target.closest<HTMLElement>(".r") : null;
       if (hit === null || (event.target instanceof Element && event.target.closest("textarea, button") !== null)) return;
