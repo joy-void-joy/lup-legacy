@@ -1,0 +1,12 @@
+subjects = ["newer_code"]
+reason = """
+a review this code cannot answer is offered another checkout's commands only \
+where they run other code, and otherwise the cancel that lets its session \
+ask again, so the sentence about a restart is one way out among those"""
+
+[[steps]]
+instruction = """
+Call lup.devtools.review.app.way_out(root, question, principal, restarting, \
+elsewhere) for the whole way out of a review this code cannot answer, where \
+you appended newer_code(restarting) to a sentence offering the checkout's \
+commands; elsewhere opens the sentence that offers them."""

@@ -339,7 +339,7 @@ def test_a_retried_write_matches_its_record_and_what_ran_settles_it(
 
 
 def full_copy_log(tmp_path: Path) -> tuple[Path, PersistentQuestion]:
-    """A relay kept the older way: a full copy of the question at every transition."""
+    """A relay kept the older way: a full copy of the question, as it holds it, at every transition."""
     question = written_question(tmp_path)
     log = tmp_path / ".lup/questions.jsonl"
     log.parent.mkdir(parents=True)
@@ -357,7 +357,7 @@ def full_copy_log(tmp_path: Path) -> tuple[Path, PersistentQuestion]:
     other = written_question(tmp_path, "q-2")
     log.write_text(
         "".join(
-            f"{copy.model_dump_json()}\n"
+            f"{json.dumps(copy.held())}\n"
             for copy in [
                 *copies,
                 other,

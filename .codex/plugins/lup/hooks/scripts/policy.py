@@ -1912,12 +1912,12 @@ def bound_parts(
     A record keeps its scheme -- the parts it bound, in order -- so a reader
     on other code tells a record it cannot check from one that changed:
     ``None`` where the scheme names a part this code does not know. A record
-    keeping no scheme binds the parts it carries; one it holds as null, which
-    a relay writes for a part it never had, it does not.
+    keeping no scheme, or a null one, binds the parts it carries; one it
+    holds as null, which a relay writes for a part it never had, it does not.
     """
     scheme = (
         entry["scheme"]
-        if "scheme" in entry
+        if "scheme" in entry and entry["scheme"] is not None
         else [name for name in known if name in entry and entry[name] is not None]
     )
     if not isinstance(scheme, list) or not all(
@@ -1934,6 +1934,10 @@ def recorded_fingerprint(entry: dict) -> str:
     a record whose fields hash to another digest shows one call and carries
     another's authority, and nothing may answer or spend it. A retry's
     payload recorded as null is the operation's own, as it was hashed.
+
+    Hashed from what the record holds, so a field a later model adds never
+    enters a record parked before it. A hook checks a record it would spend
+    with this, and every reader checks a record it shows with this too.
     """
     match entry:
         case {

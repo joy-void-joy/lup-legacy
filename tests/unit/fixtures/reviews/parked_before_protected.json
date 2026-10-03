@@ -1,0 +1,57 @@
+{
+  "id": "5e7c0a4fd1b24f0f9a3e6b2c8d9e1f00",
+  "fingerprint": "0bebca934aa2d5f7b79f3bcb85059caf0695911b0684bf4c084038aa5c6032c0",
+  "reason": "src/app.py is protected: it is the policy's own code",
+  "rule": "edit:protected-path",
+  "purpose": null,
+  "requirement": "human_only",
+  "eligible": [],
+  "chain_resolved": false,
+  "state": "pending",
+  "execution_id": "",
+  "execution_payload": {
+    "content": "print(\"after\")\n",
+    "file_path": "/work/checkout/src/app.py"
+  },
+  "created": "2026-10-02T12:00:00+00:00",
+  "preconditions": {
+    "/work/checkout/src/app.py": "print(\"before\")\n"
+  },
+  "resolved": {
+    "/work/checkout/src/app.py": "/work/checkout/src/app.py"
+  },
+  "policy_identity": "[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]",
+  "file_reviews": [
+    {
+      "path": "/work/checkout/src/app.py",
+      "effect": "ask",
+      "reason": "src/app.py is protected: it is the policy's own code",
+      "rule": "edit:protected-path",
+      "rules": ["edit:protected-path"],
+      "before_sha256": "d23e7cad344be0498393e2f8fdeaa4e0e724c0303d7620c530d008baf6b22e27",
+      "after_sha256": "914c821eaa79569fad013932a1d3f5d2ac51650649aae80116f81e1d005785a8",
+      "after": "print(\"after\")\n"
+    }
+  ],
+  "unpreviewed": null,
+  "segments": null,
+  "scheme": ["file_reviews", "unpreviewed", "segments"],
+  "resumption": "native_retry",
+  "member": "",
+  "agent": "",
+  "account": [],
+  "operation": {
+    "id": "5e7c0a4fd1b24f0f9a3e6b2c8d9e1f00",
+    "session": "asking-session",
+    "requester": "asking-session",
+    "tool": "Write",
+    "payload": {
+      "content": "print(\"after\")\n",
+      "file_path": "/work/checkout/src/app.py"
+    },
+    "cwd": "/work/checkout",
+    "worktree": "/work/checkout",
+    "placement": "ambient",
+    "provider": "claude"
+  }
+}

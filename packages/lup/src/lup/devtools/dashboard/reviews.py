@@ -70,10 +70,9 @@ from lup.devtools.review.app import (
     ReviewRoot,
     ReviewSummary,
     expire_orphaned,
-    newer_code,
     relay,
     retire_settled,
-    terminal_answer,
+    way_out,
 )
 from lup.devtools.review.notifications import (
     ReviewNotification,
@@ -455,9 +454,14 @@ class ReviewStore(BaseModel, frozen=True):
                     "answerable": False,
                     "unanswerable": (
                         f"Its documents cannot be read back whole: {unread}. "
-                        "Where newer code parked it, that code can answer it: "
-                        f"{terminal_answer(root, question.id, self.principal)}."
-                        + newer_code(restarting)
+                        + way_out(
+                            root,
+                            question.id,
+                            self.principal,
+                            restarting,
+                            "The code of the checkout keeping it, which parks its "
+                            "reviews there, may answer it",
+                        )
                         if question.state == "pending"
                         else ""
                     ),

@@ -393,11 +393,10 @@ def carried_out(
             "covers nothing it can check; nothing ran",
             False,
         )
-    if not shown.bound():
+    if unbound := shown.unbound():
         return settled(
             "conflict",
-            "the review changed after it was parked, so its approval covers "
-            "something else; nothing ran",
+            f"{unbound}; its approval covers nothing this can check, so nothing ran",
             False,
         )
     files = edits(shown)
