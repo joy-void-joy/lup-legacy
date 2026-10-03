@@ -439,9 +439,11 @@ DECLARED_GUARDS = [
             hook=moment,
             standdown=NoMergeCommit(),
             refusal=(
-                "Refuses nothing, since the merge commit is already made: what "
-                "regeneration writes over it was not folded in, so its "
-                f"generated trees may be stale until `{SETTLE_COMMAND}` does."
+                "Refuses nothing, since the merge is already made, but its "
+                "generated trees may not match their source: a merge commit "
+                f"this checkout made stays so until `{SETTLE_COMMAND}` folds "
+                "regeneration in, and one it fast-forwarded onto is for the "
+                "branch that made it to regenerate."
             ),
         )
         for moment in ("post-merge", "post-commit")
@@ -459,7 +461,8 @@ The two settling moments are the other half of that guard. A merge of two
 branches that both regenerated leaves the kept side's ownership proof stale,
 which the drift guard refuses at the next commit, so the settle regenerates
 there and then, once per merge commit, and a merge stops being followed by a
-regenerate-and-commit by hand.
+regenerate-and-commit by hand. A fast-forward onto a merge commit made
+elsewhere is checked there instead, writing nothing.
 """
 
 

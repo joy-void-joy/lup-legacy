@@ -153,8 +153,12 @@ where the merge commit is made — `post-merge` for a merge git completes,
 `post-commit` for one concluded by hand — by running `uv run lup-devtools git
 settle`, which regenerates and replaces the merge commit with one carrying
 what that wrote: same parents, message and author, nothing else staged. It
-leaves alone any commit with one parent, a merge another branch already
-holds, and a rebase in flight.
+leaves alone any commit with one parent and a rebase in flight. A merge
+another branch already holds is a fast-forward onto somebody's merge, with no
+merge commit of this checkout's to fold anything into, so there it only runs
+the drift check: nothing is written, and where the trees do not match their
+source it prints what drifted and exits 1, for the branch that made the merge
+to regenerate.
 
 ### Every generated path and its source
 

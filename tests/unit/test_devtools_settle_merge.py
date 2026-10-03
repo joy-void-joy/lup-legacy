@@ -23,7 +23,7 @@ from lup.devtools.dev.git_guards import (
     NoMergeCommit,
     install_guards,
 )
-from lup.devtools.git.settle import settle
+from lup.devtools.git.settle import Settled, Verified, settle
 from tests.unit.repos import commit_file, devtools_double, git_in, initialized_repo
 
 
@@ -70,15 +70,20 @@ def head(root: Path, spelling: str = "HEAD") -> str:
     return str(git_at(root)("rev-parse", spelling)).strip()
 
 
+def unchecked() -> str:
+    """The check a settle reaches only after a fast-forward, refused anywhere else."""
+    raise AssertionError("a merge this checkout made was checked instead of settled")
+
+
 def test_the_merge_commit_absorbs_the_proof_both_sides_changed(merged: Path) -> None:
     kept = json.loads((merged / ".claude" / ".lup-ownership.json").read_text())
     assert kept == {"base.txt": "base work"}, "the driver kept one side's proof"
     merge = head(merged)
     parents = (head(merged, "HEAD^1"), head(merged, "HEAD^2"))
 
-    settled = settle(merged, lambda: generated(merged))
+    settled = settle(merged, lambda: generated(merged), unchecked)
 
-    assert settled is not None
+    assert isinstance(settled, Settled)
     assert settled.merge == merge
     assert sorted(settled.paths) == [
         ".claude/.lup-ownership.json",
@@ -98,21 +103,21 @@ def test_work_outside_what_regeneration_wrote_stays_out(merged: Path) -> None:
     (merged / "notes.md").write_text("mine, untracked\n")
     (merged / "base.txt").write_text("base work, edited after the merge")
 
-    settled = settle(merged, lambda: None)
+    settled = settle(merged, lambda: None, unchecked)
 
-    assert settled is not None and settled.paths == []
+    assert isinstance(settled, Settled) and settled.paths == []
     assert settled.head == settled.merge
     status = str(git_at(merged)("status", "--porcelain"))
     assert "notes.md" in status and "base.txt" in status
 
 
 def test_a_settled_merge_is_left_as_it_is(merged: Path) -> None:
-    settle(merged, lambda: generated(merged))
+    settle(merged, lambda: generated(merged), unchecked)
     before = head(merged)
 
-    settled = settle(merged, lambda: generated(merged))
+    settled = settle(merged, lambda: generated(merged), unchecked)
 
-    assert settled is not None and settled.paths == []
+    assert isinstance(settled, Settled) and settled.paths == []
     assert head(merged) == before
 
 
@@ -120,28 +125,53 @@ def test_a_commit_that_merged_nothing_is_not_asked_about(merged: Path) -> None:
     commit_file(git_in(merged, merged / "no-hooks"), merged, "later.txt", "x", "later")
     ran: list[str] = []
 
-    assert settle(merged, lambda: ran.append("regenerated")) is None
+    assert settle(merged, lambda: ran.append("regenerated"), unchecked) is None
     assert ran == []
 
 
-def test_a_merge_commit_another_branch_holds_is_not_rewritten(merged: Path) -> None:
+def test_a_merge_commit_another_branch_holds_is_checked_and_not_rewritten(
+    merged: Path,
+) -> None:
     """A fast-forward onto somebody's merge runs the same hook, and it is theirs.
 
     Rewriting it here would fork this branch from the one it just caught up
-    with, over a commit this checkout never made.
+    with, over a commit this checkout never made; regenerating without
+    folding would leave what was written dirty in a checkout others share.
+    So the trees are only checked.
     """
     git_at(merged)("branch", "caught-up")
+    merge = head(merged)
     ran: list[str] = []
 
-    assert settle(merged, lambda: ran.append("regenerated")) is None
+    settled = settle(merged, lambda: ran.append("regenerated"), lambda: "")
+
+    assert isinstance(settled, Verified)
+    assert settled.holders == ["refs/heads/caught-up"]
+    assert not settled.drifted()
     assert ran == []
+    assert head(merged) == merge
+    assert "nothing was written" in settled.report()
+
+
+def test_a_fast_forward_whose_trees_drift_says_so_and_writes_nothing(
+    merged: Path,
+) -> None:
+    git_at(merged)("branch", "caught-up")
+    drift = "web: 1 writes, 0 deletes, 0 conflicts, ownership=stale\n"
+
+    settled = settle(merged, lambda: generated(merged), lambda: drift)
+
+    assert settled is not None and settled.drifted()
+    assert drift.strip() in settled.report()
+    assert "do not match their source" in settled.report()
+    assert not str(git_at(merged)("status", "--porcelain")).strip()
 
 
 def test_a_merge_replayed_by_a_rebase_is_not_rewritten_under_it(merged: Path) -> None:
     """The sequencer owns HEAD mid-rebase; moving it there would lose its place."""
     (merged / ".git" / "rebase-merge").mkdir()
 
-    assert settle(merged, lambda: generated(merged)) is None
+    assert settle(merged, lambda: generated(merged), unchecked) is None
 
 
 def test_the_settling_guards_run_on_a_merge_commit_and_nothing_else(

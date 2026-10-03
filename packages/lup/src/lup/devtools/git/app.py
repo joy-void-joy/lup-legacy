@@ -297,7 +297,9 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         The post-merge and post-commit guards run this; by hand it settles a
         merge made where they were not armed. It rewrites only a merge commit
         no other branch holds, with the same parents, message and author, and
-        commits nothing regeneration did not write.
+        commits nothing regeneration did not write. A merge commit another
+        ref holds was fast-forwarded onto, and is only checked: nothing is
+        written, and a drift is printed and exits 1.
         """
         root = project_root()
         launcher = console_script(root)
@@ -312,8 +314,17 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
         def regenerate() -> None:
             sh.Command(str(launcher))("harness", "generate", "all", _cwd=str(root))
 
+        def verify() -> str:
+            try:
+                sh.Command(str(launcher))(
+                    "harness", "check", "all", _cwd=str(root), _err_to_out=True
+                )
+            except sh.ErrorReturnCode as drifted:
+                return drifted.stdout.decode("utf-8", errors="replace")
+            return ""
+
         try:
-            settled = settle(root, regenerate)
+            settled = settle(root, regenerate, verify)
         except sh.ErrorReturnCode as error:
             typer.echo(
                 "The merge was not settled, so its generated trees may be stale: "
@@ -321,8 +332,11 @@ def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:
                 err=True,
             )
             raise typer.Exit(1) from error
-        if settled is not None:
-            typer.echo(settled.report())
+        if settled is None:
+            return
+        typer.echo(settled.report(), err=settled.drifted())
+        if settled.drifted():
+            raise typer.Exit(1)
 
     @app.command("merge-driver")
     def merge_driver_cmd() -> None:

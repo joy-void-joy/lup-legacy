@@ -21,8 +21,17 @@ its post-merge hook runs and an amend is refused then.
 It touches nothing it did not write. A merge may be made over unrelated local
 changes, and those are measured before regeneration and left out of the
 commit.
+
+A fast-forward onto a merge made elsewhere runs the same hook, and leaves this
+checkout no merge commit of its own to fold anything into: rewriting that one
+would fork this branch from the one it caught up with, and regenerating
+without folding would leave what was written dirty in the checkout — one that
+other sessions share, when it is the integration branch's. So there it only
+checks. The trees are read against their source, nothing is written, and a
+drift is said in so many words, for the branch that made the merge to settle.
 """
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from pathlib import Path
 
@@ -42,7 +51,19 @@ SEQUENCER_STATE = (
 )
 
 
-class Settled(BaseModel, frozen=True):
+class SettleOutcome(BaseModel, ABC, frozen=True):
+    """What the settle did at one merge commit, as whoever merged is told it."""
+
+    @abstractmethod
+    def report(self) -> str:
+        """What whoever merged is told."""
+
+    def drifted(self) -> bool:
+        """Whether the trees HEAD carries do not match their source, which exits 1."""
+        return False
+
+
+class Settled(SettleOutcome, frozen=True):
     """What settling a merge commit did."""
 
     merge: str
@@ -64,13 +85,49 @@ class Settled(BaseModel, frozen=True):
         )
 
 
-def settle(root: Path, regenerate: Callable[[], None]) -> Settled | None:
+class Verified(SettleOutcome, frozen=True):
+    """What checking a merge commit this checkout fast-forwarded onto found."""
+
+    head: str
+    """The merge commit, as whoever made it made it."""
+
+    holders: list[str]
+    """The other refs already holding it, which is what makes it not this checkout's."""
+
+    drift: str
+    """What the drift check said where the trees do not match their source, else empty."""
+
+    def drifted(self) -> bool:
+        return bool(self.drift)
+
+    def report(self) -> str:
+        """What whoever fast-forwarded is told: nothing written, and any drift whole."""
+        made = (
+            f"{self.head[:12]} was made elsewhere ({', '.join(self.holders)} holds it), "
+            "so this fast-forward has no merge commit of its own to fold "
+            "regeneration into, and nothing was written."
+        )
+        if not self.drift:
+            return f"{made} Its generated trees match their source."
+        return (
+            f"{made} Its generated trees do not match their source:\n"
+            f"{self.drift.rstrip()}\n"
+            "Regenerate on the branch that made the merge, or on one cut from "
+            "it, and land that; regenerating here would leave the result "
+            "uncommitted in this checkout."
+        )
+
+
+def settle(
+    root: Path, regenerate: Callable[[], None], verify: Callable[[], str]
+) -> SettleOutcome | None:
     """Regenerate over a merge commit this checkout just made, and fold it in.
 
+    Where another ref already holds HEAD this checkout fast-forwarded onto
+    somebody's merge, so ``verify`` reads the trees and nothing is written:
+    it answers what drifted, or nothing where the trees match their source.
     ``None`` where HEAD is no merge commit, where a sequencer is replaying
-    commits and owns HEAD, or where another branch already holds HEAD — a
-    fast-forward onto somebody's merge runs the same hook, and rewriting
-    their commit here would fork this branch from theirs.
+    commits and owns HEAD, or where HEAD is detached.
     """
     here = ("-C", str(root))
     parents = git.out(*here, "log", "-1", "--format=%P", "HEAD").split()
@@ -90,8 +147,11 @@ def settle(root: Path, regenerate: Callable[[], None]) -> Settled | None:
         "refs/remotes",
         "refs/tags",
     )
-    if not branch or any(ref != branch for ref in holders):
+    if not branch:
         return None
+    if others := [ref for ref in holders if ref != branch]:
+        head = git.out(*here, "rev-parse", "HEAD")
+        return Verified(head=head, holders=others, drift=verify())
 
     def changed() -> list[str]:
         """Every path differing from the index, or untracked and not ignored."""
