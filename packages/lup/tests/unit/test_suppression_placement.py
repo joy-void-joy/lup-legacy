@@ -10,14 +10,13 @@ violation it meant to guard stays missing.
 Each case below is the same three placements against a different family: on
 the violation's own line, standing alone directly above it, and one line
 further up. The first two are accepted everywhere and the third nowhere, and
-asserting that as one table is what keeps the answer from drifting apart
-again.
+asserting that as one table is what keeps the answer from drifting apart.
 
 The boundary family reads the same policy and is pinned beside its own rules
 in ``tests/unit/test_boundaries.py`` rather than here, because its violations
-are found by a scan this module does not call. It is the family that drifted
-in practice — a directive on a table's closing line, which the old per-rule
-zone accepted — so where it is checked is worth knowing.
+are found by a scan this module does not call. It is the family most prone to
+drift — a directive on a table's closing line is the case a per-rule zone
+would accept — so where it is checked is worth knowing.
 """
 
 from pathlib import Path
@@ -161,11 +160,11 @@ def test_a_reason_spanning_more_than_one_line_still_covers_it(
 ) -> None:
     """The placement a reason too long for the column budget has to take.
 
-    Every rule family, because they disagreed: the ones deciding coverage
-    through `suppression_reaches` alone accepted it, while the two reading
-    from a fixed pair of candidate lines could not see a directive two lines
-    up — so one marker was reported spurious and its violation missing, at
-    once, which is the failure this whole placement policy exists to remove.
+    Every rule family, because they must agree: a family reading from a fixed
+    pair of candidate lines cannot see a directive two lines up, while one
+    deciding coverage through `suppression_reaches` accepts it — so one marker
+    would be reported spurious and its violation missing, at once, which is
+    the failure this whole placement policy exists to remove.
     """
     for length in (1, 2, 3):
         assert findings_for(heading_a_reason(body, statement, rule, length), rule) == []

@@ -258,3 +258,33 @@ def typescript_comment_columns(source: str) -> dict[int, int]:
             cursor += 1
         offset = stop
     return columns
+
+
+def typescript_comment_lines(source: str) -> list[str]:
+    """The lines of TypeScript-family text with everything but its comments blanked.
+
+    What a person reads as a sentence in a family with no docstring: a `//` or
+    `/* */` run keeps its characters, while code and literal text go, and
+    every column stays where it was so a finding still names its line.
+    """
+    comments = [span for span in typescript_spans(source) if span["kind"] == "comment"]
+    lines: list[str] = []
+    offset = 0
+    index = 0
+    for line in source.splitlines(keepends=True):
+        content = line.splitlines()[0]
+        stop = offset + len(content)
+        kept = [" "] * len(content)
+        while index < len(comments) and comments[index]["end"] <= offset:
+            index += 1
+        cursor = index
+        while cursor < len(comments) and comments[cursor]["start"] < stop:
+            first = max(comments[cursor]["start"], offset)
+            last = min(comments[cursor]["end"], stop)
+            kept[first - offset : last - offset] = content[
+                first - offset : last - offset
+            ]
+            cursor += 1
+        lines.append("".join(kept))
+        offset += len(line)
+    return lines

@@ -45,9 +45,8 @@ def test_the_id_a_settled_verdict_cites_is_what_the_page_is_keyed_on() -> None:
     """A reader arrives with the id, so it is the column they arrive at.
 
     `unleased-write` and `contained-effects` reach a session in the verdict
-    that cites them and were indexed nowhere — while a kernel helper returned
-    exactly these ids "for the reference the docs render", which was this
-    table, which did not render them.
+    that cites them, and a kernel helper returns exactly these ids "for the
+    reference the docs render" — which is this table, so it renders them.
     """
     rows = settlement_table().rows
 

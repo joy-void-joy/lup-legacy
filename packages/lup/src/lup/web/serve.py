@@ -1,11 +1,10 @@
 """Standing a local-only page up, once, for every surface that has one.
 
-:mod:`lup.web.loopback` already argued that binding loopback and checking the
-``Host`` header belong together, and that a surface skipping the second had no
-way of knowing it had. It then left the half that *invokes* them to each
-application — so the supervisor and the setup page each wrote their own
-construct-guard-open-run sequence, and a third surface would have written a
-third, with the same one line to forget.
+:mod:`lup.web.loopback` argues that binding loopback and checking the ``Host``
+header belong together, and that a surface skipping the second has no way of
+knowing it has. The half that *invokes* them belongs here too: left to each
+application, every surface writes its own construct-guard-open-run sequence,
+each with the same one line to forget.
 
 What is shared is the whole sequence: refuse a non-loopback bind, build the
 URL the guard will answer for, say where the page is, open it, serve it. What

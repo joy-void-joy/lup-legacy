@@ -1,11 +1,11 @@
 """What a session nobody launched is known by: the id its runtime gave the process.
 
-Written against the collision the roster had: a natively opened tool server
-fell back to the name of the session it opened — the one constant `harness`
-— so every unlaunched session in a worktree joined as one member while its
-hooks answered to the runtime's own session id. What is asserted is that the
-server now asks the runtime's adapter, that the launcher's id still outranks
-the answer, and that no answer serves no coordination verbs at all.
+A natively opened tool server falling back to the name of the session it
+opened — the one constant `harness` — would join every unlaunched session in
+a worktree as one member while its hooks answer to the runtime's own session
+id. What is asserted is that the server asks the runtime's adapter, that the
+launcher's id outranks the answer, and that no answer serves no coordination
+verbs at all.
 """
 
 import pytest

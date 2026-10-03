@@ -121,8 +121,8 @@ git -C <source-root> log --oneline <BASE>..<SOURCE> --grep="<keyword>"
 
 Never use `git log --all` for this workflow. Recovery namespaces such as
 `refs/lup/undo` retain old commits deliberately; including every ref makes
-reverted or superseded work look current and was the reason this workflow
-missed the actual source boundary.
+reverted or superseded work look current, which hides the actual source
+boundary.
 
 ### 4. Build the import ledger
 

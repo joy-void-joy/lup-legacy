@@ -293,7 +293,7 @@ def surveyed(
     A dense walk back from the tip is the wrong shape for this question. A
     project's copy is behind upstream by however many changes nobody retyped,
     which on this repository's own history is hundreds of commits — forty of
-    them cover two days, and the adoption this was built for was a year out.
+    them cover two days, and an adoption can stand a year behind.
     So a round spreads its measurements over the whole range, and the next
     round measures the interval around whichever sample read highest, until a
     round is measuring every commit it was given.

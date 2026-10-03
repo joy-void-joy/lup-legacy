@@ -266,10 +266,10 @@ def test_a_conflict_holding_one_note_in_two_states_resolves_to_either() -> None:
     """A merge can hold the same words as `defer:` on one side and `solved:`
     on the other, and resolving it keeps one spelling of one note.
 
-    Measured before this ruling: both directions were denied — dropping the
-    `defer:` spelling read as feedback removed, dropping the `solved:` one as
-    a claim retired outside the review pass — so the completing edit of the
-    merge could not land at all. Either resolution keeps the words in the
+    Denying both directions — dropping the `defer:` spelling read as feedback
+    removed, dropping the `solved:` one as a claim retired outside the review
+    pass — would leave the completing edit of the merge unable to land at
+    all. Either resolution keeps the words in the
     file: as a claim the verify pass still checks, or as open feedback, which
     is the stronger obligation.
     """

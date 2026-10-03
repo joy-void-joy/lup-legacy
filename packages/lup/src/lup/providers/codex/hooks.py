@@ -30,7 +30,7 @@ approval requests are not alike:
     refusal. Approving it because the content could not be inspected would be
     the one reading that turns a missing capability into a silent grant.
 
-That is a property of *this* boundary and not of the protocol. The legacy
+That is a property of *this* boundary and not of the protocol. The v1
 ``applyPatchApproval`` carries ``fileChanges`` as a map from path to change,
 where an add or a delete carries the whole ``content`` and an update carries a
 ``unified_diff`` — everything an edit rule wants — and clients are sent

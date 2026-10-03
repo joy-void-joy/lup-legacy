@@ -90,7 +90,7 @@ def document(
 
     A row is looked up by the identity ownership already records a page under,
     and a lookup that finds nothing renders nothing. That is the whole of what
-    modules changed here: a page is absent because its subject is a module this
+    modules decide here: a page is absent because its subject is a module this
     project declined, so the index says less rather than linking to a file
     generation was never asked to write.
 

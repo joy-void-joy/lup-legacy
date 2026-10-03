@@ -100,7 +100,7 @@ def reject_oversized_guidance(
     """Hold the always-loaded document to its budget as a session sees it.
 
     The declaration-time lower bound in ``Harness`` cannot know what the parts
-    render to, and the gap grows with every part that replaces literal prose.
+    render to, and the gap grows with every part standing in for literal prose.
     Bytes, not characters: that is the unit the runtime's own ceiling counts
     in, and the two differ wherever the document uses non-ASCII punctuation.
     """

@@ -212,8 +212,8 @@ def clipboard_probes(
 
     Derived here rather than written out beside the declaration, so the
     spellings the manifest exercises and the spellings this module uses
-    cannot come apart -- which they already had: the requirement listed four
-    backends including Wayland while the code tried four that did not.
+    cannot come apart -- a requirement listing a backend the code never tries
+    promises a clipboard nothing checked.
     """
     return [
         [tool.reader, *(tool.list_arguments or tool.text_arguments)]

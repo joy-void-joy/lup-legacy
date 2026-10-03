@@ -59,8 +59,8 @@ def test_a_file_belongs_to_the_checkout_that_holds_it(tmp_path: Path) -> None:
 def test_a_checkout_root_answers_for_itself(tmp_path: Path) -> None:
     """Codex hands over a directory, and the walk has to admit one.
 
-    Only the parents were candidates, so a directory that is already a
-    checkout was answered for by whatever encloses it — or by nothing.
+    With only the parents as candidates, a directory that is already a
+    checkout would be answered for by whatever encloses it — or by nothing.
     """
     work = checkout(tmp_path / "repo")
 
@@ -269,10 +269,10 @@ def test_an_interpreter_outside_the_conventional_directory_still_resolves(
     """A hook runs under whichever `python3` the runtime found.
 
     One installed in `sbin` names a scripts directory no environment has, so
-    every declared program resolved to a bare name and went to `PATH` — where
-    a project's own toolchain is exactly what is not installed. Measured, that
-    left both the checker and the repair sweep silent on a machine holding
-    both, which is the failure this gate was built to stop being.
+    a declared program resolved from it would be a bare name sent to `PATH` —
+    where a project's own toolchain is exactly what is not installed. That
+    leaves both the checker and the repair sweep silent on a machine holding
+    both, which is the failure this gate exists to prevent.
     """
     monkeypatch.delenv(ENVIRONMENT_VARIABLE, raising=False)
     monkeypatch.setattr(sys, "executable", "/usr/sbin/python3")
@@ -292,8 +292,8 @@ def test_a_redirected_environment_is_where_a_bare_name_resolves(
 
     `UV_PROJECT_ENVIRONMENT` is how one environment gets shared across
     worktrees, kept off a slow filesystem, or put where a container expects
-    it. A declaration that spelled `.venv/bin/pyright` resolved to nothing
-    here and reported no diagnostics, on every edit, without saying why.
+    it. A declaration spelling `.venv/bin/pyright` would resolve to nothing
+    here and report no diagnostics, on every edit, without saying why.
     """
     shared = tmp_path / "shared"
     monkeypatch.setenv(ENVIRONMENT_VARIABLE, str(shared))

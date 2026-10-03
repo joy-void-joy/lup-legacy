@@ -830,16 +830,16 @@ def test_each_codex_operation_decodes_to_the_tool_it_names(
 def test_a_write_over_an_existing_file_carries_the_file_as_its_preimage(
     tmp_path: Path,
 ) -> None:
-    """The gap that let a whole-file write erase a file's review notes unseen.
+    """A whole-file write cannot erase a file's review notes unseen.
 
     A `Write` states only what the file is about to become, so the decoder is
     the last place that can still see what it is about to stop being. Handed
-    no preimage, the marker gate compares the new text against `""`, counts no
-    notes lost, and admits the write.
+    no preimage, the marker gate would compare the new text against `""`,
+    count no notes lost, and admit the write.
 
-    The generated dispatchers read that document themselves; this path did
-    not, which also meant a session composed in process decided differently
-    from the plugin its own declaration generates.
+    The generated dispatchers read that document themselves, and this path
+    reads it too, so a session composed in process decides as the plugin its
+    own declaration generates does.
     """
     target = tmp_path / "noted.py"
     target.write_text("# lup: work somebody owes\nx = 1\n", encoding="utf-8")

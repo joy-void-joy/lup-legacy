@@ -93,12 +93,12 @@ def test_a_runtime_nobody_declared_is_not_guessed_at() -> None:
 def test_a_declared_handle_reaches_the_roster_and_survives_the_fold(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The property the whole change exists for.
+    """The property the wake handle exists for.
 
-    Every writer before this one dropped the wake on the floor: `join` took no
-    such argument, so `roster.joined` got the model's empty default and every
-    row in the store's history read `{runtime: '', handle: ''}` no matter what
-    the session could actually be reached by.
+    A `join` taking no such argument would hand `roster.joined` the model's
+    empty default, and every row in the store's history would read
+    `{runtime: '', handle: ''}` no matter what the session could actually be
+    reached by.
     """
     peers = RepositoryPeers(tmp_path)
     member = mint_member_id()
@@ -184,7 +184,7 @@ def test_a_nudge_names_the_session_it_is_for(tmp_path: Path) -> None:
     """The receiving wake socket drops a frame whose id disagrees with its own.
 
     Measured against a live session: of two frames written to one socket, only
-    the one carrying that session's id arrived. So naming the session is what
+    the one carrying that session's id arrives. So naming the session is what
     turns a nudge that reached the wrong process from a message delivered to
     the wrong reader into one refused by them -- which is the ordering the
     whole design rests on, the record having been written already either way.

@@ -2,10 +2,10 @@
 
 The declared grants join a launch's writable roots spelled as they were
 written -- `~/.cache/uv` -- because they answer for whichever home reads the
-ledger. Resolved without expanding `~`, that spelling named a directory called
+ledger. Resolved without expanding `~`, that spelling names a directory called
 `~` under the working directory, so every write into the uv cache the grant
-exists for was refused as outside the boundary, while `touch` on the same path,
-which no reader resolved, went through.
+exists for would be refused as outside the boundary, while `touch` on the same
+path, which no reader resolves, goes through.
 
 Driven the way a session meets it: each runtime's generated dispatcher, whose
 host half is compiled from the same module the composed policy reads.

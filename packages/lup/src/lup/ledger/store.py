@@ -15,9 +15,9 @@ one log: one id space, edges crossing kinds freely, and every reader folds
 both. An edge is committed only where both of its ends are, so git never
 carries a reference to a record it does not hold.
 
-Local is the default and the whole answer to a ledger that forks — the
-repository this came from kept eight copies in eight worktrees and reconciled
-them with a script that dropped every modification. What makes the committed
+Local is the default and the whole answer to a ledger that forks — a copy per
+worktree has to be reconciled, and a reconciliation that drops a modification
+loses it without saying so. What makes the committed
 half viable is the shape already chosen — append-only lines with unique ids —
 so two branches appending is exactly what git's own ``union`` merge resolves
 losslessly, and a read folds any duplicate by id.

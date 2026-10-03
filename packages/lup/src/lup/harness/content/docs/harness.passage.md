@@ -504,8 +504,7 @@ A `Requirement` in the manifest is what a declared *capability* asked for. It
 takes a purpose, an exercise that proves a machine has the thing, and a policy
 for going without — so it is the right door exactly when the absence deserves
 a diagnostic. It is the wrong one otherwise: a manifest that invents
-prerequisites refuses machines that were fine, which is why ripgrep was
-declared here once and taken back out.
+prerequisites refuses machines that are fine.
 
 `Image.tooling` is the third, and the one for a program this project's work
 simply needs present. Declared where the image is composed:
@@ -532,7 +531,7 @@ ownership manifest. It mutates nothing. A conflict means one of these:
 
 | Category | Meaning | Action |
 |---|---|---|
-| `backpropagation_candidate` | A previously generated file differs from its owned digest. | Reproduce the intended change in the typed content or policy source, then regenerate. |
+| `backpropagation_candidate` | A generated file differs from its owned digest. | Reproduce the intended change in the typed content or policy source, then regenerate. |
 | `unknown_conflict` | Lup has no ownership proof for the existing bytes. | Decide whether the file belongs in typed generation or should stay local-only. |
 | `local_only` | The recipe deliberately leaves the path to the user. | Keep it outside generation. |
 | `sensitive_local_only` | The path may hold credentials or trust state. | Never import or commit it through the harness. |
@@ -839,12 +838,12 @@ it kept.
 A contained session's config home is a volume per repository and runtime,
 `lup-claude-<repo>` and `lup-codex-<repo>`: every worktree of one repository
 shares its login, trust and transcripts, and neither runtime reads the
-other's. The first launch that finds the older shared `lup-cfg-<repo>` splits
+other's. The first launch that finds an unsplit shared `lup-cfg-<repo>` splits
 it by what each runtime declares it keeps — an entry neither declares goes to
 both, said aloud — and copies Codex's per-settings-digest volumes into its
-own; a volume an open session still holds postpones the split. The old
-volumes, and the per-worktree `lup-cfg-<worktree>` ones that came before,
-are kept rather than removed: each is recorded as superseded in
+own; a volume an open session still holds postpones the split. The unsplit
+volumes, the per-worktree `lup-cfg-<worktree>` ones among them, are kept
+rather than removed: each is recorded as superseded in
 `$XDG_STATE_HOME/lup` (`~/.local/state/lup`), the launch says where its
 history went and the day it goes, and any launch or `harness clean`
 removes it once `[cleanup] superseded_volumes_after_days` (14 unless this
@@ -930,11 +929,12 @@ already exists, symlink that subdirectory at it.
 
 `harness profile migrate` is optional. It moves a checkout's local profiles to
 global, for accounts that should be shared by every checkout, and the accounts
-of the old personal registry at `~/.lup/profiles.json`, which nothing reads any
-more: each profile and each home the registry made, a runtime's home at a
+of a personal registry at `~/.lup/profiles.json`, which no launch reads: each
+profile and each home the registry made, a runtime's home at a
 time; a home registered somewhere of the person's own is linked rather than
 moved; a name already present keeps what it holds and the source is left and
-reported; the old selection is carried where `config.toml` records none.
+reported; the selection either place holds is carried where `config.toml`
+records none.
 
 No profile may name Claude Code's default home, `~/.claude`, however it is
 spelled or reached — a symlinked directory profile included. A profile exports

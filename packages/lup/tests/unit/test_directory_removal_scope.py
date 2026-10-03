@@ -1,17 +1,16 @@
 """What a capture can answer about a directory, and where it cannot.
 
-The rule guarding a whole-directory delete used to opt out of the settlement
-layer by returning a bare verdict, so a snapshot that had captured the tree
-could not discharge it. Its stated reason for that -- untracked work inside a
-directory being restored by nothing -- was true of `git stash create` and is
+The rule guarding a whole-directory delete takes part in the settlement layer,
+so a snapshot that captured the tree discharges it. Untracked work inside a
+directory being restored by nothing is true of `git stash create`, and is
 exactly why `lup.devtools.dev.undo` does not use one: that module captures
 tracked content *and* untracked files, and names ``rm -rf src/`` as the case
 it exists for.
 
-Reading the requirement off the *targets* is the other half, and the half a
-first fix got wrong: asserting `boundary_wide` on the rule settled
-``rm -rf /etc/ssl`` as "captured and restorable", which is the defect
-`verb_loss_scope` was written to fix, reintroduced one rule sideways.
+Reading the requirement off the *targets* is the other half: asserting
+`boundary_wide` on the rule would settle ``rm -rf /etc/ssl`` as "captured and
+restorable", the defect `verb_loss_scope` exists to prevent, reached one rule
+sideways.
 """
 
 from lup.policy.kernel.rows import PathRoleRow

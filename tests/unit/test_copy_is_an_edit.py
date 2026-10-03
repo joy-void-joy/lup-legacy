@@ -1,11 +1,11 @@
 """A copy over a file is judged as the edit it makes.
 
 `cp new.py src/app.py` leaves in `src/app.py` what `new.py` holds, which is the
-edit an `Edit` of the file would make. It was judged as a loss instead --
-"copying over files requires approval", settled only where a capture of the
-session's checkout held the file -- so a copy into a sibling worktree parked
-for the operator while an `Edit` of the same file went through, and a copy
-into this checkout went through with no content gate reading what landed.
+edit an `Edit` of the file would make. Judged as a loss instead -- "copying
+over files requires approval", settled only where a capture of the session's
+checkout holds the file -- a copy into a sibling worktree would park for the
+operator while an `Edit` of the same file goes through, and a copy into this
+checkout would go through with no content gate reading what lands.
 """
 
 from pathlib import Path
@@ -97,9 +97,9 @@ def test_a_copy_is_read_by_the_gates_an_edit_meets(checkout: Path) -> None:
 def test_a_copy_into_a_sibling_worktree_answers_as_one_here_does() -> None:
     """No capture of this checkout holds a sibling's file, and none is asked for.
 
-    Measured from a session rooted in one worktree, a copy over a module in
-    another reached by its absolute path parked as "copying over files
-    requires approval", while an `Edit` of the same file went through. The
+    Judged as a loss from a session rooted in one worktree, a copy over a
+    module in another reached by its absolute path parks as "copying over
+    files requires approval", while an `Edit` of the same file goes through. The
     host hands the kernel the document the copy leaves, and the kernel
     answers with the edit gates' verdict on it; a copy the host could not
     read keeps the verb's own question. Spelled under `/home` because every

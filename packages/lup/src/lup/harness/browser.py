@@ -84,7 +84,7 @@ SIGN_IN_ADDRESSES = [
 Taken from each vendor's own published list rather than from a memory of one,
 and kept as :class:`~lup.harness.egress.AllowedHost` so the reason travels
 with the entry -- an address nobody can say why about is one to take out, and
-this list has exactly the accretion problem that model was written for.
+this list has exactly the accretion problem that model exists for.
 
 Both runtimes are here because one image starts both and neither should be
 the one that silently does not work. An adopter whose runtime is neither

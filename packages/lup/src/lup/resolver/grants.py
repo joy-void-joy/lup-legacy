@@ -44,7 +44,7 @@ def lease_grants(
     Keyed by the lease rather than by the concern behind it, because a
     `request_allowance` question is recorded under the id of whoever asked
     and not every lease has a concern: the integration lease is reserved, so
-    a derivation that reached for a concern list dropped the grants made to
+    a derivation reaching for a concern list would drop the grants made to
     the one actor this tool exists for. Dropping them is worse than never
     delivering them — the lease's own reader sees a gate it was holding
     disappear, which is what a human's withdrawal looks like.

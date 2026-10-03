@@ -1,10 +1,10 @@
 """What `version bump` records, checked through the option wiring itself.
 
 `test_changelog.py` pins the document model. These go through Typer, because
-the published regression was not in the rendering — it was in the option
-being a scalar that kept only the last `--detail`, and in that one string
-being split on its own commas afterwards. Both faults live between the
-command line and the model, which is where a test has to stand to see them.
+the faults worth pinning are not in the rendering — they are an option being
+a scalar that keeps only the last `--detail`, and that one string being split
+on its own commas afterwards. Both live between the command line and the
+model, which is where a test has to stand to see them.
 
 Every changelog case runs `--dry-run`: the entry is rendered and shown
 without a file being written, a commit made, or a tag created. What a bump
@@ -53,7 +53,7 @@ def test_every_detail_reaches_the_entry() -> None:
 
 
 def test_a_detail_holding_commas_stays_one_bullet() -> None:
-    """The published damage: one sentence became four bullets on its commas."""
+    """One sentence stays one bullet, whatever commas it holds."""
     prose = "the settings — the sandbox, the roots, the ceiling — ride a transform"
     output = dry_bump("A summary", "--detail", prose)
 
@@ -68,7 +68,7 @@ def test_the_summary_is_recorded_above_its_details() -> None:
 
 
 def test_a_detail_without_a_summary_is_refused() -> None:
-    """Silently dropping it would be the same class of fault being fixed."""
+    """Silently dropping it would be the same class of fault as losing a detail."""
     result = runner.invoke(app, ["bump", "patch", "--detail", "orphan", "--dry-run"])
 
     assert result.exit_code == 1

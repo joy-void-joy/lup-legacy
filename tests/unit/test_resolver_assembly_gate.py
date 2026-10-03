@@ -52,7 +52,7 @@ def test_the_gate_says_when_the_base_has_been_superseded() -> None:
     """A run parks for hours and its branch moves underneath it.
 
     Assembling onto a base that has been superseded is exactly the moment a
-    human wants to know, and the gate said nothing about it.
+    human wants to know, so the gate says so.
     """
     question = assembly_question([verified("alpha")], [], BASE, behind=7, branch="dev")
 

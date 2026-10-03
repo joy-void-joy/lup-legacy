@@ -131,9 +131,9 @@ class Sandbox(BaseModel, ABC, frozen=True, extra="forbid"):
 
         The same declaration reaches the runtime and the policy, so a session
         cannot be permitted more or less than whatever judges it believes.
-        Read off a runtime constant instead, the two drifted the only way
-        they can: the policy granted an escape the settings forbade, and the
-        runtime dropped it without a word.
+        Read off a runtime constant instead, the two would drift the only way
+        they can: the policy granting an escape the settings forbid, and the
+        runtime dropping it without a word.
         """
 
     def roots(self) -> list[AccessibleRoot]:

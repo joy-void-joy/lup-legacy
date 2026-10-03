@@ -24,8 +24,8 @@ open and exactly one session owns.
 **The path is keyed by the member's id, which is what makes it one member's.**
 The id is minted once and never moves; a display name repeats by design --
 ``dev``, ``dev-2`` -- and changes whenever its session renames itself. A path
-keyed by the name met the stale socket of an earlier session called the same,
-and moved out from under every peer holding it at a rename. The name is for a
+keyed by the name meets the stale socket of an earlier session called the
+same, and moves out from under every peer holding it at a rename. The name is for a
 person to read and stays off the path.
 
 **A socket file is removed only where the roster says its owner is gone.** A
@@ -95,8 +95,7 @@ class WakeSockets(BaseModel, frozen=True):
             "-- which is why this stays short and shallow rather than living "
             "beside the checkout it serves. Emptying it declares sessions that "
             "reach each other only where the runtime's own default path "
-            "already does, which is the posture every launch had before this "
-            "existed"
+            "already does"
         ),
     )
 

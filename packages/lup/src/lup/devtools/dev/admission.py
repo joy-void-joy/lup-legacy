@@ -3,8 +3,8 @@
 One gate already saturates the machine: it starts both test suites together
 and gives each as many processes as there are cores to share. Several gates
 therefore do not share the machine, they multiply the queue — measured on 32
-cores, where the same suite took 115 seconds run alone and over 630 contended
-by five sessions at load 90, and every one of those sessions came away
+cores, the same suite takes 115 seconds run alone and over 630 contended by
+five sessions at load 90, and every one of those sessions comes away
 believing the gate is slow.
 
 Serialising would be wrong, though, and that is the whole shape of this. The
@@ -36,7 +36,7 @@ Nothing here is correctness. A slot that cannot be taken, a lock file that
 cannot be made, a holder that died without releasing: each ends in the gate
 running anyway at its full width, because a session that cannot coordinate
 should still be able to check its work, and the worst that costs is the
-contention this exists to avoid — which is where every session was before.
+contention this exists to avoid, no worse than a clone with no slots at all.
 """
 
 import fcntl
@@ -57,8 +57,8 @@ SLOTS = 4
 
 Four because that is what the resolver runs concurrently by default, so the
 arrangement it already makes is the one this admits without queueing. A fifth
-waits, which is the case this is least worried about: five gates at once was
-never anybody's plan.
+waits, which is the case this is least worried about: five gates at once is
+nobody's plan.
 """
 
 # lup: ignore[constant-declaration] — not a judgement but where the library's

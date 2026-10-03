@@ -31,7 +31,7 @@ def test_gits_own_contents_are_the_repository() -> None:
 
 
 def test_a_linked_worktrees_administration_is_the_repository() -> None:
-    """The case the segment reading was widened for, still held."""
+    """The case the segment reading reaches past the top-level directory for."""
     assert reaches_git_administration(f"{BARE}/worktrees/feature/gitdir")
 
 

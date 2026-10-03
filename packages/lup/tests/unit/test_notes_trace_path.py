@@ -1,6 +1,6 @@
 """Behavior tests for the notes/trace path layout.
 
-Pins the seam that broke: setup_notes() must put the trace log at
+Pins the seam between writer and readers: setup_notes() must put the trace log at
 notes/traces/<version>/logs/<session_id>/<timestamp>.md (the location
 the trace/feedback devtools scan), with a parseable timestamp, and the
 session/output dirs under the same version root.
@@ -14,7 +14,13 @@ import pytest
 from lup.workspace import paths
 from lup.devtools.trace.traces import find_trace, session_id_from_path
 from lup.workspace.notes import setup_notes
-from lup.workspace.paths import parse_timestamp, traces_path
+from lup.workspace.paths import (
+    parse_timestamp,
+    path_is_under,
+    sessions_dir,
+    trace_logs_dir,
+    traces_path,
+)
 
 
 @pytest.fixture
@@ -66,3 +72,22 @@ def test_legacy_raw_trace_wins_over_empty_collected_session(
 
     assert find_trace(session_id) == raw
     assert session_id_from_path(raw) == session_id
+
+
+class TestNotesReadOnlyExcludesLogs:
+    def test_logs_dir_not_in_ro_grant(self, tmp_path: Path) -> None:
+        """The agent's RO grant must not cover the feedback-loop logs dir."""
+        saved_config = paths.state.config
+        try:
+            paths.configure(notes_dir=tmp_path / "notes", version="test")
+            notes = setup_notes(session_id="s1", task_id="t1")
+
+            logs_file = trace_logs_dir() / "s1" / "20200101_000000.md"
+            assert not path_is_under(logs_file, notes.ro)
+            assert not path_is_under(logs_file, notes.all_dirs)
+
+            # Earlier sessions and outputs are readable.
+            assert path_is_under(sessions_dir() / "other" / "x.json", notes.ro)
+            assert path_is_under(trace_logs_dir(), [trace_logs_dir()])
+        finally:
+            paths.state.config = saved_config

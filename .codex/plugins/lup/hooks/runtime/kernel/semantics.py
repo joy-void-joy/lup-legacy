@@ -68,7 +68,7 @@ It is the only abstention that reaches ``defer``.
 ``boundary_settle`` is the classifier lacking a final judgement while the
 *boundary* still has facts about it. Contained, the operation's effects are
 confined and it runs inside; ambient, the profile's declared unjudged-ambient
-policy answers. Sharing one word with the deliberate handoff is what made a
+policy answers. Sharing one word with the deliberate handoff would let a
 parser gap silently inherit provider auto-mode, which is the opposite of what
 a gap means.
 """

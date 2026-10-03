@@ -87,9 +87,10 @@ class QuotaWaitingTurn[T: BaseModel | None](TurnEngine[T]):
     def wait_seconds(self, error: QuotaExceededError) -> float:
         """How long to sleep before the identical request is worth retrying.
 
-        Bounded below because a reset already in the past — a clock skewed
-        against the provider's, or a window that rolled while the failure was
-        in flight — would otherwise retry immediately and be refused again.
+        Bounded below because a reset time that has already passed — a clock
+        skewed against the provider's, or a window that rolled while the
+        failure was in flight — would otherwise retry immediately and be
+        refused again.
         """
         if error.reset_at is None:
             return self.config.unknown_reset_wait_seconds

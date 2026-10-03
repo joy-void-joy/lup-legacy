@@ -83,9 +83,9 @@ def granted_root(scope: str) -> Path:
     A lease's own roots are recorded resolved, and a declared sandbox grant is
     recorded as it was written -- `~/.cache/uv` -- because it answers for
     whichever home reads it. Resolving that spelling without expanding it
-    named `<cwd>/~/.cache/uv`, so the one grant every toolchain needs was
-    refused as outside the boundary it was declared into, while `touch` on the
-    same path, which no reader resolved, went through.
+    would name `<cwd>/~/.cache/uv`, refusing the one grant every toolchain
+    needs as outside the boundary it is declared into, while `touch` on the
+    same path, which no reader resolves, goes through.
     """
     return Path(scope).expanduser().resolve()
 
@@ -142,6 +142,7 @@ def measured_landings(
     targets: list[str],
     measured: dict[str, list[str]],
     root: Path | None = None,
+    siblings: list[str] | None = None,
     mountinfo: Path = Path("/proc/self/mountinfo"),
 ) -> list[list[str]]:
     """Where each target lands, as this launch's lease and this mount table say.
@@ -149,13 +150,15 @@ def measured_landings(
     Asked by a caller that already knows the session runs in a container:
     the question these answer is asked only there. A mount table nobody
     can read places every target on the host, which keeps every question.
+    ``siblings`` are the repository's other checkouts, as
+    :func:`sibling_worktrees` names them.
     """
     try:
         lent = lent_mount_points(mountinfo.read_text())
     except OSError:
         return [[target, "host"] for target in targets]
     shared = host_shared_roots(measured, lent, str(Path.home()))
-    return landed_targets(targets, shared, root)
+    return landed_targets(targets, shared, root, siblings)
 
 
 def destination_policy_binding(path_text: str, root: Path | None) -> str:
@@ -757,12 +760,11 @@ def contained(measured: dict[str, list[str]]) -> bool:
     be told to leave some alone, where a container confines the process and
     was never asked.
 
-    Read from what the launch *measured* rather than from a variable. The
-    variable was ``LUP_CONTAINED``, a constant an image bakes, and a constant
-    answers yes for any container built from that image, for a bare ``run``
-    holding none of the lease, and -- since a launcher forwards its own
-    environment -- for an uncontained session started from a shell that
-    happened to export it. That last one is not hypothetical: it is a session
+    Read from what the launch *measured* rather than from a variable. A
+    variable is a constant an image bakes, and a constant answers yes for any
+    container built from that image, for a bare ``run`` holding none of the
+    lease, and -- since a launcher forwards its own environment -- for an
+    uncontained session started from a shell that exports it: a session
     reporting a boundary with no container under it, placing every operation
     by a wall that is not there.
     """
@@ -1532,9 +1534,9 @@ def migrated_relay(records: list[dict], blobs: Path) -> list[dict]:
 
     Each question's copies collapse into the last, which is the state it came
     to, with when it came to it beside it and its documents kept once in the
-    store; replies stay as they were, and a record already in the new shape
-    follows them. A copy claiming an answer is passed over, as it always was,
-    and so is anything that is not a question or a reply.
+    store; replies stay as they are, and a record already in the digest shape
+    follows them. A copy claiming an answer is passed over, and so is anything
+    that is not a question or a reply.
     """
 
     def copied(record: dict) -> str:
@@ -1568,7 +1570,7 @@ def migrated_relay(records: list[dict], blobs: Path) -> list[dict]:
 
 
 def migrate_relay(log: Path) -> None:
-    """Rewrite a relay kept the older way into the shape it is read in now, once.
+    """Rewrite a relay kept as full copies into the shape it is read in, once.
 
     Under the relay's transaction lock and its log's own, so no transition
     and no append lands midway: whoever takes them first rewrites it, and the
@@ -1785,8 +1787,8 @@ def bound_parts(
     A record keeps its scheme -- the parts it bound, in order -- so a reader
     on other code tells a record it cannot check from one that changed:
     ``None`` where the scheme names a part this code does not know. A record
-    parked before the scheme was kept bound the parts it carries; one it
-    holds as null, which a relay writes for a part it never had, it did not.
+    keeping no scheme binds the parts it carries; one it holds as null, which
+    a relay writes for a part it never had, it does not.
     """
     scheme = (
         entry["scheme"]
@@ -2335,7 +2337,7 @@ def record_deferral(
     classified, and the list is read to find the second.
 
     **Written at the moment the verdict exists**, rather than after the
-    command has run. The later event was proposed and refuted: a runtime
+    command has run. The later event cannot serve: a runtime
     offers both "yes" and "yes, don't ask again" and the later event cannot
     tell them apart, and a human may answer by *editing* the command, so it
     fires for something other than what was judged. None of that touches a
@@ -2954,22 +2956,27 @@ def foreign_repository(path_text: str, root: Path | None) -> bool:
 
 
 def this_checkout_path(path_text: str, root: Path | None) -> str:
-    """This path as the session's own checkout spells it, or "" outside it.
+    """This path as this repository's checkout holding it spells it, or "".
 
     :func:`worktree_path` anchors a path at the checkout nearest the file,
     which is the right anchor for every rule but one. A repository nested
-    inside this checkout -- a probe kit given its own ``git init`` under
+    inside a checkout -- a probe kit given its own ``git init`` under
     ``tmp/``, so a runtime launched there takes it as the project root -- has
-    a ``.git`` nearer the file than this checkout's, so the file arrives
-    spelled against the kit and claims none of the roles this checkout
+    a ``.git`` nearer the file than the checkout's, so the file arrives
+    spelled against the kit and claims none of the roles this repository
     declares for the tree around it. This is the other anchor, and the kernel
     reads it for that one question.
 
+    The session's own checkout is asked first, then the other worktrees of
+    the same repository (:func:`sibling_worktrees`), the deepest holding the
+    file: a session is sent to work in a sibling by absolute path, and a kit
+    under that sibling's ``tmp/`` is the same project's scratch.
+
     Resolved before it is compared, so a link is judged where it lands: a
-    ``refs/`` entry pointing at another project is outside this checkout
-    however it is spelled. A relative path is anchored on the session's own
-    directory, where the tool carrying it resolves it, and a session in no
-    checkout holds nothing, which the empty answer says.
+    ``refs/`` entry pointing at another project is outside every checkout of
+    this one however it is spelled. A relative path is anchored on the
+    session's own directory, where the tool carrying it resolves it, and a
+    session in no checkout holds nothing, which the empty answer says.
     """
     if root is None:
         return ""
@@ -2977,9 +2984,17 @@ def this_checkout_path(path_text: str, root: Path | None) -> str:
     if not checkout:
         return ""
     resolved = (root / path_text).resolve()
-    if not resolved.is_relative_to(checkout):
+    if resolved.is_relative_to(checkout):
+        return resolved.relative_to(checkout).as_posix()
+    holding = [
+        tree
+        for tree in (Path(sibling).resolve() for sibling in sibling_worktrees(root))
+        if resolved.is_relative_to(tree)
+    ]
+    if not holding:
         return ""
-    return resolved.relative_to(checkout).as_posix()
+    nearest = max(holding, key=lambda tree: len(tree.parts))
+    return resolved.relative_to(nearest).as_posix()
 
 
 def publish_edition(path_text: str, session: str) -> None:
@@ -3072,27 +3087,27 @@ def declared_program(root: str, declared: str) -> str:
     put outside the project. A path that resolved to nothing stays nothing,
     because a project that named a location meant that location.
 
-    Accepting only the first is what made this gate unavailable rather than
-    configurable. A declared program it could not resolve produced no
-    diagnostics and said nothing about why, so a project outside one layout
-    did not get a weaker check — it got silence indistinguishable from a
-    clean file, on every edit.
+    Accepting only the first would make this gate unavailable rather than
+    configurable. A declared program it cannot resolve produces no
+    diagnostics and says nothing about why, so a project outside one layout
+    would not get a weaker check — it would get silence indistinguishable
+    from a clean file, on every edit.
 
     A bare name is asked of the checkout's own environment before ``PATH``,
     because that is where a project's toolchain is installed and asking is
     what keeps the declaration from naming a layout. Spelling the path in
     would answer only for the layout it spelled: ``.venv`` is `uv`'s default
-    and nothing else's, so a project that redirected it, or that installs
-    through conda or pyenv, resolved to nothing and was gated in silence.
+    and nothing else's, so a project that redirects it, or that installs
+    through conda or pyenv, would resolve to nothing and be gated in silence.
     The scripts directory comes from the running interpreter — ``bin`` on
     POSIX, ``Scripts`` on Windows — because that is a property of how Python
     is installed rather than of any project, and reading it is what keeps
-    this from being a second layout assumption behind the one it replaces.
+    this from carrying a layout assumption of its own.
     It is read as a candidate rather than as the answer: a hook runs under
     whichever ``python3`` the runtime found, and one installed in ``sbin``
-    names a directory no environment has, which resolved every declared
-    program to a bare name and left the gate silent on a machine where it
-    was installed all along. The conventional pair follows it, so the
+    names a directory no environment has, which alone would resolve every
+    declared program to a bare name and leave the gate silent on a machine
+    where each one is installed. The conventional pair follows it, so the
     interpreter still decides where it can and never decides alone.
     """
     located = Path(root) / declared
@@ -3203,8 +3218,8 @@ def file_diagnostics(
     A name used before it exists is reported as context rather than as a
     refusal: *pending_rules*, and an unknown symbol on an import line. A
     change spanning two edits — the use, then the definition or its import —
-    reports it in between, and as a "blocking error" it arrived dozens of
-    times per change while four builders worked in parallel. What is still
+    reports it in between, and as a "blocking error" it would arrive dozens of
+    times per change wherever several builders work in parallel. What is still
     unresolved when the change settles, `dev check --changed` reports.
     """
     nothing: dict[str, list[str]] = {"blocking": [], "context": []}
@@ -3680,8 +3695,8 @@ def undo_snapshot(
     from it exactly when it is reached for.
 
     Ignored files are not captured, and that is a stated limit rather than an
-    oversight: on the checkout this was built in, ignored-but-precious content
-    came to 592 MB against a 21 MB object store, so capturing it would write
+    oversight: measured on a checkout of this repository, ignored-but-precious
+    content comes to 592 MB against a 21 MB object store, so capturing it would write
     twenty-eight times the repository's whole history before every mutating
     command. ``git clean -fdx`` therefore keeps asking, because it is the one
     command whose purpose is destroying what this cannot restore, and a
@@ -4183,7 +4198,10 @@ def host_shared_roots(
 
 
 def landed_targets(
-    targets: list[str], shared: list[str], root: Path | None = None
+    targets: list[str],
+    shared: list[str],
+    root: Path | None = None,
+    siblings: list[str] | None = None,
 ) -> list[list[str]]:
     """Place each target: this checkout, somewhere else the host shares, or the container.
 
@@ -4192,15 +4210,19 @@ def landed_targets(
     where it lands. A target no one can read -- an expansion, a substitution,
     a directory a `cd` left unknown -- lands ``host``: nothing here can vouch
     for where it goes, and that is the answer that keeps a question.
+
+    Another worktree of this repository in ``siblings`` is the checkout too:
+    the same project on another branch, which a session is sent to work in by
+    absolute path, rather than a tree somebody else lent the container.
     """
     where = Path.cwd() if root is None else root
-    checkout = where.resolve()
+    checkouts = [where.resolve(), *(Path(tree).resolve() for tree in siblings or [])]
 
     def landing(target: str) -> str:
         if "$" in target or "`" in target:
             return "host"
         resolved = (where / target).resolve()
-        if resolved.is_relative_to(checkout):
+        if any(resolved.is_relative_to(checkout) for checkout in checkouts):
             return "checkout"
         if any(resolved.is_relative_to(scope) for scope in shared):
             return "host"

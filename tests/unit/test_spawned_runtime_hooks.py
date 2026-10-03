@@ -2,10 +2,11 @@
 
 Every process a launched session starts inherits its `LUP_COORDINATION_MEMBER`,
 so a `claude -p` or `codex exec` run from the session's shell — or a pipeline
-opening sessions of its own — carried the session's id into its own hooks:
-its ending ended the session's row, its tool calls were handed the session's
-mail, and its prompts read its transcript as the session's rewound
-conversation and cleared what the session said it was doing. Each guard is
+opening sessions of its own — carries the session's id into its own hooks.
+Taken at its word, its ending would end the session's row, its tool calls
+would be handed the session's mail, and its prompts would read its transcript
+as the session's rewound conversation and clear what the session said it was
+doing. Each guard is
 run here as its runtime runs it, the process running these cases standing in
 for the spawned runtime, over a store whose session row names another live
 process — this one's parent — as the runtime it answers for.

@@ -284,3 +284,11 @@ class TestAllowlistEnforcement:
         assert "WebFetch" in reason
         assert "Available tools" in reason
         assert "WebSearch" in reason
+
+
+def test_allowed_tools_are_supplied_by_the_concrete_composition() -> None:
+    builtins = frozenset(  # lup: ignore[frozenset-shape] — immutable policy fixture
+        {"Read", "TodoWrite"}
+    )
+    allowed = ToolPolicy(settings).get_allowed_tools({}, builtin_tools=builtins)
+    assert allowed == ["Read", "TodoWrite"]

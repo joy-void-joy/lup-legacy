@@ -310,10 +310,10 @@ def installed_library_sources() -> list[PythonSource]:
     A project built on this library declares classes over its models -- a
     ledger kind over ``LedgerNode``, a part over ``PromptPart`` -- and a rule
     that resolves bases through the project's own files alone sees the
-    library's class as a name that resolves to nothing. Measured downstream:
-    a kind declared as ``class KnowledgeItem(LedgerNode, ABC)`` was reported
-    as a capability inheriting reusable behaviour, because the one base that
-    made it a variant union was outside the index. The library's sources are
+    library's class as a name that resolves to nothing: a kind declared as
+    ``class KnowledgeItem(LedgerNode, ABC)`` is then reported as a capability
+    inheriting reusable behaviour, because the one base that makes it a
+    variant union is outside the index. The library's sources are
     what say what its classes are, so they are read beside the project's.
 
     Read from wherever the package is installed -- an editable checkout or a
@@ -563,9 +563,9 @@ def audit_suppressions(
     findings: list[RuleFinding] = []
     refusal = " (no suppression: write the replacement)" if strength == "strong" else ""
     for violation in violations:
-        # A refusal that does not say where the marker belongs is the reported
-        # failure itself: a directive goes spurious on one line while the
-        # violation stays missing on another, and neither message connects them.
+        # A refusal says where the marker belongs. Without that, a directive
+        # goes spurious on one line while the violation stays missing on
+        # another, and neither message connects them.
         expected = (
             f" — suppress on {suppression_placement(violation.line)}"
             f": `# lup: ignore[{rule_id}] — <why>`"

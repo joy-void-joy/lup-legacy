@@ -4,8 +4,8 @@ The fixture is a thousand native reviews of a one-line edit, each binding a
 14 KB preimage and a 14 KB after-document of its own, 980 carried out and 20
 waiting -- the shape of a busy week in one checkout, where a review's
 documents outweigh its call. Built and measured in about two seconds, it
-runs with the rest of the suite. Measured on the workstation this was
-written on, with other test suites running:
+runs with the rest of the suite. Measured on a workstation, with other test
+suites running:
 
 - the log holds 2.2 KB per review, where the same reviews kept whole in
   every record, one copy per transition, come to about 100 KB each;

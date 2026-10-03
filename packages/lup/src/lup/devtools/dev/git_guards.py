@@ -93,17 +93,6 @@ INSTALL_COMMAND = "uv run lup-devtools git hooks install"
 GUARD_MARKER = "lup-git-guard"
 """How an installed hook says it is this command's to rewrite."""
 
-# lup: ignore[constant-declaration] — the identity earlier versions wrote, kept
-# so a checkout armed by one is still recognized rather than read as a stranger
-LEGACY_GUARD_MARKER = "lup-commit-guard"
-"""What this wrote while only the commit hook existed.
-
-Recognized on read and never written. Dropping it would make every hook a
-previous version installed report as one nobody here wrote, which is the
-state that needs ``--force`` to leave — so the compatibility is worth one
-line rather than a migration note nobody reads.
-"""
-
 GIT_ENVIRONMENT = (
     "GIT_DIR",
     "GIT_WORK_TREE",
@@ -810,7 +799,7 @@ def guard_state(script: HookScript, directory: Path) -> GuardState:
     if not path.is_file():
         return GuardState(path=path, status="absent")
     installed = path.read_text(encoding="utf-8")
-    if not any(marker in installed for marker in (GUARD_MARKER, LEGACY_GUARD_MARKER)):
+    if GUARD_MARKER not in installed:
         return GuardState(path=path, status="foreign")
     current = installed == script.body()
     return GuardState(path=path, status="current" if current else "stale")
@@ -839,10 +828,7 @@ def orphaned_guards(guards: list[GitGuard], directory: Path) -> list[GuardState]
     return [
         GuardState(path=path, status="orphaned")
         for path in ours
-        if any(
-            marker in path.read_text(encoding="utf-8", errors="replace")
-            for marker in (GUARD_MARKER, LEGACY_GUARD_MARKER)
-        )
+        if GUARD_MARKER in path.read_text(encoding="utf-8", errors="replace")
     ]
 
 

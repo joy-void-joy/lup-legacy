@@ -399,3 +399,33 @@ async def test_sleep_result_carries_reason_and_time() -> None:
     result = await scheduler.sleep(0)
     assert result.reason == "timer"
     assert result.time
+
+
+class TestReflectionGateReset:
+    def test_reset_is_idempotent_without_flag_file(self, tmp_path: Path) -> None:
+        """reset() must not raise when the flag file is already gone."""
+        gate = ReflectionGate(flag_path=tmp_path / "meta_flag")
+        gate.reset()  # never created
+        gate.mark_reflected()
+        assert gate.reflected is True
+        gate.reset()
+        assert gate.reflected is False
+        gate.reset()  # second reset on an absent file must be a no-op
+
+    def test_reset_survives_external_unlink(self, tmp_path: Path) -> None:
+        """A racing deletion between check and unlink must not crash reset."""
+        flag = tmp_path / "meta_flag"
+        gate = ReflectionGate(flag_path=flag)
+        gate.mark_reflected()
+        assert flag.exists()
+        flag.unlink()  # vanishes out from under the gate
+        gate.reset()  # must tolerate the missing file
+        assert gate.reflected is False
+
+    def test_externally_created_flag_unlocks_the_gate(self, tmp_path: Path) -> None:
+        """A hook subprocess touching the flag file must unlock this gate."""
+        flag = tmp_path / "meta_flag"
+        gate = ReflectionGate(flag_path=flag)
+        assert gate.reflected is False
+        flag.touch()
+        assert gate.reflected is True

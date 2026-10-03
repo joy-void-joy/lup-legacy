@@ -113,12 +113,13 @@ def test_each_runtime_reads_its_own_spelling_of_the_session() -> None:
 
 
 def test_a_session_stays_recorded_after_it_changes_directory(tmp_path: Path) -> None:
-    """The bug: a directory change opened a fresh transcript that failed scope.
+    """A directory change opens a fresh transcript that stays in scope.
 
     A native CLI keys a transcript to the directory a session started in while
     stamping the directory on every record, so entering a worktree opens a new
     transcript under a different project root. Judged per record, every line of
-    it fell outside the launching project and recording stopped mid-session.
+    it would fall outside the launching project and recording would stop
+    mid-session.
     """
     sessions = tmp_path / "home" / "projects"
     sessions.mkdir(parents=True)

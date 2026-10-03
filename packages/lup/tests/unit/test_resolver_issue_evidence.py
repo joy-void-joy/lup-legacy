@@ -1,9 +1,9 @@
 """Taking a project's tracker issues as evidence a run can plan from.
 
 An issue is already the repository's structured, reviewable record of what is
-wrong. Before this it had to be transcribed into a `# lup:` note before a run
-could act on it, and friction a run found died with the run — so evidence made
-a round trip through a human because the two surfaces could not talk.
+wrong. Read directly, it needs no transcribing into a `# lup:` note before a
+run can act on it, and friction a run finds outlives the run — so evidence
+makes no round trip through a human between two surfaces that cannot talk.
 """
 
 from pathlib import Path
@@ -48,7 +48,7 @@ def request(notes: int, statements: int, issues: int) -> ResolveRequest:
 @pytest.mark.parametrize(
     ("remote", "slug"),
     [
-        # An ssh alias, the shape that broke every `gh` query when reported.
+        # An ssh alias, the shape that defeats every `gh` query inferring it.
         ("alias:owner/name.git", "owner/name"),
         ("git@github.com:owner/name.git", "owner/name"),
         ("https://github.com/owner/name.git", "owner/name"),
@@ -123,10 +123,10 @@ def test_evidence_of_no_kind_at_all_is_refused() -> None:
 class TestATrackerThatDidNotAnswer:
     """A refused credential and a clean tracker are not the same reading.
 
-    Measured with an expired token: `dev issues` printed "0 open issue(s) in
-    upstream/framework" and exited zero, which is exactly what a repository
-    with nothing open prints. Anything acting on that plans from an
-    emptiness nobody established.
+    With an expired token, a listing that prints "0 open issue(s) in
+    upstream/framework" and exits zero says exactly what a repository with
+    nothing open says. Anything acting on that plans from an emptiness
+    nobody established.
     """
 
     def refusing(self, monkeypatch: pytest.MonkeyPatch) -> None:

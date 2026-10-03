@@ -18,8 +18,8 @@ sends, which carries the attacker's name rather than a loopback one.
 So the two go together, and a surface that takes the first without the second
 is open to any page the user happens to have loaded. Both live here rather
 than in one application's server, because the reasoning is the same wherever
-a local page accepts a mutating request, and because the surface that skipped
-it had no way of knowing it had.
+a local page accepts a mutating request, and because a surface that skips it
+has no way of knowing it has.
 
 Not defended: other processes on this machine, which only a token would
 address.

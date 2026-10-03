@@ -27,9 +27,9 @@ class StubForgeClient:
     """A forge client holding nothing, which is how a logged-out one behaves.
 
     It records what it was asked, because half of what these tests check is
-    that it was asked at all -- the defect was a probe that reported ready
-    having consulted nothing, and only the call log tells that from a probe
-    that asked and was answered.
+    that it was asked at all -- the defect guarded against is a probe that
+    reports ready having consulted nothing, and only the call log tells that
+    from a probe that asked and was answered.
     """
 
     def __init__(self) -> None:
@@ -43,11 +43,11 @@ class StubForgeClient:
 def test_an_ssh_remote_reaches_the_forge_client_for_the_api_question(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The probe that was never run on the remotes that most needed it.
+    """The probe runs on the remotes that most need it.
 
-    Dispatching on the remote's scheme sent every ssh remote to the transport
-    arm, so the client was asked only where git already spoke https -- which
-    is the one case where a failure would have surfaced anyway.
+    Dispatching on the remote's scheme would send every ssh remote to the
+    transport arm, asking the client only where git already speaks https --
+    the one case where a failure would surface anyway.
     """
     client = StubForgeClient()
     monkeypatch.setattr(remote_auth, "origin_url", lambda: SSH_REMOTE)
@@ -62,8 +62,8 @@ def test_the_transport_probe_still_declines_to_ask_the_client(
 ) -> None:
     """Correct on its own terms, and exactly why it could not answer for the API.
 
-    This is the shape the module's promise broke on: a key that works, a
-    client that holds nothing, and one probe reporting ready for both.
+    This is the shape the module's promise would break on: a key that works,
+    a client that holds nothing, and one probe reporting ready for both.
     """
     client = StubForgeClient()
 
@@ -82,14 +82,14 @@ def test_the_transport_probe_still_declines_to_ask_the_client(
 def test_the_probe_speaks_the_ssh_command_git_was_handed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The false negative that blanked a sweep: a config git reads and no probe did.
+    """The probe reads the config git reads, so it cannot blank a sweep.
 
     A sandbox hands git its own ``known_hosts`` through ``GIT_SSH_COMMAND``.
-    A probe spelling ``ssh`` itself read a different configuration, failed
-    host key verification against a remote git was reaching perfectly, and
-    every reader gated on that answer spent the failure as a fact -- the
-    sweep reported no branch carrying a pull request and no remote carrying
-    branches, neither of which anything had looked at.
+    A probe spelling ``ssh`` itself would read a different configuration,
+    fail host key verification against a remote git reaches perfectly, and
+    every reader gated on that answer would spend the failure as a fact --
+    the sweep reporting no branch carrying a pull request and no remote
+    carrying branches, neither of which anything had looked at.
     """
     monkeypatch.setenv("GIT_SSH_COMMAND", "ssh -F /run/lup/ssh/config")
 

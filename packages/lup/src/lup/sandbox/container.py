@@ -470,7 +470,7 @@ class Sandbox:
         one it sits over, so grouping by mode can express only one nesting:
         a read-write hole punched in a read-only base. The inverse — a
         read-only hole inside a read-write base, which is how a shared git
-        directory keeps one subdirectory unwritable — came out with the
+        directory keeps one subdirectory unwritable — comes out of it with the
         read-write parent applied last, silently shadowing the hole into
         writability. Sorting on ``Path.parts`` puts every parent ahead of
         everything beneath it, so each entry keeps its own mode whichever

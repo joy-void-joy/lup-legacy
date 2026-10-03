@@ -1,0 +1,17 @@
+subjects = [
+    "LegacyVolumes",
+    "LegacyVolumes.shared",
+    "LegacyVolumes.scoped",
+    "LegacyVolumes.branches",
+    "LegacyVolumes.found",
+    "LegacyVolumes.every",
+]
+reason = """
+the configuration homes a launch splits into one volume per runtime are named \
+for what they are, homes in a layout not split per runtime"""
+
+[[steps]]
+instruction = """
+Import UnsplitVolumes from lup.launch.config_volume where LegacyVolumes was \
+imported; found(root, existing, logins, worktrees), shared, scoped, branches \
+and every() are unchanged."""

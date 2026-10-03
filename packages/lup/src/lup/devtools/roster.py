@@ -183,13 +183,13 @@ class DevtoolsDeclarations(BaseModel, frozen=True, arbitrary_types_allowed=True)
         *not built* rather than built and dropped afterwards. That distinction
         is the whole reason this takes an argument: a builder may import an
         optional extra, so constructing an app a project declined makes that
-        project carry a dependency for a command it does not serve. Measured —
-        a project retiring ``dashboard`` still could not start its CLI without
-        ``lup-agents[web]``, because the roster built the dashboard before the
-        selection ever saw it.
+        project carry a dependency for a command it does not serve: built
+        first and dropped afterwards, a project retiring ``dashboard`` could
+        not start its CLI without ``lup-agents[web]``, because the dashboard
+        is imported before the selection is consulted.
 
-        Defaulting to none keeps every existing caller correct: a project that
-        declines nothing gets exactly what it got before.
+        Defaulting to none means a project that declines nothing gets every
+        sub-app.
         """
         declined = retired or []
         return [

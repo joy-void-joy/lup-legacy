@@ -120,9 +120,9 @@ def sweeping(work: Path, rewritten: str, rule_id: str) -> None:
 def test_a_repair_the_loaded_policy_would_refuse_is_put_back(tmp_path: Path) -> None:
     """The sweep judges by the checkout's rules, the gate by the loaded policy.
 
-    After a rename the two disagreed: the gate demanded a directive the sweep
-    deleted as dead, and every later edit to the file was refused for its
-    absence. Where the loaded policy still needs what was taken out, the file
+    After a rename the two can disagree: the gate demands a directive the
+    sweep deletes as dead, and every later edit to the file is refused for
+    its absence. Where the loaded policy still needs what was taken out, the file
     is left as written and the disagreement is said.
     """
     work = tmp_path / "repo"

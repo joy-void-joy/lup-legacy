@@ -378,3 +378,20 @@ def test_merge_skill_documents_the_launcher_the_commands_declare(
     prompt = claude_prompt_renderer().render(MERGE_SKILL.prompt)
 
     assert conflicts.invocation(conflicts.DOCUMENTED_LAUNCHER, *command) in prompt
+
+
+class TestTheirsRef:
+    def test_rebase_uses_rebase_head(self) -> None:
+        from lup.devtools.dev.conflicts import theirs_ref_for
+
+        assert theirs_ref_for("rebase") == "REBASE_HEAD"
+
+    def test_merge_uses_merge_head(self) -> None:
+        from lup.devtools.dev.conflicts import theirs_ref_for
+
+        assert theirs_ref_for("merge") == "MERGE_HEAD"
+
+    def test_cherry_pick_uses_cherry_pick_head(self) -> None:
+        from lup.devtools.dev.conflicts import theirs_ref_for
+
+        assert theirs_ref_for("cherry-pick") == "CHERRY_PICK_HEAD"

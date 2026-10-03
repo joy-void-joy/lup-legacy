@@ -566,8 +566,8 @@ def test_a_project_may_reserve_a_different_share_than_this_one() -> None:
 def test_what_a_scaffold_may_spend_is_derived_from_the_two_it_is_given() -> None:
     """The number every caller wanted, which neither field carries alone.
 
-    Written out by hand it was the same subtraction at every site that needed
-    it, and a project moving either number moved it at seven of them.
+    Written out by hand it is the same subtraction at every site that needs
+    it, and a project moving either number moves it at each of them.
     """
     budget = GuidanceBudget(ceiling=20_000, template_headroom=8_000)
 
@@ -736,9 +736,9 @@ def test_the_watching_event_is_registered_for_what_leaves_writes_behind() -> Non
     registration would spawn the script to find no write at all.
 
     The shell tool is pinned here because leaving it out fails silently: the
-    review of what a command wrote was wired into both dispatchers and
-    reachable from neither, for exactly as long as this matcher named only the
-    tools that carry a file path.
+    review of what a command wrote is wired into both dispatchers and
+    reachable from neither, for exactly as long as this matcher names only
+    the tools that carry a file path.
     """
     for target, plugin_root, edits in (
         (claude_target, ".claude", "Edit|Write|Bash"),
@@ -776,17 +776,16 @@ def test_generated_resolver_entries_only_launch_the_shared_python_core() -> None
     for entry in (command, skill):
         assert "exactly one watch" in entry
         assert "--run-id" in entry and "--answer" in entry
-        # The entry named flags the CLI has never had, and the acceptance
-        # question it pointed at instead does not exist either. An entry
-        # that documents a flag into being is worse than one that omits it:
-        # the reader spends a turn on `No such option`.
+        # No flag the CLI lacks, and no acceptance question that does not
+        # exist. An entry that documents a flag into being is worse than one
+        # that omits it: the reader spends a turn on `No such option`.
         assert "--accept" not in entry and "--reject" not in entry
         assert "integration-assembly" in entry
     # Each entry names its own runtime's waiter rather than the idea of one.
-    # The neutral wording — "the runtime's event-driven waiter" — was true of
+    # A neutral wording — "the runtime's event-driven waiter" — is true of
     # Claude and false of Codex, where reading the session is the mechanism
-    # rather than the mistake, so a reader on either had to guess which tool
-    # was meant. The guess is an ordinary command with a long timeout, which
+    # rather than the mistake, so a reader on either has to guess which tool
+    # is meant. The guess is an ordinary command with a long timeout, which
     # reports once, at the end.
     assert "`Monitor`" in command
     assert "exec_command" in skill and "write_stdin" in skill
@@ -2522,7 +2521,7 @@ def test_both_dispatchers_are_compiled_from_one_shared_host_half() -> None:
 
     Every function the two scripts genuinely share must be a function the
     shared half offers — anything else is the same code living in two places,
-    which is how the halves drifted apart before they were compiled.
+    which is how two halves drift apart.
     """
     shared = [
         node.name
@@ -2931,9 +2930,9 @@ def test_the_generator_owns_the_proof_it_writes_and_never_lists(
     )
     save_manifest(home / ".lup-ownership.json", manifest)
 
-    # A manifest lists what it proves and never itself, so every consumer
-    # asking who owns the proof was told "the repository" about the one file
-    # materialization always writes.
+    # A manifest lists what it proves and never itself, so the ownership
+    # lookup names it, or every consumer asking who owns the proof is told
+    # "the repository" about the one file materialization always writes.
     assert not [item for item in manifest.files if "ownership" in str(item.path)]
     owned = generated_artifacts(tmp_path, homes=[".claude"])
     assert owned.owning(".claude/.lup-ownership.json") is not None
@@ -3299,9 +3298,9 @@ def test_declared_exclusions_cover_the_commands_the_boundary_cannot_carry() -> N
         assert sandbox_excluded(command, excluded), command
     # The verbs that drive git rather than read it, for the reason `gh` is
     # excluded: a child of a confined command is confined too, so leaving
-    # these inside moves the same failure one call deeper — measured in #351,
-    # where `dev worktree create` could not take the lock its config write
-    # needs while the identical `git config --local` succeeded one call away.
+    # these inside moves the same failure one call deeper: a confined
+    # `dev worktree create` cannot take the lock its config write needs while
+    # the identical `git config --local` succeeds one call away.
     for driving in (
         "uv run lup-devtools git worktree create feat-x",
         "uv run lup-devtools git pr push",
@@ -3392,9 +3391,9 @@ def test_a_checkout_keeping_no_companion_names_nothing_further(tmp_path: Path) -
 def test_leaving_a_worktree_is_granted_and_entering_one_is_not() -> None:
     """Entering arms a wall; leaving is how a session that got in gets out.
 
-    The grant and the refusal have to agree, and once did not: entering was
-    granted here while the guidance told every session not to do it, which
-    left the whole gate resting on prose. Neither tool is a shell command, so
+    The grant and the refusal have to agree: entering granted here while the
+    guidance tells every session not to do it would leave the whole gate
+    resting on prose. Neither tool is a shell command, so
     no vocabulary sweep reaches them and `hooks classify` cannot answer for
     them -- the grant lives in the settings artifact and the refusal in the
     tool table, which is why both pins do too.
@@ -3645,7 +3644,7 @@ def harness_granting_its_own_servers() -> Harness:
 
     The example declares servers and grants none of them, so a tree built
     from it says nothing about what happens when a declaration asks for one —
-    which is exactly the case that was broken. Adopters do ask, so the grant
+    which is exactly the case that needs pinning. Adopters do ask, so the grant
     is put where an adopter puts it rather than left to whichever example
     happens to carry one.
     """
@@ -3874,7 +3873,7 @@ def test_the_claude_watch_says_when_to_stop_it() -> None:
     """A watch that outlives the report resumes the finished reader.
 
     So the Claude spelling names the call that ends a watch and the moment
-    to make it, beside the advice against polling it was written for. The
+    to make it, beside the advice against polling it serves. The
     Codex spelling describes a session that is read rather than pushed, and
     says nothing of the kind.
     """
@@ -3889,3 +3888,32 @@ def test_the_claude_watch_says_when_to_stop_it() -> None:
     assert "`TaskStop`" in claude
     assert "before reporting" in claude
     assert "TaskStop" not in codex
+
+
+def test_a_native_escalation_of_an_excluded_command_is_honoured() -> None:
+    """A command the toolchain excludes from the sandbox is read as excluded.
+
+    The toolchain declares an exclusion, which is the requirement a launch
+    can measure, so reading the placement alone would refuse an escape the
+    boundary already grants, as it would a read-only `git diff`.
+    """
+    hooks = portable_harness().plugins[0].hooks
+    assert hooks is not None
+
+    assert sandbox_excluded("git diff --stat", hooks.excluded_commands())
+
+
+def test_the_verbs_that_drive_git_are_excluded_like_git() -> None:
+    """The devtools verbs that drive git are excluded with git.
+
+    A child of a confined command is confined too, which is the argument the
+    `gh` entry beside it makes: confined, the mandated worktree workflow
+    cannot run, while the identical `git config --local` succeeds one call
+    away.
+    """
+    hooks = portable_harness().plugins[0].hooks
+    assert hooks is not None
+    excluded = hooks.excluded_commands()
+
+    assert sandbox_excluded("uv run lup-devtools git worktree create feat-x", excluded)
+    assert not sandbox_excluded("uv run lup-devtools dev py info lup.policy", excluded)

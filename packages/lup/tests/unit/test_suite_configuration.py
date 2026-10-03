@@ -16,8 +16,8 @@ def test_a_fork_beside_a_running_thread_warns_nothing(foreground: bool) -> None:
     """`sh` forks, and Python warns about every fork a threaded process makes.
 
     The warning names a hazard `sh` does not have — it execs straight after
-    forking — and a suite that runs a pool beside it printed hundreds of them
-    per run, burying the warnings that were news. A foreground call forks
+    forking — and a suite that runs a pool beside it prints hundreds of them
+    per run, burying the warnings that are news. A foreground call forks
     through `os.spawnve`, so its warning names `os` rather than `sh`.
     """
     release = threading.Event()

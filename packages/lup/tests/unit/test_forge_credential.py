@@ -666,7 +666,7 @@ def test_a_checkout_with_no_remote_yields_no_rewrite(tmp_path: Path) -> None:
 def test_a_web_remote_is_rewritten_toward_ssh_when_ssh_is_what_was_lent(
     tmp_path: Path,
 ) -> None:
-    """The direction that did not exist while a token was the only credential.
+    """The direction a key needs, which a token alone never would.
 
     A checkout cloned over HTTPS is the common case, and an ssh session that
     left it alone would hold a key it never used and meet a credential prompt
@@ -692,7 +692,7 @@ def test_a_web_remote_is_rewritten_toward_ssh_when_ssh_is_what_was_lent(
 def test_an_ssh_remote_is_rewritten_toward_https_when_a_token_is_what_was_lent(
     tmp_path: Path,
 ) -> None:
-    """The direction that always existed, held to the same walk as the new one."""
+    """The token's direction, held to the same walk as the key's."""
     git("-C", str(tmp_path), "init", "-q")
     git("-C", str(tmp_path), "remote", "add", "origin", "git@github.com:owner/repo.git")
 
@@ -768,8 +768,8 @@ def test_a_session_is_told_not_to_start_maintenance_it_cannot_finish() -> None:
 
     Git starts the automatic run after an ordinary commit and reports the
     failure as three errors on stderr, after the commit has already landed.
-    Nothing is wrong and it reads exactly as though something is — one commit
-    was read as failed on the strength of it.
+    Nothing is wrong and it reads exactly as though something is — enough for
+    a commit to be read as failed on the strength of it.
     """
     settings = {
         item.key: item.value

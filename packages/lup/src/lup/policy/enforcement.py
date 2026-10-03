@@ -183,9 +183,9 @@ class SandboxPosture(BaseModel, frozen=True):
     whether a per-call escape channel exists at all, and only the session
     says whether it is open here. A policy handed the runtime's answer
     judges a host it does not have — a worker configured to forbid
-    unsandboxed commands was still told it could escape, so every placement
-    was rendered onto the wire and dropped, leaving the call confined with
-    the verdict unchanged and nothing anywhere saying so.
+    unsandboxed commands would be told it could escape, so every placement
+    would be rendered onto the wire and dropped, leaving the call confined
+    with the verdict unchanged and nothing anywhere saying so.
 
     Both fields default to the shape that claims least: a session that says
     nothing about its sandbox is judged as confining nothing and escaping

@@ -1,8 +1,7 @@
 # lup: ignore[import-re, re-call, string-split]
-# This module IS the parser for the repo's own trace-markdown format (the
-# legacy fallback beside the .events.jsonl sidecar) — line surgery and the
-# fallback patterns are the parse, not a substitute for one, and user search
-# queries are regex by contract.
+# Search and display read a trace as the lines a person reads, and a search
+# query is a regex by contract: neither stands in for a parser of the events,
+# which arrive typed in the sidecar.
 """Trace display, search, and analysis implementation.
 
 Provides reusable scanner functions (``scan_for_errors``, ``scan_for_capability_gaps``)
@@ -10,9 +9,8 @@ consumed by both trace CLI commands and ``feedback/analyze.py``.
 
 Analysis reads the machine-readable ``.events.jsonl`` sidecar that
 :class:`lup.observability.trace.TraceLogger` writes beside each ``.md`` trace: typed tool,
-error, and capability events, no regex. The line-scan over markdown remains
-only as the documented fallback for legacy ``.md`` traces that predate the
-sidecar.
+error, and capability events, no regex. A trace with no sidecar carries no
+events to analyse; display and search still read its text.
 
 Examples::
 
@@ -41,13 +39,7 @@ from lup.observability.audit import (
     chain_break,
     read_observable_events,
 )
-from lup.observability.blocks import truncate_str
-from lup.observability.trace import (
-    TraceEvent,
-    capability_request_from_text,
-    read_trace_events,
-    tool_result_ok,
-)
+from lup.observability.trace import TraceEvent, read_trace_events
 from lup.workspace.history import (
     iter_run_dirs,
     iter_session_dirs,
@@ -113,119 +105,19 @@ class TraceRow(TypedDict):
     size_kb: float
 
 
-# ── event sourcing: structured sidecar, with a legacy-markdown fallback ────
+# ── event sourcing: the structured sidecar ─────────────────
 
 
 def events_for_trace(trace_file: Path) -> list[TraceEvent]:
-    """Return the typed events for one ``.md`` trace.
+    """Return the typed events for one ``.md`` trace, none where it has none.
 
-    Primary path: read the ``.events.jsonl`` sidecar written beside the trace
-    — already-typed tool/error/capability records, no parsing of prose. Only
-    when no sidecar exists (a legacy trace predating it) does this fall back
-    to :func:`events_from_legacy_markdown`.
+    Read from the ``.events.jsonl`` sidecar written beside the trace —
+    already-typed tool/error/capability records, no parsing of prose. The
+    markdown is for a person to read, so a trace with no sidecar has no
+    events rather than ones guessed back out of its text.
     """
     sidecar = trace_file.with_suffix(".events.jsonl")
-    if sidecar.exists():
-        return read_trace_events(sidecar)
-    return events_from_legacy_markdown(trace_file.read_text(encoding="utf-8"))
-
-
-def events_from_legacy_markdown(content: str) -> list[TraceEvent]:
-    """Reconstruct :class:`TraceEvent`s from a legacy ``.md`` trace.
-
-    The markdown is structured, not arbitrary prose: ``TraceLogger`` renders
-    each block under a ``## <emoji> <label>`` header (``Tool: <name>``,
-    ``Result`` with a fenced body, ``Response`` text). This parses that
-    structure — pairing each Result with the preceding Tool, and reading
-    ``is_error`` from the Result's JSON via :func:`tool_result_ok` — so error
-    detection matches the structured path instead of keyword-guessing. The
-    one irreducible heuristic, capability phrasing in free-form Response text,
-    is shared with the live logger.
-    """
-    events: list[TraceEvent] = []  # lup: ignore[empty-collection] — block fold
-    pending_tool: str | None = None
-    # Legacy markdown carries no per-event timestamps; "" marks them unknown.
-    for block in iter_markdown_blocks(content):
-        body = block.body
-        match block.label.split(maxsplit=1):
-            case ["Tool:"]:
-                pending_tool = "unknown"
-            case ["Tool:", name]:
-                pending_tool = name.strip()
-            case ["Result"]:
-                name = pending_tool or "unknown"
-                pending_tool = None
-                ok = tool_result_ok(body)
-                brief = truncate_str(body.strip(), 300)
-                events.append(
-                    TraceEvent(
-                        kind="tool_call", timestamp="", tool=name, ok=ok, brief=brief
-                    )
-                )
-                if not ok:
-                    events.append(
-                        TraceEvent(kind="error", timestamp="", tool=name, brief=brief)
-                    )
-            case _:
-                request = capability_request_from_text(body)
-                if request is not None:
-                    events.append(
-                        TraceEvent(
-                            kind="capability_request", timestamp="", brief=request
-                        )
-                    )
-    return events
-
-
-class Block(BaseModel):
-    """One labelled section of a trace markdown document."""
-
-    label: str
-    body: str
-
-
-def iter_markdown_blocks(
-    content: str,
-) -> list[Block]:
-    """Split a trace markdown document into labelled blocks.
-
-    A block starts at a ``## <emoji> <label>`` header and runs to the next
-    header. The body has any surrounding ``` ``` fences stripped, so a Result
-    body is the raw JSON the logger fenced — ready to parse.
-    """
-    blocks: list[Block] = []
-    label: str | None = None
-    body_lines: list[str] = []  # lup: ignore[empty-collection] — block fold
-
-    def flush() -> None:
-        if label is not None:
-            blocks.append(
-                Block(label=label, body=strip_code_fence("\n".join(body_lines)))
-            )
-
-    for line in content.split("\n"):
-        if line.startswith("## "):
-            flush()
-            # "## 🔧 Tool: search" -> "Tool: search"; emoji is the first token.
-            heading = line.removeprefix("## ").strip()
-            parts = heading.split(" ", 1)
-            label = parts[1].strip() if len(parts) > 1 else heading
-            body_lines = []
-            continue
-        if label is not None:
-            body_lines.append(line)
-    flush()
-    return blocks
-
-
-def strip_code_fence(body: str) -> str:
-    """Drop a leading ``` (or ```json) fence and its closing ``` from *body*."""
-    lines = body.strip().split("\n")
-    if lines and lines[0].startswith("```"):
-        lines = lines[1:]
-    if lines and lines[-1].strip() == "```":
-        lines = lines[:-1]
-    return "\n".join(lines).strip()
+    return read_trace_events(sidecar) if sidecar.exists() else []
 
 
 def resolve_trace_paths(effective: list[str] | None) -> list[Path]:
@@ -270,8 +162,8 @@ def scan_for_errors(
 ) -> list[TraceErrorSession]:
     """Report failing tool calls per session from structured trace events.
 
-    Reads each trace's typed events (sidecar, or legacy-markdown fallback)
-    and keeps the ``error`` ones — real tool failures, distinguished by the
+    Reads each trace's typed events from its sidecar and keeps the
+    ``error`` ones — real tool failures, distinguished by the
     logged ``is_error`` flag rather than by keyword-scanning prose.
     """
     errors_by_session: defaultdict[str, list[str]] = defaultdict(list)
@@ -302,9 +194,8 @@ def scan_for_capability_gaps(
 ) -> list[CapabilityRequest]:
     """Report capability requests across traces, deduplicated by text.
 
-    Reads each trace's typed ``capability_request`` events (sidecar, or
-    legacy-markdown fallback) and groups identical wishes, most-requested
-    first.
+    Reads each trace's typed ``capability_request`` events from its sidecar
+    and groups identical wishes, most-requested first.
     """
     requests_by_text: dict[str, list[str]] = defaultdict(list)
 
@@ -399,8 +290,7 @@ def render_tool_calls(trace_path: Path) -> str:
     """Render a trace's tool-call timeline from its typed events.
 
     One line per call — ✓/✗ status, tool name, result brief — read from the
-    events sidecar (or the legacy-markdown fallback for traces predating it).
-    A log directory resolves to its newest reasoning trace. Browser-only logs
+    events sidecar. A log directory resolves to its newest reasoning trace. Browser-only logs
     and session JSON carry no tool-call stream; ``--full`` is their view.
     """
     if trace_path.is_dir():

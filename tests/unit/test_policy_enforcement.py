@@ -233,14 +233,14 @@ async def test_a_placement_widens_only_the_operations_that_declare_one() -> None
 
 
 async def test_a_toolchain_needs_a_boundary_that_grants_paths_not_the_host() -> None:
-    """What the retired ``outside`` on this toolchain was actually asking for.
+    """What an ``outside`` placement on this toolchain would actually be asking for.
 
     A session-opening toolchain needs the place it already runs to grant the
     runtime's configuration home. That is a statement about the profile, so it
     is declared and measured with the boundary — where a profile that cannot
     grant it fails at launch, with the gap actionable. Declared as a placement
-    it was unmeasurable: the profile that grants the path and the profile that
-    does not both read as ``outside``, and the second only found out at its
+    it is unmeasurable: the profile that grants the path and the profile that
+    does not both read as ``outside``, and the second only finds out at its
     first shell call, on a bare ``EROFS`` that reads like a broken repository.
     """
     posture = InnerSandbox().enforcement()
@@ -274,9 +274,9 @@ async def test_an_operation_needing_a_channel_this_session_lacks_is_blocked() ->
     """The composition is read from the session, not from the runtime alone.
 
     Read from the runtime alone, a session whose settings forbid unsandboxed
-    commands was still handed the placement — rendered onto the wire, dropped
-    without a word, and the operation left to die on whatever it touched
-    first. Composed from the session, the pair says no, and the refusal names
+    commands would still be handed the placement — rendered onto the wire,
+    dropped without a word, and the operation left to die on whatever it
+    touches first. Composed from the session, the pair says no, and the refusal names
     the missing channel rather than reading as a rule's judgement: no approval
     builds a channel, so no reviewer is shown the question.
     """
@@ -309,11 +309,11 @@ async def test_an_operation_needing_a_channel_this_session_lacks_is_blocked() ->
 
 
 async def test_a_worker_is_judged_by_the_composition_a_run_actually_builds() -> None:
-    """The judge itself, not a restatement of it — this is where it went wrong.
+    """The judge itself, not a restatement of it — this is where it goes wrong.
 
-    Every verdict the kernel reached was already correct; what shipped a
-    widening was the composition handing it host facts the session did not
-    have. So this builds the worker's judge rather than a policy shaped like
+    The kernel's verdicts can each be correct while the composition widens
+    them, by handing it host facts the session does not have. So this
+    builds the worker's judge rather than a policy shaped like
     it: the toolchain runs where the session runs, a guarded verb parks a
     durable question reaching whoever supervises the run, and an escalation
     marker parks the same question rather than being the way to avoid one.
@@ -344,7 +344,7 @@ async def test_a_worker_is_judged_by_the_composition_a_run_actually_builds() -> 
     for parked in (
         "find . -delete",
         "git push --delete origin feat",
-        "# lup: escalate: I would rather not be asked\nsudo rm -rf /var/tmp/x",
+        "# lup: escalate[decision]: I would rather not be asked\nsudo rm -rf /var/tmp/x",
     ):
         assert (await judged(parked)).decision == "ask", parked
     for refused in ('eval "$COMMAND"', "sh -c 'rm -rf /'"):

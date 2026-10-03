@@ -22,10 +22,10 @@ def configured_paths_restored(monkeypatch: pytest.MonkeyPatch) -> None:
     """Hand the next test on this worker the paths it would have had.
 
     Each case configures the process-wide path state for a throwaway root.
-    Left configured, every later test on the worker resolved the project
-    there: one reading the template's own declaration opened a
-    `pyproject.toml` in a directory pytest had already removed, and failed or
-    passed by which worker the scheduler happened to hand it to.
+    Left configured, every later test on the worker resolves the project
+    there: one reading the template's own declaration opens a
+    `pyproject.toml` in a directory pytest has already removed, and fails or
+    passes by which worker the scheduler happens to hand it to.
     """
     monkeypatch.setattr(paths.state, "config", paths.state.config)
 

@@ -101,8 +101,8 @@ def test_a_sync_refuses_to_write_over_another_project(
     """Refused before the install, which is the only moment it can be refused.
 
     Afterwards the other project's packages are gone and the command that
-    removed them reported success, because removing them is what `uv sync`
-    is for.
+    removed them reports success, because removing them is what `uv sync` is
+    for.
 
     The variable is set to the seeded environment because that *is* the
     arrangement under test: an absolute value, outside the project, shared

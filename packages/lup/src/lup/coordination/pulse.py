@@ -33,7 +33,7 @@ class Pulse(BaseModel, frozen=True):
     The window is a few beats wide rather than one, so a stalled scheduler or
     a slow disk does not read as a departure; it is short because the roster
     is read to decide whether a path is safe to write, and a dead session
-    holding that decision open for an hour is the failure this closes.
+    holding that decision open for an hour is the failure this prevents.
 
     Both figures are defaults a caller may turn — a test wants a window it can
     cross, and a population beating in-process wants its own tick. The

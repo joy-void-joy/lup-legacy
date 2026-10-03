@@ -202,10 +202,10 @@ def act_on_issue(
 def disabled_issues_advice(failure: str, routes: TrackerRoutes) -> str:
     """What to add when the repository a report was routed to takes no issues.
 
-    Measured downstream: a friction report was lost outright, and the
-    recovery was to run the reporter from another checkout and explain by
-    hand where the evidence had come from. The route existed the whole time,
-    because this project declares trackers.
+    Without it a friction report is lost outright, and recovering it means
+    running the reporter from another checkout and explaining by hand where
+    the evidence came from — while a route to a tracker that takes it is
+    declared all along, because this project declares trackers.
 
     Named rather than taken. Re-filing somebody's report on another project's
     tracker unasked moves it out of sight of everyone watching the first one,
@@ -292,9 +292,9 @@ class OpenIssues(BaseModel, frozen=True):
     The two are separate because the list cannot tell them apart: a
     repository with nothing open and a tracker that refused the credential
     both read as no issues, and a caller acting on the second as though it
-    were the first plans from an emptiness nobody established. Measured:
-    with an expired token `dev issues` printed "0 open issue(s)" and exited
-    zero, which is what a clean tracker looks like.
+    were the first plans from an emptiness nobody established: with an
+    expired token, a bare list prints "0 open issue(s)" and exits zero,
+    which is what a clean tracker looks like.
     """
 
     reached: bool

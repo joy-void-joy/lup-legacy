@@ -1,6 +1,6 @@
 """Changing the machinery rather than the product.
 
-Two subjects that looked separate until they were listed side by side:
+Two subjects that look separate until they are listed side by side:
 authoring the harness a session runs under, and the walks that move code
 without losing it. Both answer the same question — the thing being edited is
 the apparatus, not the thing it was built to make — and a project doing one of

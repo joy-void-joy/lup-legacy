@@ -113,9 +113,9 @@ class JudgedCommand(BaseModel, frozen=True):
     """Options whose value is the path this command lands on.
 
     What `write_markers` says about the *form* said in terms of the path, for
-    the same word: `dd of=x` writes `x`, and a row that only knew a marker was
-    present left the scope column claiming a capture covered wherever it
-    pointed. Named here, the path is read like any other destination."""
+    the same word: `dd of=x` writes `x`, and a row knowing only that a marker
+    is present would leave the scope column claiming a capture covers wherever
+    it points. Named here, the path is read like any other destination."""
     reach: str = ""
     """Where the harm this command's question guards against lands, where the
     group's effect does not say: `kill` destroys a process the container owns,
@@ -834,8 +834,8 @@ def guarded_tool_rules() -> list[ShellCommandRule]:
         ShellCommandRule(
             name="sort",
             effects=[declare("reads_path", scope="project")],
-            # The two halves of what was one list, and the reason it had to
-            # be two: `-o` lands the sorted output at a path, and
+            # Two lists, because the flags do two different things: `-o`
+            # lands the sorted output at a path, and
             # `--compress-program` names a program run over the temporaries.
             write_flags=["-o", "--output"],
             ask_flags=["--compress-program"],
@@ -1337,7 +1337,7 @@ def runner_target_rules(
     declare. A placement says where an operation runs; what a session-opening
     toolchain needs is for wherever it already runs to grant a path — which is
     a statement about the profile, measured at launch, and stated with the rest
-    of the boundary. Declared as a placement instead it was unmeasurable: the
+    of the boundary. Declared as a placement instead it would be unmeasurable: the
     profile that grants the path and the profile that does not both read as
     ``outside``, and the second one only finds out at the first shell call.
 
@@ -2278,8 +2278,8 @@ def git_rule(
     # a commit reversible is the other tree's, and it undoes the commit
     # exactly as this one's would.
     #
-    # `--paginate` is deliberately not among them, though it is on the list this
-    # sweep was measured against. It moves no ref, no index entry, and no file:
+    # `--paginate` is deliberately not among them, though it is a global like
+    # them. It moves no ref, no index entry, and no file:
     # it forces the pager these subcommands already run by default, and the
     # program that pager names is reachable only through `-c` or `git config`,
     # which ask. Gating it would spend a question on the flag rather than on
@@ -2295,11 +2295,10 @@ def git_rule(
         name="git",
         effects=[declare("unclassified_operation", scope="git")],
         # `git version` is classified read-only as a subcommand, and the same
-        # question spelled as a flag was reaching the default deny -- so the
-        # policy answered "this git subcommand is not classified" about a
-        # command carrying no subcommand at all. The same shape `bun` fixes
-        # above, and the same class as the pure reads §4.2 closed: asking a
-        # program what it is cannot change anything.
+        # question spelled as a flag would otherwise reach the default deny --
+        # the policy answering "this git subcommand is not classified" about a
+        # command carrying no subcommand at all. The same shape `bun` answers
+        # above: asking a program what it is cannot change anything.
         allow_flags=["--version", "--help"],
         ask_flags=[
             "-c",
@@ -2422,8 +2421,8 @@ def gh_rule(
     authoring = ["create", "edit", "ready"]
     # The two spellings of each attestation. gh accepts the short forms, and a
     # guard written as the long ones alone holds half of each — the same shape
-    # a push guard written as flag spellings had before refspec grammar was
-    # read structurally.
+    # as a push guard written as flag spellings, without reading refspec
+    # grammar.
     attesting = ["--approve", "-a", "--request-changes", "-r"]
 
     def reads(names: list[str]) -> list[ShellOperationRule]:
@@ -2915,9 +2914,9 @@ def docker_rule() -> ShellCommandRule:
         name="docker",
         effects=[declare("mutates_environment", scope="docker")],
         # docker's own globals that consume the word after them, as `docker
-        # --help` lists them. Unlisted, the walk read that word as the
-        # subcommand: `docker --context version rm -f x` was `docker version`
-        # and allowed, while docker removes the container.
+        # --help` lists them. Unlisted, the walk would read that word as the
+        # subcommand: `docker --context version rm -f x` read as `docker
+        # version` and allowed, while docker removes the container.
         value_flags=[
             "-c",
             "--context",
@@ -3043,8 +3042,8 @@ def typescript_rule() -> list[ShellCommandRule]:
     not a declared dependency rather than report that it is missing — but the
     compiler they most often reach is named beneath them, so a type check
     spelled through a runner is the read it is. Without that, a verify line
-    ending in `npx tsc --noEmit` asked about its last segment and made the
-    whole line ask, which is a question about running the type checker.
+    ending in `npx tsc --noEmit` would ask about its last segment and make
+    the whole line ask, which is a question about running the type checker.
 
     They differ on one axis and it is not a preference. `bunx` is placed
     outside the boundary because reaching the registry is what it is for;

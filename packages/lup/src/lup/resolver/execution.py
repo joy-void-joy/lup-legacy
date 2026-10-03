@@ -115,7 +115,7 @@ class ConcernExecutor:
         again, so holding its session past here costs a conversation for no
         reader. The reviewer is not done at the same moment: a join asks it
         again, over the merged tree, whether the criteria it accepted still
-        hold — and retiring it here made every such re-check open a fresh
+        hold — and retiring it here would make every such re-check open a fresh
         session, which is the reviewer re-deriving cold what it had just
         judged. That path already carries the concern record for the times a
         session genuinely cannot survive; making that the normal case spends
@@ -484,10 +484,10 @@ class ConcernExecutor:
             )
             feedback = review.reason + "\n" + "\n".join(review.residual)
             # Only a round that moved the branch spends the revision budget.
-            # A round that committed nothing gave the reviewer nothing new to
-            # judge, so charging it retires the concern for work it was never
-            # shown — which is how a run failed a concern whose branch was
-            # complete and whose every criterion the reviewer had accepted.
+            # A round that commits nothing gives the reviewer nothing new to
+            # judge, so charging it would retire the concern for work it was
+            # never shown — failing a concern whose branch is complete and
+            # whose every criterion the reviewer has accepted.
             # The loop is still bounded by `attempts`, so this cannot spin.
             advanced = diff.commit is not None and diff.commit != round_base
             charged += 1 if advanced and not diff.declaration else 0

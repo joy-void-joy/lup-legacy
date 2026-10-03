@@ -85,11 +85,11 @@ def test_nothing_answers_when_no_backend_is_installed() -> None:
 
 
 def test_the_manifest_exercises_the_same_backends_the_code_reaches_for() -> None:
-    """The drift this derivation closes, which had already happened.
+    """Derived from the code, the requirement cannot list a backend it never tries.
 
-    The requirement listed four backends including Wayland while the code
-    that reached for a clipboard tried four that did not -- so a Wayland
-    machine was told it had a clipboard and then silently failed to use it.
+    A requirement naming Wayland while the code that reaches for a clipboard
+    tries only X11 tools tells a Wayland machine it has a clipboard that then
+    silently fails to work.
     """
     probed = set(clipboard_requirement().exercise.programs())
     assert probed == {tool.reader for tool in CLIPBOARD_TOOLS if tool.reader}
@@ -134,9 +134,7 @@ def test_an_empty_clipboard_is_not_an_unreachable_backend() -> None:
     """The distinction the whole function exists for.
 
     Both print nothing. Reading the output would report a working machine as
-    broken every time the operator happened to have copied nothing, which is
-    the reading that made a launch promise a clipboard it had never asked
-    about.
+    broken every time the operator happens to have copied nothing.
     """
     assert reachable_backend((ANSWERS,)) == "true"
 
@@ -161,7 +159,7 @@ def test_the_backends_named_in_a_diagnostic_are_the_ones_actually_tried() -> Non
 
 
 def test_a_peer_that_closed_before_its_answer_is_not_an_error() -> None:
-    """The measured failure: a copy that worked, then a traceback over the session.
+    """A copy that worked is never followed by a traceback over the session.
 
     A client may close as soon as it stops caring about the reply, and the
     write that lands on the closed socket is the only thing that notices.

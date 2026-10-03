@@ -1,15 +1,14 @@
 """What a launch claims about the boundary it is opening a session behind.
 
-Four failures live here, and every one of them was silent. A probe spelled
-one flag for two programs and reported a working socat broken on every host.
-A launch that was about to hand the session a container printed a verdict
-about a sandbox it was not going to use. A client that answers for one engine
-while driving another started containers that could not fork and could not
-write to the checkout they were opened on. And an image built for two
-runtimes carried one, so the second built a container, started a proxy, and
-died on `not found`.
+Four failures live here, and every one of them is silent. A probe spelling
+one flag for two programs reports a working socat broken on every host. A
+launch about to hand the session a container prints a verdict about a sandbox
+it is not going to use. A client that answers for one engine while driving
+another starts containers that cannot fork and cannot write to the checkout
+they are opened on. And an image built for two runtimes carrying one leaves
+the second to build a container, start a proxy, and die on `not found`.
 
-None of the four raised anything. That is what these hold still: each asserts
+None of the four raises anything. That is what these hold still: each asserts
 the shape of an argument list or an environment, because that is where the
 claim lives before anything has run.
 """
@@ -86,13 +85,12 @@ def test_a_contained_launch_probes_nothing_and_claims_nothing() -> None:
 
 
 def test_an_uncontained_launch_vouches_for_a_boundary_that_answers() -> None:
-    """The regression this file exists for, stated as the passing case.
+    """The case this file exists for, stated as the passing case.
 
-    Nothing raised when the probe was wrong. The flag simply never got set,
-    and every session on every host carried the deny lattice for want of a
-    hyphen. So the assertion that matters is the positive one: a tool that
-    answers has to reach the environment as a boundary the launch vouched
-    for.
+    A wrong probe raises nothing: the flag simply never gets set, and every
+    session on every host carries the deny lattice for want of a hyphen. So
+    the assertion that matters is the positive one: a tool that answers has
+    to reach the environment as a boundary the launch vouched for.
     """
     environment: EnvVars = {}
     answers = Requirement(
@@ -193,12 +191,12 @@ def test_a_launch_choosing_no_sandbox_stands_both_walls_down_and_vouches_nothing
 def test_neither_runtime_vouches_for_a_boundary_it_did_not_exercise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The asymmetry this closes: one path probed and the other asserted.
+    """Both runtimes probe before vouching; neither asserts the flag outright.
 
-    Claude exercised `bwrap` and `socat` before exporting the flag; Codex set
-    it outright, so a machine whose envelope did not hold told every
-    dispatcher downstream to relax into a boundary that was not there. Both
-    vouch through one function now, and what differs is which tools it takes.
+    A runtime setting it unprobed, on a machine whose envelope does not hold,
+    tells every dispatcher downstream to relax into a boundary that is not
+    there. Both vouch through one function, and what differs is which tools
+    it takes.
     """
     environment: EnvVars = {}
     monkeypatch.setattr(
@@ -246,7 +244,7 @@ def test_an_envelope_that_answers_is_vouched_for(
 def test_the_envelope_probe_tells_a_boundary_from_a_command_that_never_ran() -> None:
     """One witness cannot: a failed command writes nothing outside either.
 
-    Measured with the outer witness alone, the probe reported a working
+    Measured with the outer witness alone, the probe reports a working
     envelope for a runtime that does not exist on this machine — the exact
     unmeasured claim this layer refuses. The inner witness is written where
     the envelope permits, so its absence says the command never ran rather
@@ -379,11 +377,11 @@ def test_each_runtime_stands_down_by_one_declaration_rather_than_two() -> None:
 def test_the_probe_opens_the_session_a_launch_opens() -> None:
     """A probe answering about a session nobody runs is this file's whole subject.
 
-    The exercise carried the mounts, the config home and the network, and not
-    the flag standing the runtime's own sandbox down -- so it opened a session
-    whose settings still said the sandbox was on, found no bubblewrap, and
-    refused for a confinement that cannot start in an unprivileged container
-    and that no launch has ever asked for. Ordered as well as present: the
+    An exercise carrying the mounts, the config home and the network, and not
+    the flag standing the runtime's own sandbox down, opens a session whose
+    settings still say the sandbox is on, finds no bubblewrap, and refuses
+    for a confinement that cannot start in an unprivileged container and that
+    no launch asks for. Ordered as well as present: the
     words are the runtime's own and have to reach it before the prompt does.
     """
     probe = agent_session_requirement(arguments=CLAUDE_CONFINEMENT.off)

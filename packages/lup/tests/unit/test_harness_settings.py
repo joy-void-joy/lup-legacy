@@ -35,9 +35,9 @@ def test_every_withheld_path_is_denied_to_the_file_tools_too() -> None:
     """The shell's refusal and the file tools' denial are one declaration.
 
     Read, Grep and Glob run in the session's own process and never reach the
-    policy hook, so a path the shell withholds was readable by the file tools
-    unless something else denied it -- and the list that did named two paths
-    out of the set. Each anchor keeps its meaning: a home is `~/`, the root
+    policy hook, so a path the shell withholds would be readable by the file
+    tools unless something else denies it -- and a second list doing that
+    would drift from the set. Each anchor keeps its meaning: a home is `~/`, the root
     `//`, and anywhere `//**/`; a pattern spanning a directory names the
     directory too, as the kernel's own match does. `Read` rather than `Grep`
     because Claude Code consults file permissions against `Read` and `Edit`

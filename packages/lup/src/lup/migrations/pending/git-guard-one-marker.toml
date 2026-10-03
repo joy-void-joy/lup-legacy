@@ -1,0 +1,13 @@
+subjects = ["LEGACY_GUARD_MARKER"]
+reason = """
+an installed git hook is recognized as `git hooks install`'s own by the \
+`lup-git-guard` marker alone, so a hook carrying only `lup-commit-guard` \
+reads as somebody else's and is not rewritten without `--force`"""
+
+[[steps]]
+instruction = """
+In a clone whose hooks directory holds a hook carrying `lup-commit-guard`, \
+re-arm the hooks once from a terminal on the host, with `--force` so the \
+hook that marker names is replaced; `git hooks status` names any hook it \
+reads as somebody else's."""
+command = ["uv", "run", "lup-devtools", "git", "hooks", "install", "--force"]

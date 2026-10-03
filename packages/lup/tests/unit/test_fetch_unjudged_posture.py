@@ -1,10 +1,10 @@
 """Who answers for an origin no fetch scope names.
 
-The shell family has read a profile declaration about work nothing classified
-since `UnjudgedAmbientPolicy` was written -- `ask` keeps it visible, `defer`
-hands the long tail to provider-native judgement. Fetch said `ask` in its own
-right, so a project that had declared the seamless posture got it on one
-surface and not the other: one declaration, two answers.
+The shell family reads a profile declaration about work nothing classified,
+`UnjudgedAmbientPolicy` -- `ask` keeps it visible, `defer` hands the long tail
+to provider-native judgement. A fetch saying `ask` in its own right would give
+a project that declared the seamless posture that posture on one surface and
+not the other: one declaration, two answers.
 
 Both spellings of reaching an origin, because there are two: `WebFetch` asks
 the fetch policy directly, and `curl` asks it from inside the shell
@@ -110,12 +110,12 @@ def curled(command: str, unjudged: UnjudgedAmbient) -> KernelDecision:
 
 
 def test_curl_answers_from_the_same_declaration_webfetch_does() -> None:
-    """The second spelling of reaching an origin, which read a constant.
+    """The second spelling of reaching an origin, which must not read a constant.
 
     `curl` asks the fetch policy from inside the shell classifier, so the
-    declaration had to reach it through the segment context. Until it did, a
-    profile that had declared the seamless posture got it for `WebFetch` and
-    an approval question for the identical URL spelled as a command.
+    declaration reaches it through the segment context. Without it, a profile
+    that declared the seamless posture would get it for `WebFetch` and an
+    approval question for the identical URL spelled as a command.
     """
     assert curled("curl https://elsewhere.test/page", "ask").effect == "ask"
     assert curled("curl https://elsewhere.test/page", "defer").effect == "defer"
@@ -189,11 +189,11 @@ def test_an_unset_fetch_declaration_follows_the_posture() -> None:
 def test_a_handoff_never_carries_an_unread_segment_beside_it() -> None:
     """A deferred curl answers for itself, not for the line it sits in.
 
-    Joined by position, whichever abstention was written first spoke for the
-    line: `curl <unlisted> ; $(echo rm) -rf x` went to the runtime whole,
-    while the same two commands the other way round were refused. The
+    Joined by position, whichever abstention is written first would speak for
+    the line: `curl <unlisted> ; $(echo rm) -rf x` would go to the runtime
+    whole, while the same two commands the other way round are refused. The
     abstention leaving the most to settle speaks instead, so the order they
-    were written in stops mattering, and an unread segment is refused
+    are written in does not matter, and an unread segment is refused
     uncontained whatever rides beside it.
     """
     rows = erase_shell_rules(default_vocabulary())

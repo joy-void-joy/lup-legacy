@@ -90,16 +90,16 @@ def test_a_write_outside_the_lease_asks_where_it_would_have_allowed() -> None:
 def test_the_question_names_the_rule_and_the_path_it_is_about() -> None:
     """An ask that names no rule is one nobody can write a case for.
 
-    The verdict this replaces was reached by the vocabulary finding nothing to
-    say, so it carries no id of its own and the row supplies one — and names
-    the path, because "outside the boundary" without it sends a reviewer
-    looking for which of several operands was meant.
+    The verdict this row overrides is reached by the vocabulary finding
+    nothing to say, so it carries no id of its own and the row supplies one
+    — and names the path, because "outside the boundary" without it sends a
+    reviewer looking for which of several operands was meant.
     """
     verdict = judged("touch tmp/x", ["/repo/tree/other/tmp"])
 
     assert verdict.rule == "unleased-write"
-    # The path leads: the allow this replaced said every segment was safe,
-    # which is true and decides nothing for whoever reads the question.
+    # The path leads: the allow this row overrides says every segment is
+    # safe, which is true and decides nothing for whoever reads the question.
     assert verdict.reason.startswith("writes /repo/tree/other/tmp")
     assert "/repo/tree/other/tmp" in verdict.reason
 

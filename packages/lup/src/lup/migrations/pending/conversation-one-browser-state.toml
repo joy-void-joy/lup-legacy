@@ -1,0 +1,35 @@
+subjects = [
+    "BrowserDirectories",
+    "BrowserDirectories.candidates",
+    "BrowserDirectories.primary",
+    "BrowserDirectories.fallbacks",
+    "browser_directories",
+    "RetentionAttempt.position",
+]
+reason = """
+a conversation retention reads one browser state, the one its profile \
+selects or `.lup/conversations/<provider>-web` without one, so a login saved \
+under `.lup/conversations/<provider>-browser` is not tried, and the attempts \
+come back in the order they were asked"""
+
+[[steps]]
+instruction = """
+In a checkout holding `.lup/conversations/chatgpt-browser` or \
+`.lup/conversations/claude-browser` and no `-web` directory beside it, rename \
+the directory to `chatgpt-web` or `claude-web`; where both exist, delete the \
+`-browser` one. Or log in again with `conversation setup chatgpt` / \
+`conversation setup claude`."""
+command = ["mv", ".lup/conversations/chatgpt-browser", ".lup/conversations/chatgpt-web"]
+
+[[steps]]
+instruction = """
+Call browser_directory(root, provider, profiles, profile) from \
+lup.devtools.conversation.app where browser_directories was called, and pass \
+the Path it returns to retain_chatgpt and retain_claude, whose third \
+parameter is the state directory itself."""
+
+[[steps]]
+instruction = """
+Construct RetentionAttempt without position: the attempts a retention returns \
+are in the order of its requests, so a caller that sorted by position reads \
+them as they come."""

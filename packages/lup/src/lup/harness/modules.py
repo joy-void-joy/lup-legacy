@@ -346,8 +346,8 @@ class ModuleSelection(BaseModel, frozen=True):
 
         Only the explicit refusals: a module left to its own default said
         nothing and is nobody's decision to meet again, while one written down
-        as ``taken=False`` is a choice somebody made once against a roster that
-        has been growing ever since.
+        as ``taken=False`` is a choice somebody made against the roster as it
+        stood then, which keeps growing after it.
         """
         return [entry.module for entry in self.adoptions if entry.taken is False]
 

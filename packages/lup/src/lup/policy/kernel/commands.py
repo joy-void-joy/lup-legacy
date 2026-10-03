@@ -45,6 +45,7 @@ from .effects import (
     verdict_for,
 )
 from .words import (
+    STREAM_WRITE_REASON,
     UV_GLOBAL_VALUE_OPTIONS,
     UV_TOOL_RUN_GRAMMAR,
     INTERPRETERS,
@@ -78,7 +79,7 @@ from .words import (
 from .downloads import read_download
 from .fetch import decide_fetch, loopback_port
 from .lex import placed_path
-from .roles import path_role
+from .roles import path_role, writes_to_a_stream
 from .syntax import expands, verbatim_piece
 from .programs import program_verdict, read_program
 from .semantics import UnjudgedAmbient
@@ -333,11 +334,11 @@ def flag_write_verdict(
 ) -> KernelDecision:
     """What the files this row's write flags name earn, taken together.
 
-    The row that every other spelling of a write reaches, reached at last by
-    the flag spelling. `sort -o out.txt` lands the same bytes at the same
-    path as `sort f > out.txt`, and until this existed the two were answered
-    by different machinery -- one by resolving the path, the other by whether
-    the row happened to carry a checkpoint some snapshot discharged.
+    The row every spelling of a write reaches, the flag spelling included.
+    `sort -o out.txt` lands the same bytes at the same path as
+    `sort f > out.txt`, so both are answered by resolving the path, rather
+    than one of them by whether the row happens to carry a checkpoint some
+    snapshot discharged.
 
     Unresolved keeps the row's own verdict. A flag whose value is clustered or
     missing names no path, and a write nobody can locate is exactly the case
@@ -418,7 +419,12 @@ def targets_write_verdict(
             scope=scope,
         )
 
-    for target in targets:
+    # A stream keeps nothing it is handed, so a flag naming one writes no file:
+    # `curl -o /dev/null -w '%{http_code}'` lands its body nowhere.
+    landed = [target for target in targets if not writes_to_a_stream(target)]
+    if not landed:
+        return row_verdict(row, "allow", STREAM_WRITE_REASON)
+    for target in landed:
         known = facts["existing"]
         protected = protected_write_target(
             [target],
@@ -428,7 +434,7 @@ def targets_write_verdict(
         )
         if protected is not None:
             return protected
-    answers = [judged(target) for target in targets]
+    answers = [judged(target) for target in landed]
     # A path nobody can locate speaks for the line ahead of any other question,
     # because it is the one no reading of a path can settle.
     answered = next(
@@ -484,7 +490,7 @@ def verb_loss_scope(
 
     So the scope is read off the targets the way :func:`write_checkpoint` reads
     it for a redirection, and for exactly that reason: getting it from the row
-    is what let a write outside the tree be settled by a capture that never saw
+    would let a write outside the tree be settled by a capture that never saw
     it. Only the paths the verb *writes* are read, so a source `cp` merely
     reads is an ordinary read however far outside it sits.
 
@@ -494,10 +500,10 @@ def verb_loss_scope(
     already states it rather than from a second table saying the same thing.
 
     It answers for the archives too. They read their targets
-    already -- to grant an extraction that lands on nothing -- and where the
-    grant did not apply the row's own claim stood: ``gzip /etc/hosts`` and
-    ``tar -xf a.tgz -C /etc`` were settled by a capture that has never held
-    either path, which is the same defect the delete verbs were fixed for.
+    already -- to grant an extraction that lands on nothing -- and where that
+    grant does not apply, the row's own claim alone would settle
+    ``gzip /etc/hosts`` and ``tar -xf a.tgz -C /etc`` by a capture that never
+    holds either path, the same defect this keeps away from the delete verbs.
 
     ``None`` leaves the row's own scope standing -- an unmodelled verb, or
     targets that are all inside the checkout, where the row was already right.
@@ -1301,10 +1307,10 @@ def strictest_reading(
     The strictest verdict any command the word could stand for would earn,
     where that is stricter than the spelling earns as written, and the
     spelling's own verdict otherwise -- so a word under a program that guards
-    nothing is answered as it always was. An expansion is a choice the
-    command makes at run time, and a verdict read off the spelling alone gave
-    the permissive default to whichever choice it did not show: `sync $OP`
-    reached `sync`'s allow while `sync setup` asks.
+    nothing is answered by its spelling. An expansion is a choice the
+    command makes at run time, and a verdict read off the spelling alone would
+    give the permissive default to whichever choice it does not show: `sync
+    $OP` reaching `sync`'s allow while `sync setup` asks.
 
     The reason names the word and the command it was read as ahead of that
     command's own reason, because whoever answers is being asked about a
@@ -1566,13 +1572,12 @@ def decide_sed_words(
     the script screen is skipped under it; a script file stays denied toward
     an inline script, because nothing screens what is in it.
 
-    In-place editing was two objections wearing one refusal, and only one of
-    them was ever answered. *Being wrong is unrepairable* is answered by the
-    files themselves, and a rewrite whose every named file could be brought
-    back was allowed on that ground alone. *It walks past the gates an edit
-    is judged by* was answered by nothing — so the grant it produced was a
-    grant to bypass the anti-pattern table, the review-note gate and the size
-    gate, given on the strength of an undo that answers a different question.
+    In-place editing raises two objections in one refusal. *Being wrong is
+    unrepairable* is answered by the files themselves, since every named file
+    can be brought back. *It walks past the gates an edit is judged by* is
+    not — a grant given on the strength of an undo, which answers a different
+    question, would be a grant to bypass the anti-pattern table, the
+    review-note gate and the size gate.
 
     So the after-document is judged instead. The host runs the screened
     script over a copy of each named file and hands back what would land;
@@ -1727,7 +1732,7 @@ def rewrite_verdict(
     Everything else the gate decided is carried over as it came, the
     abstention among it: a change too large for the small-change gate is the
     runtime's own to answer, and a copy of the verdict that dropped the field
-    made it a deferral nobody had judged, which is refused.
+    would make it a deferral nobody had judged, which is refused.
     """
     if "decision" in document:
         return document["decision"]
@@ -1770,7 +1775,7 @@ def decide_copy_words(
     what lands: the review-note gate, the anti-pattern audit, the protected
     paths, and the small-change gate, whose larger change the runtime's own
     mode answers. What a copy over a file might lose is what the same edit
-    might lose, and it was never asked about there.
+    might lose, and that is never asked about there.
 
     The host lands each source's text where it goes and hands back each
     document under the spelling it lands at, the target joined with the
@@ -2540,8 +2545,8 @@ def decide_tool_run(spelled: str, arguments: list[str]) -> KernelDecision | None
     interpreter what it runs is whatever follows -- inline code as often as
     not, which leaves nothing behind to review. The tool is the first operand
     past the options, read by their own grammar: read as the word after the
-    command, `uvx --from foo python -c 1` and `uvx -q python -c 1` handed the
-    interpreter over unseen while `uvx python -c 1` was refused. A version
+    command, `uvx --from foo python -c 1` and `uvx -q python -c 1` would hand
+    the interpreter over unseen while `uvx python -c 1` is refused. A version
     pinned onto the name (`python@3.12`) names the interpreter still. An
     option the grammar does not list could take the next word, so it leaves
     the tool unread and refuses rather than guessing.
@@ -2614,13 +2619,13 @@ def decide_uv(
     says why once for every package manager: it fetches nothing the lock
     does not already pin by integrity hash, which is exactly what `uv run`
     restores before running anything, unasked. Asking about the frozen
-    spelling and not about the run was the same act answered two ways.
+    spelling and not about the run would answer the same act two ways.
 
-    Two verbs sit below that line and one sat above it by omission. `lock`
-    and `remove` write files and fetch nothing to execute. A cache is
-    reproducible by the command that reads it, so clearing one destroys
-    nothing anybody has — and it was reaching no rule at all, which is why a
-    refresh line asked with the cache verb as one of its reasons.
+    Three verbs sit below that line. `lock` and `remove` write files and
+    fetch nothing to execute. A cache is reproducible by the command that
+    reads it, so clearing one destroys nothing anybody has — and a cache verb
+    reaching no rule at all would make a refresh line ask with it as one of
+    its reasons.
 
     A flag naming where packages come from, or dropping the isolation build
     code runs in, is not the verb it rides on: it is a source nobody
@@ -2631,9 +2636,9 @@ def decide_uv(
     measured = no_write_facts() if facts is None else facts
     spelled = words
     normalized = uv_command_words(words)
-    # Asking uv what it is names no verb, which is how the reading below fails,
-    # and changes nothing: `uv --version` was refused as though a global had
-    # hidden one. Only the informational globals, and nothing beside them.
+    # Asking uv what it is names no verb and changes nothing, and the reading
+    # below would refuse `uv --version` as though a global had hidden one.
+    # Only the informational globals, and nothing beside them.
     if len(words) > 1 and all(
         word in ("--version", "-V", "--help", "-h") for word in words[1:]
     ):
@@ -2876,9 +2881,9 @@ def git_checkout_pathspec(
 
     A project whose table refuses ``checkout`` for the newer verbs refuses
     this form too, and names the ``git restore --source`` that restores the
-    same paths from the same ref. Granting it there made the answer turn on
-    how an operand was spelled: a path the checkout answers for was granted,
-    and the same path spelled absolutely met the refusal.
+    same paths from the same ref. Granting it there would make the answer
+    turn on how an operand is spelled: a path the checkout answers for
+    granted, and the same path spelled absolutely meeting the refusal.
     """
     if len(words) < 5 or words[1] != "checkout" or words[3] != "--":
         return None
@@ -2939,7 +2944,7 @@ def git_restore_unchanged(
     uncommitted change, it has nothing the index does not, and the restore
     writes back the bytes already on disk — so the row's question has no
     answer worth putting to anyone. A path with pending work keeps it, which
-    is the only case the question was ever about.
+    is the only case the question is about.
 
     Nothing bounds this the way the delete grant is bounded. That cap counts
     how much committed work one command destroys before a sweep is worth a

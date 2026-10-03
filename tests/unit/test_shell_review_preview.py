@@ -123,9 +123,9 @@ def test_a_rewrite_nobody_could_read_asks_only_outside_scratch(tmp_path: Path) -
     """A file an earlier step writes by running holds nothing to read a rewrite of.
 
     That is a question where the content gates would have read the result,
-    and none in scratch, where they read nothing: a scratch file built by one
-    command and adjusted by `sed -i` in the same line was parked for the
-    operator, who had nothing to read either.
+    and none in scratch, where they read nothing: parking a scratch file
+    built by one command and adjusted by `sed -i` in the same line would put
+    it to an operator who has nothing to read either.
     """
     initialized_repo(tmp_path, tmp_path / "hooks")
     (tmp_path / "tmp").mkdir()

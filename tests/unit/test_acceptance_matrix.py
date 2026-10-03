@@ -359,3 +359,78 @@ def test_a_crossing_with_no_channel_rests_on_a_person_or_is_refused() -> None:
     assert trapped.effect == "deny"
     assert trapped.cause == "capability"
     assert trapped.capability == "host_executor"
+
+
+def test_a_worker_has_a_route_past_a_gate() -> None:
+    """A worker's escalation marker reaches whoever supervises its run.
+
+    A worker session is non-interactive, which is not the same as alone: it
+    holds a mailbox reaching whoever supervises the run, so an escalated
+    question is parked for them rather than refused for want of anyone to ask.
+    """
+    worker = decide_shell(
+        "# lup: escalate[decision]: I need to clean my own scratch\nrm -rf tmp/x",
+        rows(),
+        interactive=False,
+        relayed=True,
+    )
+
+    assert worker.effect == "ask"
+    assert "I need to clean my own scratch" in worker.reason
+
+
+def test_a_worker_can_remove_what_it_created() -> None:
+    """Local loss a capture puts back is settled rather than asked.
+
+    A worker that copies files into its own worktree to read them has to be
+    able to remove them again: a question to a human about files it made
+    itself parks a run on nothing. The capture is what makes settling it
+    honest.
+    """
+    with_capture = decide_shell(
+        "rm scratch.txt",
+        rows(),
+        interactive=False,
+        relayed=True,
+        recovered=True,
+        contained=True,
+        sandboxed=True,
+    )
+
+    assert with_capture.effect == "allow"
+
+
+def test_a_judged_question_is_not_run_because_nobody_can_be_asked() -> None:
+    """A judged question nobody can answer is refused, never run.
+
+    The OS boundary confines an operation; it does not review it. Reading a
+    sandboxed host as licence to run every guarded command would turn each
+    deliberate question, an escalation marker's included, into a run.
+    """
+    headless = decide_shell(
+        "git push --delete origin feat",
+        rows(),
+        sandboxed=True,
+        contained=True,
+        interactive=False,
+    )
+
+    assert headless.effect == "deny"
+    assert "nobody who could approve it is reachable" in headless.reason
+
+
+def test_an_unprompted_crossing_needs_a_measured_channel() -> None:
+    """Reaching the host unprompted needs a declared executor, measured at launch.
+
+    A profile without one refuses rather than emitting a key it hopes the
+    runtime honours.
+    """
+    # The offered table declares no crossing at all, which is the other half
+    # of the answer: nothing in a general-purpose toolchain needs the host,
+    # so there is no unprompted escape to go untested.
+    assert all(row["sandbox"] != "outside" for row in rows())
+
+
+def test_a_read_only_builtin_is_not_refused() -> None:
+    """`command -v` only reports a path, so it is allowed."""
+    assert decide_shell("command -v python3", rows()).effect == "allow"

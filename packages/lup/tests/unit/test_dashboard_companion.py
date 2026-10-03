@@ -732,10 +732,10 @@ def test_two_launches_hold_it_and_the_first_to_end_leaves_it_serving(
     assert none.stopped is not None and none.stopped.why.startswith("the last lease")
 
 
-def test_a_dashboard_too_old_to_restart_itself_is_replaced(
+def test_a_dashboard_whose_code_has_no_restart_is_replaced(
     dashboard: Dashboard, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """One that predates restarting in place is stopped and started again, still held."""
+    """One whose code cannot restart in place is stopped and started again, still held."""
     root = repository(tmp_path / "project")
     monkeypatch.setattr("lup.devtools.dashboard.reviews.Dashboard", lambda: dashboard)
     monkeypatch.setattr(

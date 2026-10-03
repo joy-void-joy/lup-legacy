@@ -530,9 +530,9 @@ def create_harness_app(
 
         What makes launching one runtime mean what `generate all` means. A
         shared source moves both trees, so a launcher that generated only its
-        own left the other stale until somebody ran the selector by hand --
-        and what surfaced it was `dev check` failing on drift the session had
-        not introduced.
+        own would leave the other stale until somebody ran the selector by
+        hand -- surfacing as `dev check` failing on drift the session did not
+        introduce.
 
         Never relaxed. Relaxation is a statement about the session being
         opened, and projecting it into a tree nobody is opening would leave

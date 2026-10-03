@@ -196,9 +196,9 @@ def codex_envelope(
         case LaunchSandbox.INNER:
             pass
     # Exercised before it is vouched for, the way the Claude path exercises
-    # its confinement tools. Asserting the flag outright was the asymmetry:
-    # `codex sandbox` runs a command under this exact envelope and no model
-    # turn, so there was never a reason not to ask.
+    # its confinement tools. Asserting the flag outright would be an
+    # asymmetry: `codex sandbox` runs a command under this exact envelope and
+    # no model turn, so nothing stands against asking.
     vouched = apply_sandbox_environment(
         hooks,
         environment,

@@ -1,9 +1,9 @@
 """A document naming a node, and whether the node still says what it cites.
 
-The register this design came from declared itself authoritative over every
-other document and was applied to none of them: the canonical prose carried
-stale figures behind a list of corrections a reader had to consult first. A
-cite is the other way round. A document names a node by id, in the one place a
+A register declaring itself authoritative over every other document is
+applied to none of them: the canonical prose carries stale figures behind a
+list of corrections a reader has to consult first. A cite is the other way
+round. A document names a node by id, in the one place a
 markdown parser already finds links, and a check asks the node where it
 stands — so prose cannot go on citing a claim that was corrected or whose
 evidence went away, because the build says so.
