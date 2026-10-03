@@ -1070,6 +1070,20 @@ link to it: Claude Code renames a refreshed login over that file, which
 replaces a link. Each derivation applies the profile's login again once it has
 changed, keeping whatever else the copy holds; under an unchanged profile, the
 copy a session renewed stays as that session left it.
+
+A renewal can rotate the refresh token, so a copy one session renewed leaves
+every other copy holding a token the provider may no longer answer. The
+dashboard every launch holds carries it: every 30 seconds it reads each
+account's copies — the profile's own login, every home derived from it in a
+served checkout, and every served repository's volume lup last handed it, the
+volumes through a helper container every fourth pass — and writes the newest
+into the rest, the profile's included. Newest is the copy whose access token
+expires last, since a refresh moves that forward; a copy that can no longer
+renew never wins. A file is replaced only where it still holds the bytes it was
+read with, so a session renewing it meanwhile keeps its renewal for the next
+pass; a volume is handed the login by the image's seed program, which has no
+such check. A Codex launch converges its worktree home with the account
+instead, the newer refresh winning, as it opens and as its session closes.
 Every one of these spellings matters for an interactive fix: accepting a trust
 dialog in a shell that does not export the same variables writes to a different
 document and appears to do nothing.

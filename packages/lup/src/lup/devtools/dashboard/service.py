@@ -592,6 +592,7 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         launched_on,
         profile_routes,
     )
+    from lup.devtools.dashboard.logins import LoginKeeper
     from lup.devtools.dashboard.reviews import dashboard_app
     from lup.devtools.dashboard.stream import LiveFeed
     from lup.devtools.dashboard.telemetry import TelemetryJoin, TelemetryReceiver
@@ -640,6 +641,12 @@ def serve_dashboard(arguments: ServiceArguments) -> None:
         if arguments.shared
         else None
     )
+    # Every copy of a login the served repositories' sessions renew is carried
+    # back to its profile and into the other copies, newest winning.
+    if arguments.shared:
+        LoginKeeper(
+            lambda: [each.checkout for each in registry.repositories()], person
+        ).start()
     # lup: solved: hand the governor the pause's hold store as its `door=` and `calls=` (place/lift with owner BUDGET, `held_calls` for the queue), so a verdict holds the agent at its next tool call; until then it judges and shows, and nothing waits
     governor = (
         BudgetGovernor(

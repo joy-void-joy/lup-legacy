@@ -32,6 +32,7 @@ from ipaddress import IPv4Address
 from pathlib import Path
 
 import sh
+from lup.channels.models import write_atomic
 from lup.execution.shell import git
 from lup.policy.identity import POLICY_ROOT_ENV
 from pydantic import BaseModel, Field
@@ -69,6 +70,7 @@ from lup.coordination.bare.store import STORE_DIR
 from lup.workspace.shared_directory import ARCHIVE_DIRECTORY_NAME, SLOT_DIRECTORY
 from lup.harness.terminal import host_timezone
 from lup.providers.login import ProviderLogin
+from lup.providers.login_sync import LoginPlace
 from lup.providers.runtime_homes import runtime_logins
 from lup.launch.superseded import SupersededFile
 from lup.launch.environments import (
@@ -88,6 +90,7 @@ from lup.launch.config_volume import (
     VolumeLogin,
     VolumeLogins,
     kept_for_superseded,
+    named_file,
     settle_handoff,
     settle_home_seed,
     split_config_volumes,
@@ -99,6 +102,7 @@ from lup.sandbox.attribution import WRITE_REFUSAL_MARKERS
 from lup.launch.pointer_trust import judged_roots, launcher_state_exposure
 from lup.sandbox.pointers import pointer_drift, refusal
 from lup.launch.refusal import LaunchRefused
+from lup.workspace.user_directories import UserDirectories
 from lup.sandbox.rail import (
     AccessibleRoot,
     Lease,
@@ -2200,6 +2204,85 @@ class VolumeSeeding(BaseModel, frozen=True):
     """Why it did not take, empty where it did."""
 
 
+class VolumeUnreachable(RuntimeError):
+    """No container client here can reach a repository's volume, and why."""
+
+
+def volume_helper(root: Path, volume: str, config_home: str) -> HomeHelper:
+    """A helper container reaching one of this repository's volumes, mounted at ``config_home``.
+
+    Run from the image a container on the volume runs, else the one this
+    checkout last ran, and as the checkout's owner, as a session there is.
+    """
+    found = detected_client()
+    if found is None:
+        raise VolumeUnreachable(
+            "no Docker or Podman client answers here, so the volume cannot be reached"
+        )
+    if not found.drives_its_server():
+        raise VolumeUnreachable(found.consequence())
+    engine = found.engine()
+    return HomeHelper(
+        engine=engine,
+        tag=volume_image(volume, engine) or checkout_tag(root),
+        uid=root.stat().st_uid,
+        gid=root.stat().st_gid,
+        config_home=config_home,
+    )
+
+
+class VolumeLoginCopy(LoginPlace):
+    """A repository volume's copy of a login, which its contained sessions share.
+
+    Read and replaced through a helper container. Replaced by the image's own
+    seed program, as a start or a switch hands the volume a login, so the
+    volume's stamp records what it holds; the program offers no
+    compare-and-swap, so a renewal a session makes inside the volume between
+    a pass's read and its write is replaced by the newer login written.
+    """
+
+    def __init__(
+        self, root: Path, login: ProviderLogin, config_home: str, offered: Path
+    ) -> None:
+        self.root = root
+        self.login = login
+        self.config_home = config_home
+        self.offered = offered
+        self.volume = state_volume_name(root, login)
+
+    def named(self) -> str:
+        return f"volume {self.volume}"
+
+    def read(self) -> bytes | None:
+        helper = volume_helper(self.root, self.volume, self.config_home)
+        try:
+            files = helper.read(self.volume, [self.login.credentials_file])
+        except (sh.CommandNotFound, sh.ErrorReturnCode) as failed:
+            raise VolumeUnreachable(
+                f"a helper container could not read {self.volume}: {failed}"
+            ) from failed
+        held = named_file(files, self.login.credentials_file)
+        return held.content if held is not None else None
+
+    def write(self, content: bytes, expected: bytes | None) -> None:
+        del expected
+        helper = volume_helper(self.root, self.volume, self.config_home)
+        write_atomic(self.offered, content, mode=0o600)
+        try:
+            helper.seed_login(self.volume, self.offered, self.login)
+        except (sh.CommandNotFound, sh.ErrorReturnCode) as failed:
+            raise VolumeUnreachable(
+                f"a helper container could not write {self.volume}: {failed}"
+            ) from failed
+        finally:
+            self.offered.unlink(missing_ok=True)
+
+
+def offered_login(volume: str, directories: UserDirectories | None = None) -> Path:
+    """Where a login is staged, private to this person, while a helper hands it to *volume*."""
+    return (directories or UserDirectories()).state() / "logins" / f".{volume}.json"
+
+
 def seed_volume_login(
     root: Path,
     login: ProviderLogin,
@@ -2217,22 +2300,11 @@ def seed_volume_login(
     volume's stamp says it holds that login, so a login the program declined
     is said rather than recorded.
     """
-    found = detected_client()
-    if found is None:
-        return VolumeSeeding(
-            why="no Docker or Podman client answers here, so the volume cannot be reached"
-        )
-    if not found.drives_its_server():
-        return VolumeSeeding(why=found.consequence())
-    engine = found.engine()
     volume = state_volume_name(root, login)
-    helper = HomeHelper(
-        engine=engine,
-        tag=volume_image(volume, engine) or checkout_tag(root),
-        uid=root.stat().st_uid,
-        gid=root.stat().st_gid,
-        config_home=config_home,
-    )
+    try:
+        helper = volume_helper(root, volume, config_home)
+    except VolumeUnreachable as unreachable:
+        return VolumeSeeding(why=str(unreachable))
     try:
         stamp = helper.seed_login(volume, handed.credential, login)
     except (sh.CommandNotFound, sh.ErrorReturnCode) as error:

@@ -61,6 +61,10 @@ asks you first.
   replaced with a file nothing kept in step.
 - `setup profile` is gone: profiles are curated with `harness profile`, the
   same tree (`migrations/pending/setup-profile-tree-gone.toml`).
+- A Claude login one session renews reaches every other copy of it. Every 30
+  seconds the dashboard writes the newest copy — by when its access token
+  expires — into the profile, every home derived from it and every volume
+  handed it, so a rotated refresh token never strands another session.
 ### The operator pauses an agent, and its next tool call waits
 
 - A paused agent's next tool call waits, whatever the tool, until the

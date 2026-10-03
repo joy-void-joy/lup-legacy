@@ -92,6 +92,17 @@ class ProviderLogin(BaseModel, frozen=True):
     independently of whether the previous login can still renew.
     """
 
+    renewed_at: list[str] = []
+    """The keys down to a number every renewal of a stored login moves forward.
+
+    How two copies of one login are told apart when each was renewed on its
+    own: the larger number is the newer login, and the one every other copy
+    takes (:mod:`lup.providers.login_sync`). Empty where lup carries no
+    renewal between copies -- a runtime that publishes a renewed login back
+    to its account itself, or one whose login says nothing of when it was
+    renewed.
+    """
+
     rereads_login: bool = False
     """Whether a running session takes a login written into its home at its next request.
 
