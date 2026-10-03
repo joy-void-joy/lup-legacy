@@ -20,12 +20,8 @@ import tomlkit
 from pydantic import BaseModel
 from websockets.asyncio.client import unix_connect
 
-from lup.providers.codex.app_server import (
-    RpcMessage,
-    RpcNotification,
-    RpcRequest,
-    native_environment,
-)
+from lup.harness.environment import inherited
+from lup.providers.codex.app_server import RpcMessage, RpcNotification, RpcRequest
 from lup.providers.codex.interrupt import CONTROL_SOCKET, codex_interrupted_turn
 from lup.types import JsonObject, JsonValue
 
@@ -132,7 +128,7 @@ async def test_a_running_turn_is_interrupted_and_an_idle_thread_is_said_to_be(
         "app-server",
         "--listen",
         "unix://",
-        env=native_environment({"CODEX_HOME": str(native_home)}),
+        env=inherited({"CODEX_HOME": str(native_home)}),
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )
