@@ -113,7 +113,7 @@ def execution_write_refusal(path_text: str, root: Path | None) -> str:
     if not matches or not min(
         allowed for depth, allowed in matches if depth == max(row[0] for row in matches)
     ):
-        return f"{path} is outside this launch's writable boundary"
+        return "it is outside this launch's writable boundary"
     return ""
 
 

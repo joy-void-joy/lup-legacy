@@ -1116,7 +1116,7 @@ def edit_decision(
                 after=after,
             )
     except (OSError, ValueError, KeyError, TypeError) as error:
-        return routing_failure(str(error))
+        return routing_failure(str(error), path)
     return captured_edit_decision(
         local_edit_decision(
             path, before, after, path_exists, autonomous, operation, cwd

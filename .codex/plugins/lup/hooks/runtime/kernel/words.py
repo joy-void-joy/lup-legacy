@@ -747,8 +747,9 @@ def unread_question(path: str) -> KernelDecision:
     """
     return KernelDecision(
         "ask",
-        f"{path} is replaced with content only running the command produces,"
-        " so nothing reads it before it lands",
+        "is replaced with content only running the command produces, so"
+        " nothing reads it before it lands",
+        subject=path,
         checkpoint=write_checkpoint("production"),
         purpose="quality_review",
         recovery=(
@@ -764,18 +765,20 @@ def unread_question(path: str) -> KernelDecision:
     )
 
 
-def unlocated_write(named: str) -> KernelDecision:
+def unlocated_write(writer: str, path: str) -> KernelDecision:
     """The question a write to an ``unbounded`` path puts, however it is spelled.
 
-    ``named`` is the path as the reason opens on it: a redirection, a write
-    flag and a verb's destination are one unknown each. No capture discharges
+    ``writer`` names the spelling -- the redirection, the write -- and
+    ``path`` is the target as it was placed, the verdict's subject: a
+    redirection, a write flag and a verb's destination are one unknown each. No capture discharges
     it, because the snapshot holds this checkout and nothing says the path
     lands there; binding the path to a literal first is what lets the write be
     judged where it lands.
     """
     return KernelDecision(
         "ask",
-        f"{named} is a path that is only known when the command runs",
+        f"{writer} target is a path that is only known when the command runs",
+        subject=path,
         checkpoint=write_checkpoint("unbounded"),
         purpose="unrecovered_local_mutation",
         recovery=(

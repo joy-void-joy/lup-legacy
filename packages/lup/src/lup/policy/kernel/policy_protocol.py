@@ -225,11 +225,15 @@ def read_decision(value: WireValue | DecisionWire) -> KernelDecision:
     )
 
 
-def routing_failure(reason: str) -> KernelDecision:
-    """An unavailable owner is a refusal, never an origin-policy fallback."""
+def routing_failure(reason: str, path: str = "") -> KernelDecision:
+    """An unavailable owner is a refusal, never an origin-policy fallback.
+
+    ``path`` is the write it refuses, which the verdict names as its subject.
+    """
     return KernelDecision(
         "deny",
         f"the destination's policy is unavailable: {reason}",
+        subject=path,
         hard=True,
         rule="edit:destination-policy",
         recovery=(

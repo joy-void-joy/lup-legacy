@@ -20,8 +20,9 @@ into the sentence, so it is always spelled the same — `uv run lup-devtools …
 for this project's CLI — and `dev check` confirms each one exists.
 
 - A reason no longer repeats the whole command back (`… — \`rm -rf build\``);
-  the operative words lead instead (`asks: \`rm\` — deleting files requires
-  approval`).
+  the operative words lead instead (`asks: \`rm build\` — deleting files
+  requires approval`). A write or a delete names the paths it touches as the
+  policy placed them, so one a `cd` left unknown reads `$PWD/…`.
 - An ask the container or a capture settles says only why it is allowed,
   instead of "requires approval … allowed without asking".
 - A parked review opens on `queued:`, not `refused:`.

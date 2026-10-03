@@ -1568,8 +1568,9 @@ The first line is the verdict — `refused`, `asks`, `queued`, `allowed` or
 `deferred` from the policy, `error` or `warning` from a command — then the
 words of the call that decided it, in backticks, then why, in one clause.
 The words are the verdict's `subject`: the packages a `--with` installs, the
-path a write lands on, the host a fetch reaches, never the whole command
-echoed back. That line is the whole of what an approver reads, who answers
+paths a write or a delete touches as the policy placed them (`rm
+$PWD/tmp/x` where a `cd` left the directory unknown), the host a fetch
+reaches, never the whole command echoed back. That line is the whole of what an approver reads, who answers
 yes or no and can act on nothing else, so the `reason` it ends with carries
 no instruction: one found there is a defect
 `packages/lup/tests/unit/test_reason_voice.py` refuses. A compound command

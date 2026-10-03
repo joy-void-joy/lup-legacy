@@ -215,7 +215,7 @@ def execution_write_refusal(path_text: str, root: Path | None) -> str:
     if not matches or not min(
         allowed for depth, allowed in matches if depth == max(row[0] for row in matches)
     ):
-        return f"{path} is outside this launch's writable boundary"
+        return "it is outside this launch's writable boundary"
     return ""
 
 
@@ -5648,7 +5648,7 @@ def edit_decision(
                 after=after,
             )
     except (OSError, ValueError, KeyError, TypeError) as error:
-        return routing_failure(str(error))
+        return routing_failure(str(error), path)
     return captured_edit_decision(
         local_edit_decision(
             path, before, after, path_exists, autonomous, operation, cwd

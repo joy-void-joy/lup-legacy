@@ -475,8 +475,8 @@ class UnleasedWrite(SettlementRule):
         # read. A deferral's own reason stays, since "nobody judged this"
         # is a second fact the same approval answers.
         written = (
-            f"writes {', '.join(reported)}, which this launch did not mount"
-            " writable and nothing captured"
+            "the write lands where this launch mounted nothing writable, and"
+            " nothing captured it"
         )
         return facts.decision.revised(
             effect="ask",
@@ -486,6 +486,7 @@ class UnleasedWrite(SettlementRule):
                 else f"{facts.decision.reason}; {written}"
             ),
             purpose="unrecovered_local_mutation",
+            subject=" ".join(reported),
             # Named, because the verdict this replaces is reached by the
             # vocabulary finding nothing to say and carries no id of its own.
             # An ask that names no rule is one nobody can write a case for.

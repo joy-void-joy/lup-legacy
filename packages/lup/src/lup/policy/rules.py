@@ -1014,7 +1014,7 @@ class EditPolicy(DecisionPolicy[EditBatch]):
         except (OSError, ValueError, KeyError, TypeError) as error:
             return pydantic_decision(
                 captured_edit_decision(
-                    routing_failure(str(error)),
+                    routing_failure(str(error), path),
                     path,
                     before_sha256=document_digest(change.before),
                     after_sha256=document_digest(change.after),

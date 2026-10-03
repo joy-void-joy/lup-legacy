@@ -156,5 +156,5 @@ async def test_shell_example_asks_before_a_destructive_command() -> None:
     )
 
     assert decision == permission(
-        "ask", "asks: `rm` — deleting files requires approval"
+        "ask", "asks: `rm build` — deleting files requires approval"
     )

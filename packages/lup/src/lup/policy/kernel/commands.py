@@ -452,7 +452,9 @@ def targets_write_verdict(
         max(answers, key=lambda answer: STRENGTH.index(answer["effect"])),
     )
     if answered["effect"] == "allow":
-        return row_verdict(row, "allow", "this write lands where nothing is reviewed")
+        return row_verdict(
+            row, "allow", "this write lands where nothing is reviewed", operative=landed
+        )
     if answered["unread"] or answered["scope"] == "unbounded":
         # Through the row rather than beside it, so an operator-only row still
         # denies and the sandbox, rule and reviewer the row states still
@@ -460,7 +462,7 @@ def targets_write_verdict(
         asked = (
             unread_question(answered["path"])
             if answered["unread"]
-            else unlocated_write(f"the write target {answered['path']}")
+            else unlocated_write("the write", answered["path"])
         )
         return row_verdict(
             row,
@@ -468,6 +470,7 @@ def targets_write_verdict(
             asked.reason,
             write_checkpoint(answered["scope"]),
             asked=asked,
+            operative=landed,
         )
     return row_verdict(
         row,
@@ -477,6 +480,7 @@ def targets_write_verdict(
         # Where the file lands, rather than what the plain command does: `sort`
         # reads, and `sort -o` over somebody's file is a write to it.
         reached=[declare("writes_path", scope=answered["scope"])],
+        operative=landed,
     )
 
 
@@ -966,6 +970,7 @@ def apply_command_row(
     # a scratch grant is still a scratch grant, and a delete reaching outside
     # the checkout is a loss no capture of this session holds.
     loss = verb_loss_scope([row["command"], *arguments], measured, row["write_flags"])
+    touched = touched_paths(row, arguments)
     if loss is not None:
         return row_verdict(
             row,
@@ -973,8 +978,31 @@ def apply_command_row(
             row["reason"],
             checkpoint=loss,
             effects=[declare("destroys_uncaptured", scope=loss)],
+            operative=touched,
         )
-    return row_verdict(row, stated, row["reason"])
+    return row_verdict(row, stated, row["reason"], operative=touched)
+
+
+def touched_paths(row: ShellRuleRow, arguments: list[str]) -> list[str]:
+    """The paths a row's command writes or deletes, as its words were placed.
+
+    The verdict's subject, because the path is what an approver weighs: `rm`
+    over a scratch file and over somebody's is one rule and two questions,
+    and a path a `cd` left unknown reads `$PWD/...`, which is the reason it
+    asks. A path verb, an archive and a write flag name their targets as
+    :func:`written_targets` reads them; any other row whose effects destroy
+    or write names its operands -- `git rm`, `git restore`. A row that
+    touches no path names none.
+    """
+    written = written_targets([row["command"], *arguments], row["write_flags"])
+    if written is not None:
+        return written
+    if any(
+        effect["kind"] in ("destroys_uncaptured", "writes_path")
+        for effect in row["effects"]
+    ):
+        return operand_words(arguments, row["value_flags"])
+    return []
 
 
 class Subcommand(TypedDict):
