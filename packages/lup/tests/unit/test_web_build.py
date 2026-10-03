@@ -18,12 +18,16 @@ from fastapi.testclient import TestClient
 
 from lup.devtools.surfaces import EXPLORER, LIBRARY_SURFACES
 from lup.execution.shell import git
+from lup.formats import digest
 from lup.harness.ownership import OWNERSHIP_FILENAME, load_manifest
 from lup.web.build import (
+    BUN,
     Surface,
     dependencies_behind,
+    proof_holds,
     restore_dependencies,
     source_digest,
+    source_files,
     write_web_bundles,
 )
 from lup.web.schema import view_schema, write_view_schema
@@ -248,6 +252,73 @@ def test_write_web_bundles_builds_owns_and_verifies(tmp_path: Path) -> None:
     (landed / "explorer" / "index.html").write_text("edited\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="behind"):
         write_web_bundles(WORKSPACE, bundles, [EXPLORER], tmp_path, check=True)
+
+
+def stray_state(workspace: Path) -> None:
+    """What a checkout collects beside its sources and the proof never reads.
+
+    A tool's state under `src/` and an env file setting `NODE_ENV`, both
+    ignored, and a tree bun itself laid down holding a package copy an
+    earlier install nested where the current lockfile nests none. Bun reads
+    that tree as current and leaves the copy, and the copy is a stub, so no
+    build resolving it matches the committed one.
+    """
+    (workspace / ".gitignore").write_text(".lup/\n.env\n", encoding="utf-8")
+    BUN("install", "--frozen-lockfile", _cwd=str(workspace))
+    state = workspace / "src" / "dashboard" / ".lup" / "script-runs.json"
+    state.parent.mkdir(parents=True)
+    state.write_text('{"tmp/x.py": 7}\n', encoding="utf-8")
+    (workspace / "src" / "explorer" / ".env").write_text(
+        "NODE_ENV=development\n", encoding="utf-8"
+    )
+    nested = "node_modules/@tanstack/react-table/node_modules/@tanstack/react-store"
+    (workspace / nested).mkdir(parents=True)
+    (workspace / nested / "package.json").write_text(
+        '{"name": "@tanstack/react-store", "version": "0.0.0", "main": "index.js"}\n',
+        encoding="utf-8",
+    )
+    (workspace / nested / "index.js").write_text("export {};\n", encoding="utf-8")
+
+
+@pytest.mark.skipif(
+    shutil.which("bun") is None or not (WORKSPACE / "node_modules").is_dir(),
+    reason="the frontend toolchain is not installed here",
+)
+def test_the_committed_bundles_are_what_their_sources_build_anywhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A bundle is a function of the sources its proof digests, and of nothing else.
+
+    The sources alone, copied to a directory no checkout uses, beside the
+    stray state a checkout collects and under a caller whose environment asks
+    for a development build, build every surface's committed tree byte for
+    byte, the proof with it. That is what lets a holding proof stand for a
+    build: where it fails, two checkouts of one commit build two bundles, and
+    whichever regenerates leaves its tree dirty.
+    """
+    top = PACKAGE.parents[1]
+    workspace = WORKSPACE.relative_to(top)
+    bundles = PACKAGE.relative_to(top) / "src" / "lup" / "web" / "bundles"
+    prior = load_manifest(top / bundles / OWNERSHIP_FILENAME)
+    if prior is None or not proof_holds(prior, top, WORKSPACE):
+        pytest.skip(
+            "the bundles are behind their sources, which the drift check reports"
+        )
+    elsewhere = repository(tmp_path / "elsewhere" / "deeper")
+    for source in source_files(WORKSPACE):
+        copy = elsewhere / workspace / source.relative_to(WORKSPACE)
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, copy)
+    stray_state(elsewhere / workspace)
+    monkeypatch.setenv("NODE_ENV", "development")
+
+    write_web_bundles(workspace, bundles, LIBRARY_SURFACES, elsewhere)
+
+    def tree(root: Path) -> dict[str, str | None]:
+        files = sorted(path for path in root.rglob("*") if path.is_file())
+        return {path.relative_to(root).as_posix(): digest.file(path) for path in files}
+
+    assert tree(elsewhere / bundles) == tree(top / bundles)
 
 
 def recorded_restores(
