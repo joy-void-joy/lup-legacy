@@ -2956,7 +2956,7 @@ def test_the_generator_owns_the_proof_it_writes_and_never_lists(
     # lookup names it, or every consumer asking who owns the proof is told
     # "the repository" about the one file materialization always writes.
     assert not [item for item in manifest.files if "ownership" in str(item.path)]
-    owned = generated_artifacts(tmp_path, homes=[".claude"])
+    owned = generated_artifacts(tmp_path, manifests=[".claude/.lup-ownership.json"])
     assert owned.owning(".claude/.lup-ownership.json") is not None
     assert owned.owning("packages/lup/src/lup/harness/ownership.py") is None
 

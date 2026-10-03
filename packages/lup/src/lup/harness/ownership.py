@@ -96,9 +96,6 @@ def load_manifest(path: Path) -> OwnershipManifest | None:
 OWNERSHIP_FILENAME = ".lup-ownership.json"
 """What proof is called inside whichever tree a native adapter materializes."""
 
-ADAPTER_HOMES: tuple[str, ...] = (".claude", ".codex")
-"""The trees proof is kept in, as a default an adopter naming its own replaces."""
-
 
 class GeneratedArtifacts(BaseModel, frozen=True):
     """Which files in a tree the generator owns rather than the repository.
@@ -132,15 +129,18 @@ def proof_artifact(root: Path, proof: Path) -> OwnedArtifact:
     )
 
 
-def generated_artifacts(
-    root: Path, homes: Collection[str] = ADAPTER_HOMES
-) -> GeneratedArtifacts:
-    """What every manifest under ``root`` records the generator as owning."""
+def generated_artifacts(root: Path, manifests: Collection[str]) -> GeneratedArtifacts:
+    """What every manifest under ``root`` records the generator as owning.
+
+    ``manifests`` are where proof is kept, relative to ``root``: each runtime
+    states its own (:func:`lup.providers.harness.runtime_generated`), and a
+    caller holding other proof names it.
+    """
 
     def owned() -> Iterator[OwnedArtifact]:
         """Each generated artifact, across every tree that kept proof."""
-        for home in homes:
-            proof = Path(home) / OWNERSHIP_FILENAME
+        for kept in manifests:
+            proof = Path(kept)
             manifest = load_manifest(root / proof)
             if manifest is None:
                 continue

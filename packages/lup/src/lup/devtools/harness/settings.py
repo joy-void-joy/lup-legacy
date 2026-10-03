@@ -19,9 +19,20 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, Field
 
 from lup.harness.models import HookSet, Plugin
+from lup.providers.harness import AdapterName, spellings_of
 from lup.policy.models import UrlScope
 from lup.mcp import ToolServer
 from lup.types import EnvVars, JsonObject, JsonValue
+
+
+MARKETPLACE_SOURCE = (
+    f"./{PurePosixPath(spellings_of(AdapterName.CLAUDE).plugins_directory)}"
+)
+"""This repository's own marketplace, spelled the relative way Claude Code reads it.
+
+Where Claude's plugin trees sit, which its adapter states, so the settings
+that register the marketplace and the tree generated there name one place.
+"""
 
 
 class Settings(BaseModel, frozen=True):
@@ -182,7 +193,7 @@ def project_settings(
         # last would serve its plugin to all of them.
         settings["extraKnownMarketplaces"] = {
             str(plugin.marketplace): {
-                "source": {"path": "./.claude/plugins", "source": "directory"}
+                "source": {"path": MARKETPLACE_SOURCE, "source": "directory"}
             }
         }
         settings["enabledPlugins"] = {

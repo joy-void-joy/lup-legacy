@@ -722,6 +722,7 @@ def render_policy_data(
     unscoped_fetch: UnjudgedAmbient | None = None,
     refused_paths: list[RefusedPaths] | None = None,
     secret_variables: list[str] | None = None,
+    generated_plugin_roots: list[str] | None = None,
     hook_timeout: int = 30,
 ) -> str:
     """Render one plugin's canonical policy rows without executable logic.
@@ -775,6 +776,8 @@ def render_policy_data(
             ),
             "SECRET_VARIABLES: list[str] = "
             + string_rows_literal(secret_variables or []),
+            "GENERATED_PLUGIN_ROOTS: list[str] = "
+            + string_rows_literal(generated_plugin_roots or []),
             "PEER_POLICY: PeerPolicyRow | None = "
             + peer_policy_literal(erase_peer_policy(peer_policy)),
             "AUTONOMOUS_AGENT_IDENTITIES: list[str] = "

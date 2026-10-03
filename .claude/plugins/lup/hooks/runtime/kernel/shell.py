@@ -184,6 +184,13 @@ class ShellContext(TypedDict):
     depending on how a caller named it. The machine's own path, so it arrives
     from the host per call rather than from any declaration."""
 
+    plugin_roots: list[str]
+    """Where every supported runtime renders its plugin trees, as each adapter states.
+
+    A hand edit there edits a build product, which every writing form refuses
+    the same way; the policy data carries them, so no runtime's tree is
+    spelled here."""
+
     displaced_targets: list[DisplacedTargetRow]
     """Write targets the host found landing under a role other than they claim.
 
@@ -321,6 +328,7 @@ def shell_context(
     host_ports: list[int] | None = None,
     withheld_walks: list[WithheldWalkRow] | None = None,
     names_read: bool = False,
+    plugin_roots: list[str] | None = None,
 ) -> ShellContext:
     """Bundle one classification's declarations, normalizing absent lists.
 
@@ -352,6 +360,7 @@ def shell_context(
         contained=contained,
         checkout_root=checkout_root,
         displaced_targets=displaced_targets or [],
+        plugin_roots=plugin_roots or [],
         host_ports=host_ports or [],
         unscoped_fetch=unscoped_fetch,
         refused_paths=refused_paths or [],
@@ -381,6 +390,7 @@ def sed_facts(context: ShellContext) -> SedContext:
     """
     return SedContext(
         path_roles=context["path_roles"],
+        plugin_roots=context["plugin_roots"],
         path_rules=context["path_rules"],
         antipattern_rows=context["antipattern_rows"],
         edit_rules=context["edit_rules"],
@@ -855,6 +865,7 @@ def decide_segment_words(
         context["path_roles"],
         context["checkout_root"],
         context["displaced_targets"],
+        plugin_roots=context["plugin_roots"],
     )
     if refused is not None:
         return refused
@@ -1653,6 +1664,7 @@ def classify_shell(
     displaced_targets: list[DisplacedTargetRow] | None = None,
     host_ports: list[int] | None = None,
     withheld_walks: list[WithheldWalkRow] | None = None,
+    plugin_roots: list[str] | None = None,
 ) -> KernelDecision:
     """Conservatively classify every command in one shell command line.
 
@@ -1697,6 +1709,7 @@ def classify_shell(
         rewritten_documents=rewritten_documents,
         unproduced_documents=unproduced_documents,
         displaced_targets=displaced_targets,
+        plugin_roots=plugin_roots,
         host_ports=host_ports,
         names_read=names_read(command, rows),
     )
@@ -1717,6 +1730,7 @@ def classify_shell(
             checkout_root,
             tracked_targets,
             displaced_targets,
+            plugin_roots=context["plugin_roots"],
         )
         withheld = withheld_redirect(read, checkout_root, context["refused_paths"])
         return joined_decision(
@@ -1740,6 +1754,7 @@ def classify_shell(
         checkout_root,
         tracked_targets,
         displaced_targets,
+        plugin_roots=context["plugin_roots"],
     )
     if redirected is not None:
         return redirected
@@ -1842,6 +1857,7 @@ def decide_shell(
     rewritten_documents: list[RewrittenDocumentRow] | None = None,
     unproduced_documents: list[UnproducedDocumentRow] | None = None,
     withheld_walks: list[WithheldWalkRow] | None = None,
+    plugin_roots: list[str] | None = None,
 ) -> KernelDecision:
     """Classify one command, honoring an escalation marker and hinting denies.
 
@@ -1942,6 +1958,7 @@ def decide_shell(
                 # host found reaching one without naming it.
                 refused_paths=refused_paths,
                 withheld_walks=withheld_walks,
+                plugin_roots=plugin_roots,
                 secret_variables=secret_variables,
                 # The edit gates, for the verbs that rewrite a file in place.
                 # Absent, every such rewrite asks, which is the arrangement

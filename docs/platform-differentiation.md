@@ -10,8 +10,8 @@ differently lives in exactly two places — the adapter renderers
 (`packages/lup/src/lup/providers/claude/harness.py`,
 `packages/lup/src/lup/providers/codex/harness.py`, composed by
 `packages/lup/src/lup/providers/harness.py`) and the per-platform generation
-recipes (`claude_generation_recipe` / `codex_generation_recipe` in
-`packages/lup/src/lup/harness/generate.py`). A per-platform declaration
+recipes (`claude_generation_recipe` / `codex_generation_recipe`, each in its
+adapter's `composition.py`). A per-platform declaration
 layer is rejected: it would let semantic content fork silently,
 whereas the adapter seam forces every difference to be a rendering decision
 over the same declarations. Two checks enforce that. Every prose field a tree

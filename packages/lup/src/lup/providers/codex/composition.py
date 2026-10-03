@@ -4,18 +4,27 @@ from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
-from lup.providers.harness import codex_machine_overlay
+from lup.providers.harness import (
+    codex_machine_overlay,
+    codex_prompt_renderer,
+    compile_codex,
+)
 from lup.providers.codex.harness import CODEX_OVERLAY
 
 from lup.harness.evidence import WireContract
 from lup.harness.generate import (
+    GenerationRecipe,
     MachineOverlay,
     NativeComposer,
     NativeHarnessComposition,
     ProjectContent,
-    codex_generation_recipe,
+    current_reader,
+    installer_guidance,
 )
 from lup.harness.models import CapabilityEvidence, PromptDocument
+from lup.harness.ownership import load_manifest
+from lup.harness.reconciliation import DeterministicReconciler
+from lup.harness.validation import validated_tree
 from lup.providers.codex.harness import CodexSpellings
 from lup.providers.codex.harness_runtime import (
     CodexCliEvidence,
@@ -24,6 +33,42 @@ from lup.providers.codex.harness_runtime import (
 from lup.providers.codex.home import CodexWorktreeHomeStore
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.codex.trust import HOOKS_LIST, hook_wire_fields
+
+
+CODEX = CodexSpellings()
+"""Where Codex keeps each part of its tree, which every path below is read from."""
+
+
+def codex_generation_recipe(
+    root: Path, content: ProjectContent, guidance: PromptDocument | None = None
+) -> GenerationRecipe:
+    """Compose the Codex renderers, reader, and ownership location."""
+    source = content.harness
+    prompts = codex_prompt_renderer()
+    support_artifacts = installer_guidance(
+        path=Path(CODEX.plugin(source.plugins[0].name, "guidance_template", None)),
+        document=guidance,
+        prompts=prompts,
+    )
+    compiled = compile_codex(source)
+    desired = validated_tree([*compiled.artifacts, *support_artifacts])
+    manifest_path = root / CODEX.tree("ownership_manifest")
+    prior = load_manifest(manifest_path)
+    return GenerationRecipe(
+        label="codex",
+        root=root,
+        source=source,
+        desired=desired,
+        manifest_path=manifest_path,
+        prior=prior,
+        reader=current_reader(
+            prior,
+            desired,
+            sensitive_local_only=[Path(CODEX.tree("personal_settings"))],
+        ),
+        reconciler=DeterministicReconciler(),
+        target_requirements=["codex-cli>=0.144"],
+    )
 
 
 class CodexComposer(NativeComposer):
