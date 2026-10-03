@@ -1,9 +1,7 @@
 """The command tree over the registries that hold a project's runtime accounts.
 
-Mounted wherever a project already talks about profiles — beside the native
-launchers as ``harness profile``, or inside a setup wizard — so the roster a
-launch selects from is curated in one vocabulary no matter which tree the
-caller reached it through.
+Mounted beside the native launchers as ``harness profile``, the one tree
+the roster a launch selects from is curated in.
 
 Every command acts on this checkout's own profiles unless ``--global`` names
 the ones every checkout shares, the way ``git config`` does.

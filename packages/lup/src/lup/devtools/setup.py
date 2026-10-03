@@ -25,8 +25,6 @@ from pydantic import BaseModel, Field
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from lup.devtools.harness.composition import claude_profile_directory
-from lup.devtools.harness.profile_app import create_profile_app
 from lup.harness.environment import Placement
 from lup.launch.secrets import HostSecrets
 from lup.providers.profiles import ProfileDirectory
@@ -315,16 +313,14 @@ def create_setup_app(
 ) -> typer.Typer:
     """Build the setup command tree over a project's declared integrations.
 
-    Setup curates exactly the roster a launch selects from: ``profiles``
-    where a project names an origin of its own, the person's otherwise.
+    ``status`` names the profile a launch selects from ``profiles``, where a
+    project names an origin of its own; `harness profile` curates them.
     """
-    directory = profiles or claude_profile_directory()
     app = typer.Typer(
         help="Interactive setup wizard",
         pretty_exceptions_show_locals=False,
         invoke_without_command=True,
     )
-    app.add_typer(create_profile_app(directory), name="profile")
     # The setup page is this wizard seen through a browser — the same declared
     # integrations rendered for somebody who would rather click than answer
     # prompts — and the dashboard shows it as this repository's pane, by

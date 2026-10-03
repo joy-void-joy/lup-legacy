@@ -309,7 +309,7 @@ def test_the_profile_command_tree_refuses_selecting_a_stored_default_home(
     assert "profile remove main" in result.output
 
 
-def test_the_setup_wizard_refuses_adding_the_default_home(
+def test_the_setup_wizard_leaves_profiles_to_the_harness_tree(
     directory: ProfileDirectory, config: UserConfigFile
 ) -> None:
     result = runner.invoke(
@@ -318,7 +318,7 @@ def test_the_setup_wizard_refuses_adding_the_default_home(
     )
 
     assert result.exit_code != 0
-    assert WAY_OUT in result.output
+    assert "No such command 'profile'" in result.output
     assert not config.profiles_root().exists()
 
 

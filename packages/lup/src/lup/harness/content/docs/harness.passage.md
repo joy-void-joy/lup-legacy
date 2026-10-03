@@ -918,8 +918,8 @@ inside another stays on the account it was started under. A project may still
 supply an origin of its own through the harness, resolver and setup trees;
 naming none takes these.
 
-`harness profile` and `setup profile` curate them, acting on the checkout's
-own profiles unless `--global` names the shared ones, as `git config` does:
+`harness profile` curates them, acting on the checkout's own profiles unless
+`--global` names the shared ones, as `git config` does:
 
 | Command | Without `--global` | With `--global` |
 | --- | --- | --- |

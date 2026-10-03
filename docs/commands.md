@@ -298,12 +298,6 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `setup codex` | Set Codex/OpenAI per-MTok pricing (enables budget caps). |
 | `setup timezone` | Set timezone. |
 | `setup secret` | Set a key in this project&#x27;s host store, which only host companions are handed. |
-| `setup profile list` | Show every profile, local and global, and which one a launch selects. |
-| `setup profile add` | Register a runtime configuration home under a name, in this checkout. |
-| `setup profile use` | Select the profile a launch uses when none is named, in this checkout. |
-| `setup profile remove` | Forget a profile in this checkout, leaving its configuration home on disk. |
-| `setup profile migrate` | Move this checkout&#x27;s profiles, and the ~/.lup registry&#x27;s, to global. |
-| `setup profile switch` | Move this repository&#x27;s contained sessions of one runtime onto a profile&#x27;s login. |
 
 ## `sync`
 
