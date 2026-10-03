@@ -6,6 +6,7 @@ subjects = [
     "GENERATED_PLUGIN_ROOTS",
     "is_generated_plugin_target",
     "NativeSpellings.plugins_directory",
+    "NativeSpellings.protected_tree",
     "SELF_PATH",
     "wake",
     "injected",
@@ -42,8 +43,9 @@ takes them as `plugin_roots`."""
 [[steps]]
 instruction = """
 Answer `plugins_directory` (where your runtime's plugin trees sit, ending in \
-`/`) and `protected_tree` on your own `NativeSpellings`, and spell `plugin()` \
-under the former."""
+`/`) and `protected_trees` (every tree your runtime reads its configuration \
+from, its own first) on your own `NativeSpellings`, and spell `plugin()` \
+under the former; read `protected_trees` where you read `protected_tree`."""
 
 [[steps]]
 instruction = """

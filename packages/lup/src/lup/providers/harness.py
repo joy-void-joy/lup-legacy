@@ -96,14 +96,14 @@ def runtime_plugin_directories() -> list[Path]:
 
 
 def runtime_trees() -> list[ProtectedRoot]:
-    """Every supported runtime's own tree, as each adapter declares it protected.
+    """Every tree each supported runtime reads its configuration from, as its adapter declares.
 
     All of them, whichever runtime a session runs: one runtime's tree
     protected and the other's open is a hole with no reason behind it, since
-    the settings, trust state and skills under each decide the same things
-    about the session that reads them.
+    the settings, trust state, skills and plugin marketplace under each
+    decide the same things about the session that reads them.
     """
-    return [runtime.protected_tree for runtime in every_runtime()]
+    return [tree for runtime in every_runtime() for tree in runtime.protected_trees]
 
 
 def runtime_generated(root: Path) -> GeneratedArtifacts:

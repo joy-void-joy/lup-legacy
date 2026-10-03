@@ -124,11 +124,18 @@ class CodexSpellings(NativeSpellings):
         return Atom(".codex/plugins/")
 
     @property
-    def protected_tree(self) -> ProtectedRoot:
-        return ProtectedRoot(
-            path=Path(self.tree("tree_root")),
-            description="Codex's settings, trust state and skills",
-        )
+    def protected_trees(self) -> list[ProtectedRoot]:
+        return [
+            ProtectedRoot(
+                path=Path(self.tree("tree_root")),
+                description="Codex's settings, trust state and skills",
+            ),
+            ProtectedRoot(
+                path=Path(self.tree("marketplace")).parent,
+                description="Codex's plugin marketplace, which decides the plugins "
+                "Codex loads",
+            ),
+        ]
 
     @property
     def native_identifiers(self) -> list[Atom]:

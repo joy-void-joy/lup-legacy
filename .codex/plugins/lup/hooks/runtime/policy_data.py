@@ -263,6 +263,14 @@ PATH_RULES: list[PathRuleRow] = [
         "description": "Codex's settings, trust state and skills",
     },
     {
+        "kind": "subtree",
+        "value": ".agents/plugins",
+        "reason": "protected path requires approval",
+        "recovery": "",
+        "allow_autonomous": False,
+        "description": "Codex's plugin marketplace, which decides the plugins Codex loads",
+    },
+    {
         "kind": "contains_part",
         "value": "pyproject.toml",
         "reason": "protected path requires approval",

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Codex's plugin marketplace is protected like its own tree
+
+`.agents/plugins/marketplace.json` decides which plugins Codex loads, so an
+agent editing it could make Codex run code it chose, and editing it asked
+nothing. An adapter now declares every tree its runtime reads configuration
+from (`NativeSpellings.protected_trees`, in place of `protected_tree`). Codex
+declares `.codex` and `.agents/plugins`, the second described as "Codex's
+plugin marketplace, which decides the plugins Codex loads".
+`runtime_trees()` collects them all, so the marketplace is protected whichever
+runtime a session runs, and a review names it with that description.
+
 ### A literal assignment holds past `;`, and a loop's assignment holds through its pass
 
 `cd X && S=/abs; git show A > $S/out.txt` asked as a write to a path only the

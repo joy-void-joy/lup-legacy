@@ -184,14 +184,15 @@ class NativeSpellings(SkillInvocationRenderer, ABC):  # lup: ignore[abc-capabili
     # lup: ignore[abc-capability] — NativeSpellings owns one runtime's whole vocabulary, deliberately wider than the three-method shape; the class docstring carries the argument
     @property
     @abstractmethod
-    def protected_tree(self) -> ProtectedRoot:
-        """This runtime's own tree, as a protected root, with what it holds in plain words.
+    def protected_trees(self) -> list[ProtectedRoot]:
+        """Every tree this runtime reads its configuration from, each with what it holds.
 
-        Declared by the adapter that owns the tree and by no project, and
-        collected from every runtime the library supports
+        Its own tree first, and any other the runtime reads to decide what it
+        loads -- a plugin marketplace kept outside that tree is one. Declared
+        by the adapter that owns them and by no project, and collected from
+        every runtime the library supports
         (:func:`lup.providers.harness.runtime_trees`), so a session running
-        one runtime cannot rewrite the settings, trust state or skills the
-        other reads.
+        one runtime cannot rewrite what the other reads.
         """
 
     # lup: ignore[abc-capability] — NativeSpellings owns one runtime's whole vocabulary, deliberately wider than the three-method shape; the class docstring carries the argument
