@@ -18,6 +18,7 @@ import sh
 from fastapi.testclient import TestClient
 
 from lup.devtools.surfaces import EXPLORER, LIBRARY_SURFACES
+from lup.execution.shell import git
 from lup.harness.ownership import OWNERSHIP_FILENAME, load_manifest
 from lup.web.build import (
     Surface,
@@ -184,9 +185,17 @@ def test_a_missing_bundle_is_refused_naming_the_command(tmp_path: Path) -> None:
         bundle_app("Explorer", "http://127.0.0.1:1", "explorer", tmp_path / "none")
 
 
+def repository(root: Path) -> Path:
+    """``root`` as a checkout of its own, which is what tells a source from scratch."""
+    root.mkdir(parents=True, exist_ok=True)
+    git("init", "-q", "-b", "main", str(root))
+    return root
+
+
 def test_source_digest_moves_with_the_sources_and_not_with_generated_types(
     tmp_path: Path,
 ) -> None:
+    repository(tmp_path)
     (tmp_path / "src" / "explorer").mkdir(parents=True)
     (tmp_path / "src" / "generated").mkdir()
     (tmp_path / "package.json").write_text("{}\n", encoding="utf-8")
@@ -196,6 +205,25 @@ def test_source_digest_moves_with_the_sources_and_not_with_generated_types(
     (tmp_path / "src" / "generated" / "views.d.ts").write_text("t", encoding="utf-8")
     assert source_digest(tmp_path) == before
     (tmp_path / "src" / "explorer" / "App.tsx").write_text("two", encoding="utf-8")
+    assert source_digest(tmp_path) != before
+
+
+def test_source_digest_reads_what_a_clone_holds_and_nothing_git_ignores(
+    tmp_path: Path,
+) -> None:
+    """A tool's state dropped under `src/` is no source, or the proof would
+    hold only in the checkout holding it and every other checkout rebuild."""
+    repository(tmp_path)
+    (tmp_path / ".gitignore").write_text(".lup/\n", encoding="utf-8")
+    (tmp_path / "src" / "dashboard").mkdir(parents=True)
+    (tmp_path / "src" / "dashboard" / "App.tsx").write_text("one", encoding="utf-8")
+    before = source_digest(tmp_path)
+
+    state = tmp_path / "src" / "dashboard" / ".lup" / "script-runs.json"
+    state.parent.mkdir()
+    state.write_text("{}", encoding="utf-8")
+    assert source_digest(tmp_path) == before
+    (tmp_path / "src" / "dashboard" / "Fresh.tsx").write_text("new", encoding="utf-8")
     assert source_digest(tmp_path) != before
 
 
@@ -310,7 +338,7 @@ def test_a_failed_restore_names_the_command_and_carries_buns_output(
 def test_the_build_restores_a_workspace_without_dependencies_first(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    workspace = tmp_path / "web"
+    workspace = repository(tmp_path) / "web"
     (workspace / "src" / "explorer").mkdir(parents=True)
     (workspace / "package.json").write_text("{}\n", encoding="utf-8")
     restores = recorded_restores(monkeypatch)
@@ -334,7 +362,7 @@ def test_the_build_runs_where_the_proof_no_longer_holds_and_nowhere_else(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A holding proof is current in either mode; a check never builds."""
-    workspace = tmp_path / "web"
+    workspace = repository(tmp_path) / "web"
     (workspace / "node_modules").mkdir(parents=True)
     (workspace / "src" / "explorer").mkdir(parents=True)
     (workspace / "package.json").write_text("{}\n", encoding="utf-8")

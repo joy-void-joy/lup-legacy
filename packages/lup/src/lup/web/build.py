@@ -33,6 +33,7 @@ import sh
 from pydantic import BaseModel
 
 from lup.devtools.dev.library import DISTRIBUTION
+from lup.devtools.dev.tracked import tracked_files
 from lup.execution.shell import LazyCommand
 from lup.formats.banner import REGENERATE_COMMAND, VERBATIM_COPY
 from lup.harness.materialization import AtomicMaterializer
@@ -82,15 +83,22 @@ def source_files(
     """Every file the bundles are built from, in one stable order.
 
     The globs are what a bundle is compiled from, and therefore what its proof
-    digests; a workspace laid out differently names its own. `src/generated/`
+    digests; a workspace laid out differently names its own. Only what a clone
+    of the checkout holds counts — tracked, or new and not ignored. A file git
+    ignores under `src/` is a tool's state or a build's scratch that no import
+    reaches, and digesting it would make the proof hold only in the checkout
+    holding that file, so every other checkout would rebuild. `src/generated/`
     is left out whatever the globs say: it is compiled from the schema at
     build time, so the schema already stands for it.
     """
+    held = {workspace / path for path in tracked_files(others=True, root=workspace)}
     found = {
         path
         for pattern in globs
         for path in workspace.glob(pattern)
-        if path.is_file() and "generated" not in path.relative_to(workspace).parts
+        if path in held
+        and path.is_file()
+        and "generated" not in path.relative_to(workspace).parts
     }
     return sorted(found)
 
