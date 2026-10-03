@@ -989,25 +989,27 @@ def script_run_nudge(
     )
 
 
-def referral_noted(
+def noted_once(
     root: Path,
-    session: str,
-    repository: str,
-    ledger: str = ".lup/referrals.json",
+    conversation: str,
+    subject: str,
+    ledger: str = ".lup/notices.json",
     kept_days: int = 7,
 ) -> bool:
-    """Whether this session was already referred to that repository, noting it if not.
+    """Whether this conversation was already told about *subject*, noting it if not.
 
-    Kept per session under the checkout, for *kept_days*, so the ledger holds
-    what a live session could still ask about and nothing older. A ledger that
-    cannot be read or written answers no, which errs toward saying a referral
-    again rather than never.
+    What a notice says once is true for the rest of the conversation and news
+    only the first time: another repository's referral, the habit of naming a
+    spawn. Kept per conversation under the checkout, for *kept_days*, so the
+    ledger holds what a live conversation could still be told and nothing
+    older. A ledger that cannot be read or written answers no, which errs
+    toward saying a notice again rather than never.
     """
     path = root / ledger
     now = datetime.now(UTC)
 
     def recent(entry: dict) -> bool:
-        if "repositories" not in entry:
+        if "subjects" not in entry:
             return False
         try:
             stamped = datetime.fromisoformat(str(entry["at"]))
@@ -1025,8 +1027,8 @@ def referral_noted(
         for name, entry in held.items()
         if isinstance(entry, dict) and recent(entry)
     }
-    seen = kept[session]["repositories"] if session in kept else []
-    if repository in seen:
+    seen = kept[conversation]["subjects"] if conversation in kept else []
+    if subject in seen:
         return True
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1034,9 +1036,9 @@ def referral_noted(
             json.dumps(
                 {
                     **kept,
-                    session: {
+                    conversation: {
                         "at": now.isoformat(),
-                        "repositories": [*seen, repository],
+                        "subjects": [*seen, subject],
                     },
                 },
                 indent=2,

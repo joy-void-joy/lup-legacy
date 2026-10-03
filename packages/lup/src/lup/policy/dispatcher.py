@@ -341,10 +341,10 @@ class DispatcherDeclaration(BaseModel, frozen=True):
     The tools are declared apart because the two are registered for
     different sets: a deciding event covers everything the dispatcher
     routes, since a call it is not registered for is a call nobody judged,
-    while the watching event covers the editing tools alone. It exists only
-    to record where editing is happening, and a matcher wide enough for the
-    deciding set would spawn the script after every shell command to find
-    nothing worth recording.
+    while the watching event covers only the calls that leave something to
+    read afterwards — a write, from an editing tool or the shell, and the
+    name a spawn went out under. A matcher wide enough for the deciding set
+    would spawn the script after every fetch to find nothing worth reading.
     """
 
     runtime_name: str

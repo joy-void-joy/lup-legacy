@@ -60,7 +60,7 @@ From investigation findings:
 
 ### 4. Version comparison (if relevant)
 
-If comparing across versions, get code-level diffs: Delegate to the lup:version-explorer custom agent, naming the task 'version-comparison', with this task: Compare vX.Y.Z and vA.B.C
+If comparing across versions, get code-level diffs: Delegate to the lup:version-explorer custom agent, naming the task 'version_comparison', with this task: Compare vX.Y.Z and vA.B.C
 
 ### 5. Summarize
 

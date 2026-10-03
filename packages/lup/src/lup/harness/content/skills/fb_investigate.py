@@ -27,12 +27,12 @@ def skill(layout: ApplicationLayout) -> models.Skill:
                     values={
                         "delegate": models.Delegate(
                             subagent_type="lup:trace-explorer",
-                            name="trace-patterns",
+                            name="trace_patterns",
                             prompt="Analyze traces for sessions <ids>; report tool failures, capability gaps, reasoning quality",
                         ),
                         "delegate_2": models.Delegate(
                             subagent_type="lup:trace-explorer",
-                            name="session-<session_id>",
+                            name="session_<session_id>",
                             prompt="Investigate session <session_id> following the per-session steps below. Report: tool call inventory, errors with quoted output, workflow assessment, outcome classification, counterfactuals.",
                         ),
                         "ask": models.AskUser(

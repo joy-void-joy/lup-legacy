@@ -96,7 +96,7 @@ from kernel.rows import (
     landing_rows,
 )
 from kernel.review import Reviewed
-from kernel.spawns import decide_spawn, spawn_name
+from kernel.spawns import decide_spawn, spawn_name, spawn_notice
 from kernel.words import INTERPRETERS
 from kernel.roles import displaced_targets, sibling_scratch_rows, unscratched
 from kernel.shell import decide_shell, sandbox_excluded, shell_posture_targets
@@ -1092,25 +1092,27 @@ def script_run_nudge(
     )
 
 
-def referral_noted(
+def noted_once(
     root: Path,
-    session: str,
-    repository: str,
-    ledger: str = ".lup/referrals.json",
+    conversation: str,
+    subject: str,
+    ledger: str = ".lup/notices.json",
     kept_days: int = 7,
 ) -> bool:
-    """Whether this session was already referred to that repository, noting it if not.
+    """Whether this conversation was already told about *subject*, noting it if not.
 
-    Kept per session under the checkout, for *kept_days*, so the ledger holds
-    what a live session could still ask about and nothing older. A ledger that
-    cannot be read or written answers no, which errs toward saying a referral
-    again rather than never.
+    What a notice says once is true for the rest of the conversation and news
+    only the first time: another repository's referral, the habit of naming a
+    spawn. Kept per conversation under the checkout, for *kept_days*, so the
+    ledger holds what a live conversation could still be told and nothing
+    older. A ledger that cannot be read or written answers no, which errs
+    toward saying a notice again rather than never.
     """
     path = root / ledger
     now = datetime.now(UTC)
 
     def recent(entry: dict) -> bool:
-        if "repositories" not in entry:
+        if "subjects" not in entry:
             return False
         try:
             stamped = datetime.fromisoformat(str(entry["at"]))
@@ -1128,8 +1130,8 @@ def referral_noted(
         for name, entry in held.items()
         if isinstance(entry, dict) and recent(entry)
     }
-    seen = kept[session]["repositories"] if session in kept else []
-    if repository in seen:
+    seen = kept[conversation]["subjects"] if conversation in kept else []
+    if subject in seen:
         return True
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1137,9 +1139,9 @@ def referral_noted(
             json.dumps(
                 {
                     **kept,
-                    session: {
+                    conversation: {
                         "at": now.isoformat(),
-                        "repositories": [*seen, repository],
+                        "subjects": [*seen, subject],
                     },
                 },
                 indent=2,
@@ -5444,6 +5446,32 @@ def spawn_named(name: str, description: str) -> str:
     return spawn_name(name, description, SPAWN_NAMES)
 
 
+def spawn_notice_report(
+    name: str,
+    description: str,
+    field: str,
+    cwd: Path | None,
+    session: str,
+    caller: store.Caller,
+) -> PostToolReport:
+    """What a finished spawn's caller is told about its name, the first time in its conversation.
+
+    The notice teaches a habit rather than correcting one call, so once is
+    what it is worth. Kept per conversation rather than per session, because
+    a subagent spawning one of its own never read what its session was told.
+    Nothing is noted for a spawn the notice is silent about, so a caller who
+    names its spawns never touches the ledger.
+    """
+    notice = spawn_notice(name, description, SPAWN_NAMES, field)
+    said = (
+        bool(notice)
+        and bool(session)
+        and cwd is not None
+        and noted_once(cwd, store.acting_id(session, caller), "spawn names")
+    )
+    return PostToolReport(blocking=[], context=[notice] if notice and not said else [])
+
+
 def peer_listing_attachment(cwd: Path | None) -> str:
     """This repository's roster, as a listing carries it, or nothing to carry.
 
@@ -6020,12 +6048,12 @@ def referred_once(
     every file in that repository and news only the first time. Printed on
     every edit, one agent reads it about 150 times in a session, which is the noise
     this project's own "say it once" refuses. So the verdict stands on every
-    edit and its recovery goes with the first (:func:`referral_noted`).
+    edit and its recovery goes with the first (:func:`noted_once`).
     """
     if verdict.rule != "edit:foreign-repository" or not session or cwd is None:
         return verdict
     repository = worktree_root(str((cwd / path_text).resolve())) or path_text
-    if referral_noted(cwd, session, repository):
+    if noted_once(cwd, session, repository):
         return verdict.revised(recovery="")
     return verdict
 

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import sh
 
-from lup.policy.kernel.spawns import decide_spawn, spawn_name
+from lup.policy.kernel.spawns import decide_spawn, spawn_name, spawn_notice
 from lup.policy.relay import QuestionRelay
 from lup.types import JsonObject
 from lup_template.harness.catalog import portable_harness
@@ -131,6 +131,109 @@ def test_a_named_spawn_is_left_to_the_runtime() -> None:
     """Deferred, not allowed, and not rewritten: the name it carries wins."""
     assert decide(spawn("leak_probe")) == {}
     assert decide(spawn("Leak_Probe_2")) == {}
+
+
+def finished(
+    name: str | None, cwd: Path, session: str = "spawner", agent: str = ""
+) -> JsonObject:
+    """One spawn as the hook is handed it once the spawn has gone out.
+
+    Claude Code hands `PostToolUse` the call as it ran, its `PreToolUse`
+    rewrite included: measured on 2.1.285, a spawn the model sent with no
+    name reached it carrying the name the rewrite gave it. A call made
+    inside a subagent carries that subagent's `agent_id`.
+    """
+    inside: JsonObject = (
+        {"agent_id": agent, "agent_type": "general-purpose"} if agent else {}
+    )
+    return {
+        "hook_event_name": "PostToolUse",
+        "session_id": session,
+        "cwd": str(cwd),
+        "tool_name": "Agent",
+        "tool_input": arguments(name),
+        "tool_response": {"status": "async_launched", "agentId": "a0cacac5"},
+        **inside,
+    }
+
+
+def told(answer: JsonObject) -> str:
+    """What a finished call carries back for the agent to read, blank for nothing."""
+    assert "decision" not in answer
+    specific = answer.get("hookSpecificOutput")
+    if specific is None:
+        return ""
+    assert isinstance(specific, dict)
+    assert specific["hookEventName"] == "PostToolUse"
+    return str(specific["additionalContext"])
+
+
+def test_a_spawn_named_from_its_description_tells_its_caller_once(
+    tmp_path: Path,
+) -> None:
+    """Once in a conversation: its next such spawn is told nothing.
+
+    The name the spawn carries afterwards is the one its description reads
+    into, which is what the rewrite before it sent a spawn given none, so
+    the caller chose nothing and is told how to. Context rather than a block:
+    the spawn went out, and there is nothing in it left to refuse.
+    """
+    declared = portable_harness().declared_hooks.spawn_names
+    assert declared is not None and declared.notice is not None
+    read = str(rewritten(decide(spawn(None)))["name"])
+
+    notice = told(decide(finished(read, tmp_path)))
+
+    assert notice.startswith(declared.notice)
+    assert f"`{read}`" in notice
+    assert "pass the name as `name`" in notice
+    assert declared.recovery in notice
+    assert told(decide(finished(read, tmp_path))) == ""
+
+
+def test_each_conversation_is_told_for_itself(tmp_path: Path) -> None:
+    """A subagent spawning one of its own never read what its session was told."""
+    read = str(rewritten(decide(spawn(None)))["name"])
+
+    assert told(decide(finished(read, tmp_path)))
+    assert told(decide(finished(read, tmp_path, agent="a0cacac5")))
+    assert told(decide(finished(read, tmp_path, session="another")))
+    assert told(decide(finished(read, tmp_path, agent="a0cacac5"))) == ""
+
+
+def test_a_spawn_its_caller_named_is_told_nothing(tmp_path: Path) -> None:
+    """A chosen name, normalized or not, is the caller's: nothing said, nothing noted."""
+    assert decide(finished("leak_probe", tmp_path)) == {}
+    normalized = str(rewritten(decide(spawn("Leak-Probe")))["name"])
+    assert decide(finished(normalized, tmp_path)) == {}
+    assert not (tmp_path / ".lup").exists()
+
+
+def test_a_project_saying_nothing_tells_nobody() -> None:
+    """No requirement, or a declared silence, leaves every spawn's caller alone."""
+    declared = portable_harness().declared_hooks.spawn_names
+    assert declared is not None
+    read = spawn_name("", DESCRIPTION, declared.erased())
+    silent = declared.model_copy(update={"notice": None}).erased()
+
+    assert spawn_notice(read, DESCRIPTION, declared.erased(), "name")
+    assert spawn_notice(read, DESCRIPTION, silent, "name") == ""
+    assert spawn_notice("", DESCRIPTION, None, "name") == ""
+
+
+def test_the_other_runtime_has_no_description_for_a_name_to_match() -> None:
+    """Codex 0.159.2 requires `task_name`, so every spawn there is its caller's choice.
+
+    Measured against a local Responses fixture: the spawn's schema lists
+    `task_name` as required, a spawn without it fails to parse before any
+    hook runs, and a hyphenated one is refused the same way. Nothing reaches
+    `PostToolUse` unnamed, and its spawn carries no description to read one
+    from, so there is nothing for a notice to say.
+    """
+    declared = portable_harness().declared_hooks.spawn_names
+    assert declared is not None
+
+    assert spawn_notice("probe_name", "", declared.erased(), "task_name") == ""
 
 
 def test_a_hyphen_is_normalized_rather_than_refused() -> None:
