@@ -55,6 +55,10 @@ Run any of them with `uv run lup-devtools <command>`, and add `--help` for its a
 | `dashboard keys` | Print the dashboard&#x27;s keys as your `[dashboard.keys]` leaves them, and every entry it refused. |
 | `dashboard restart` | Restart the running dashboard onto its checkout&#x27;s code, keeping its address. |
 | `dashboard stop` | Stop the running dashboard; it stays stopped until a restart or a launch. |
+| `dashboard budget` | Print each account&#x27;s windows as the budget last read them, its limits, and what this repository&#x27;s agents spent. |
+| `dashboard turtle` | Put every account under the turtle&#x27;s slower limits, or back under its usual ones. |
+| `dashboard priority` | Set an agent&#x27;s priority under its account&#x27;s limits: low holds first, high last. |
+| `dashboard cap` | Set an agent&#x27;s caps, every one at once: a cap left out is cleared, and none clears them all. |
 
 ## `dev`
 

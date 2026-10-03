@@ -58,6 +58,7 @@ from lup.devtools.dashboard.companion import (
     restarted,
     refuse_inside_a_session,
 )
+from lup.devtools.dashboard.budget_commands import budget_commands
 from lup.devtools.dashboard.panes import SetupPane, SetupPanes
 from lup.devtools.dashboard.pulse import PulseFile, answered
 from lup.devtools.review.app import (
@@ -1278,4 +1279,5 @@ def create_operator_dashboard_app(root: Path) -> typer.Typer:
 
         refused("stop", stopped)
 
+    budget_commands(app, root, refused)
     return app

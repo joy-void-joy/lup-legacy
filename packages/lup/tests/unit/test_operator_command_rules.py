@@ -77,6 +77,9 @@ def devtools_policy() -> ShellPolicy:
         "dashboard stop",
         "dashboard reopen --off",
         "dashboard restart",
+        "dashboard turtle on",
+        "dashboard priority lead high",
+        "dashboard cap lead --total-usd 5",
         "harness policy-refresh --nonce abc --repository /example",
     ],
 )
@@ -145,3 +148,5 @@ def test_generation_and_review_inspection_do_not_open_operator_authority(
     )
 
     assert decision.effect == "allow", decision.reason
+        "dashboard budget",
+        "harness profile list",

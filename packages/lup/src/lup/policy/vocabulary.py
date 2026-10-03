@@ -1063,6 +1063,22 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                         "session; it restarts by itself once its checkout's code moves."
                     ),
                 ),
+                # The budget's limits are the operator's: a session that could
+                # lift the turtle or raise an agent's priority or caps would
+                # spend what they kept back. `dashboard budget` only reads.
+                *[
+                    ShellOperationRule(
+                        name=verb,
+                        operator_only=True,
+                        reason="a requesting agent cannot change the operator's budget",
+                        recovery=(
+                            "The operator sets it on the dashboard or from a "
+                            "terminal outside the agent session; `dashboard "
+                            "budget` reads what holds now."
+                        ),
+                    )
+                    for verb in ("turtle", "priority", "cap")
+                ],
             ],
         ),
         ShellSubcommandRule(
