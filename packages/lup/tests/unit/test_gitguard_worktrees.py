@@ -5,7 +5,8 @@ reading `for-each-ref` in one of them sees every branch the repository holds.
 Somebody committing in a sibling while the suite runs moves a ref for real,
 and blaming this run for it turns a routine event into a failure that reads
 exactly like the accident the guard exists for — which is how a real one comes
-to be waved through.
+to be waved through. The stash is the same event with less to go on: one ref
+every worktree pushes onto, attributed from what git recorded of each entry.
 """
 
 import os
@@ -18,6 +19,7 @@ from lup.devtools.gitguard import (
     TEST_IDENTITY,
     ForeignCheckouts,
     RepositoryWatch,
+    StashEntry,
     repository_state,
 )
 
@@ -277,3 +279,146 @@ def test_a_watch_tells_of_a_sibling_cut_mid_run_without_failing(
         "noticed on worker gw2, during tests/test_matrix.py::test_row[gh pr create]"
         in verdict.notice
     )
+
+
+def git_in(where: Path, *arguments: str) -> None:
+    """Run git bound to ``where``, as the suite's own identity."""
+    sh.Command("git")(
+        "-C",
+        str(where),
+        *arguments,
+        _tty_out=False,
+        _env={**os.environ, **TEST_IDENTITY.environment()},
+    )
+
+
+def stashed(where: Path, tag: str) -> None:
+    """Leave work in ``where`` and stash it, as a session setting it aside does."""
+    (where / f"{tag}.txt").write_text("work in progress\n")
+    git_in(where, "stash", "push", "-u", "-m", tag)
+
+
+def test_a_siblings_stash_during_a_watch_is_noticed_without_failing(
+    tmp_path: Path,
+) -> None:
+    """The case that made this necessary: one stash, pushed onto by every worktree.
+
+    Both checkouts stand on one commit here, as every worktree does just after
+    `worktree create`, so the entry's parent names both and its subject is
+    what says the sibling made it.
+    """
+    main = repository_with_a_sibling(tmp_path)
+    watch = RepositoryWatch.armed(main, worker="gw1")
+    stashed(tmp_path / "sibling", "supervision-page-wip")
+
+    verdict = watch.after("tests/test_matrix.py::test_row[gh pr create]")
+
+    assert verdict.failure == ""
+    assert "refs/stash: created" in verdict.notice
+    assert "Another session stashing in a sibling worktree" in verdict.notice
+
+
+def test_a_stash_in_the_watched_checkout_fails_over_a_siblings(
+    tmp_path: Path,
+) -> None:
+    """A sibling's earlier entry excuses nothing stacked on it afterwards.
+
+    The stash has no standing holder: the worktree that pushed last time says
+    nothing about who pushed this time, so this checkout's push fails even in
+    the window straight after a sibling's push was told rather than failed.
+    """
+    main = repository_with_a_sibling(tmp_path)
+    watch = RepositoryWatch.armed(main, worker="gw1")
+    stashed(tmp_path / "sibling", "theirs")
+    assert watch.after("tests/test_a.py::test_first").failure == ""
+    stashed(main, "an-escaped-fixture")
+
+    verdict = watch.after("tests/test_a.py::test_second")
+
+    assert "refs/stash: " in verdict.failure
+    assert "stash every worktree shares" in verdict.failure
+
+
+def test_a_stash_on_a_branch_nobody_holds_fails(tmp_path: Path) -> None:
+    """A branch no worktree holds at either reading is nobody else's to stash on.
+
+    The sibling stashes on a branch of its own and leaves it, so no checkout
+    stands on the entry's parent and the branch its subject names is held by
+    nobody when the watch reads.
+    """
+    main = repository_with_a_sibling(tmp_path)
+    sibling = tmp_path / "sibling"
+    git_in(sibling, "switch", "-c", "loose")
+    committed(sibling, "loose work")
+    git_in(sibling, "switch", "sibling")
+    watch = RepositoryWatch.armed(main, worker="gw1")
+    git_in(sibling, "switch", "loose")
+    stashed(sibling, "left-behind")
+    git_in(sibling, "switch", "sibling")
+
+    verdict = watch.after("tests/test_a.py::test_row")
+
+    assert "refs/stash: created" in verdict.failure
+
+
+def test_a_siblings_pop_still_fails(tmp_path: Path) -> None:
+    """Git records where an entry was made, never who removed it."""
+    main = repository_with_a_sibling(tmp_path)
+    sibling = tmp_path / "sibling"
+    stashed(sibling, "theirs")
+    watch = RepositoryWatch.armed(main, worker="gw1")
+    git_in(sibling, "stash", "pop")
+
+    verdict = watch.after("tests/test_a.py::test_row")
+
+    assert "refs/stash: deleted" in verdict.failure
+
+
+def listed(path: str, head: str, branch: str = "") -> Worktree:
+    """One checkout as a listing names it, detached where it holds no branch."""
+    return Worktree(path=Path(path), head=head, branch=branch, detached=not branch)
+
+
+def test_the_one_checkout_on_the_parent_made_the_entry() -> None:
+    """The parent decides where it names one checkout, whatever the subject says."""
+    listing = [listed("/own", "c1", "trunk"), listed("/sibling", "c2", "sibling")]
+    theirs = str(Path("/sibling").resolve())
+    own = Path("/own").resolve()
+
+    sibling_made = StashEntry(parent="c2", subject="On trunk: x")
+    own_made = StashEntry(parent="c1", subject="On sibling: x")
+
+    assert sibling_made.maker(listing, own, {"refs/heads/sibling": theirs}) == theirs
+    assert own_made.maker(listing, own, {"refs/heads/sibling": theirs}) is None
+
+
+def test_a_detached_checkout_on_the_parent_names_no_maker() -> None:
+    """A checkout holding no branch leaves no sibling to answer for its entry."""
+    listing = [listed("/own", "c1", "trunk"), listed("/loose", "c2")]
+    entry = StashEntry(parent="c2", subject="On (no branch): x")
+
+    assert entry.maker(listing, Path("/own").resolve(), {}) is None
+
+
+def test_the_subject_decides_where_the_parent_names_several_or_none() -> None:
+    """Checkouts sharing a tip, or a stasher that has committed since."""
+    listing = [listed("/own", "c1", "trunk"), listed("/sibling", "c1", "sibling")]
+    theirs = str(Path("/sibling").resolve())
+    holds = {"refs/heads/sibling": theirs}
+    own = Path("/own").resolve()
+
+    shared = StashEntry(parent="c1", subject="WIP on sibling: c1 root")
+    moved_on = StashEntry(parent="c0", subject="On sibling: x")
+    own_made = StashEntry(parent="c1", subject="On trunk: x")
+
+    assert shared.maker(listing, own, holds) == theirs
+    assert moved_on.maker(listing, own, holds) == theirs
+    assert own_made.maker(listing, own, holds) is None
+
+
+def test_a_branch_name_is_matched_whole() -> None:
+    """``feat`` is not the branch an entry made on ``feat/x`` was made on."""
+    entry = StashEntry(parent="", subject="On feat/x: draft")
+
+    assert entry.made_on("feat/x")
+    assert not entry.made_on("feat")

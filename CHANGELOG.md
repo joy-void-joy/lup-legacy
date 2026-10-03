@@ -46,6 +46,24 @@ adapter.
 The generated trees are byte-identical except for the kernel copies and the
 policy data, which carry the plugin roots as data.
 
+### Another session's stash no longer fails the test suite
+
+The suites' guard against a test writing into the real checkout
+(`lup.devtools.gitguard`) failed every test that was running when any
+session stashed, in any worktree of the repository. `refs/stash` is one ref
+that every worktree shares, and the guard attributed only branches and their
+remote-tracking refs to the sibling worktree holding them. One `git stash
+push` in another worktree failed sixteen bystander tests.
+
+- A stash pushed in a sibling worktree is now reported rather than failed.
+  The guard credits the entry to the worktree that made it: the one checkout
+  standing on the entry's first parent, or, where several checkouts or none
+  stand there, the sibling holding the branch that `git stash` named in the
+  entry's subject (`ForeignCheckouts.stashed`, `StashEntry`).
+- A stash pushed in the checkout under test, on a branch no sibling holds,
+  or on a detached head still fails the run. So does a pop or drop by
+  anyone: git records where an entry was made, but not who removed it.
+
 ### Files, locks and per-person state are each spelled once in the library
 
 The same file chores were hand-rolled at dozens of sites, each a little
@@ -178,6 +196,21 @@ two paths it named, so both trees stay protected whichever runtime a session
 runs. An adopter's own `NativeSpellings` implements `protected_tree`, and a
 hook set that listed `.claude` and `.codex` by hand can spread
 `runtime_trees()` instead.
+### A script `uv run` is handed beside an unread word is no longer refused as a bare interpreter
+
+`cd tmp && T=/a; uv run python s.py $T` was refused as a bare interpreter,
+on every placement, while the same line with `T` never assigned was allowed.
+The same refusal met `read T; uv run python s.py $T`,
+`uv run python s.py $(date)` and `uv run perl s.pl $T`. Any command that
+references an unreadable value is checked for a refusal the value could
+never lift. That check judged the program `uv run` runs as if it were run
+directly, and Python run directly is refused over any file, because
+`uv run python` is how it is meant to run. The check now reads the program as
+`uv run` reads it. A script with an unread argument after it gets the floor
+`uv run bash s.sh $T` always got: allowed inside a boundary, refused outside
+one. Inline code (`uv run python -c … $T`) and an unread program
+(`uv run python $T`) stay refused, now with `uv run`'s own reason, and
+`python s.py $T` run directly stays refused.
 
 ### A sibling worktree's scratch is scratch for every question, and a stream is no file
 

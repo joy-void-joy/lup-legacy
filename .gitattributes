@@ -28,3 +28,7 @@ packages/lup/src/lup/web/bundles/** merge=lup-ownership
 # both right, and git's own `union` driver — needing no per-clone registration
 # — keeps every line of each side, with a read folding any duplicate by id.
 ledger/journal.jsonl merge=union
+#
+# The changelog has the same shape: every branch adds its own section at the
+# top of Unreleased, so two branches always meet there and both are right.
+CHANGELOG.md merge=union

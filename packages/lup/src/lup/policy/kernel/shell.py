@@ -708,7 +708,7 @@ def decide_interpreter_words(
 
 
 def standing_interpreter_refusal(
-    words: list[str], context: ShellContext
+    words: list[str], context: ShellContext, runner: str = ""
 ) -> KernelDecision | None:
     """An interpreter's refusal that no word nobody can read could lift.
 
@@ -726,6 +726,13 @@ def standing_interpreter_refusal(
     it is refused on every posture, declared interpreter or not, and through
     `uv run` as directly. An interpreter a project declared otherwise keeps
     its row.
+
+    ``runner`` is the command handing the interpreter its words, which
+    :func:`~lup.policy.kernel.commands.decide_uv` reads by the program alone:
+    `uv run python <script>` is how Python is meant to run, so the refusal
+    of an interpreter run directly is not one through it, and only the code
+    it is handed can stand -- `uv run python s.py $x` hands `$x` to a script
+    file, which nothing `$x` becomes turns into inline code.
     """
     if not words or opaque_argument(words[0]):
         return None
@@ -737,27 +744,33 @@ def standing_interpreter_refusal(
             if normalized is not None and normalized[1:2] == ["run"]
             else []
         )
-        return standing_interpreter_refusal(handed, context) if handed else None
+        return (
+            standing_interpreter_refusal(handed, context, "uv run") if handed else None
+        )
     if executable not in INTERPRETERS:
         return None
+    spelled = f"{runner} {executable}" if runner else executable
     program = read_program(words)
     if program["kind"] == "unread" and opaque_argument(program["subject"]):
-        return program_verdict(executable, program)
-    verdict = decide_interpreter_words(words, context)
+        return program_verdict(spelled, program)
+    verdict = (
+        program_verdict(spelled, program)
+        if runner
+        else decide_interpreter_words(words, context)
+    )
     if verdict is None or verdict.effect != "deny":
         return None
     unread = next(
         (index for index, word in enumerate(words) if opaque_argument(word)),
         len(words),
     )
-    if executable not in SCRIPT_INTERPRETERS:
+    if not runner and executable not in SCRIPT_INTERPRETERS:
         return verdict if unread > 1 else None
-    reading = read_program(words)
     deciding = next(
-        (index for index, word in enumerate(words) if word == reading["subject"]),
+        (index for index, word in enumerate(words) if word == program["subject"]),
         unread,
     )
-    if reading["kind"] in ("inline", "remote") and deciding < unread:
+    if program["kind"] in ("inline", "remote") and deciding < unread:
         return verdict
     return None
 
