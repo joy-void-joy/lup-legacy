@@ -1,46 +1,39 @@
 # lup: ignore[dict-str-payload] — ref name to object id, keyed by whatever
 # refs a repository happens to hold; there is no closed set to model
-"""Catching a test suite that wrote into the repository it is running inside.
-
-A test that forgets to bind git to its throwaway repository inherits the
-process working directory instead, and nothing fails — git finds a repository,
-commits succeed, and the suite passes green while the developer's branch has
-moved. Found the slow way, by a `git pr sync-base` merging a `dev` whose tip
-had become a fixture's commit deleting the application source. The suite cannot
-be trusted to notice, because noticing is exactly what it failed at, so the
-refs are read around it.
+"""Catching a test suite writing into the repository it is running inside.
 
 A test that builds a throwaway repository binds git to it — `git -C <tmp>` —
 and one that forgets inherits the process working directory instead, which
 during a test run is a real checkout. Nothing about that fails: git finds a
 repository, commits succeed, and the suite passes green while the branch the
-developer is standing on has moved. It was found here the slow way, by a
-`git pr sync-base` merging a `dev` whose tip had become a fixture's `chore:
-base` commit deleting the entire application source, an hour after the fixture
+developer is standing on has moved. The damage surfaces late and elsewhere:
+a `git pr sync-base` merges a `dev` whose tip is a fixture's `chore: base`
+commit deleting the entire application source, an hour after the fixture
 ran.
 
 The suite cannot be trusted to notice, because noticing is exactly what it
-failed to do. So the check sits outside every test: the refs of the enclosing
-repository are read once before the session and once after, and a difference
-fails the run naming the refs that moved — except where the ref belongs to
-another worktree of the same repository, which is that worktree's to move and
-so is reported rather than failed on. Detection rather than prevention — a
-ceiling that stopped git discovering the enclosing repository would also stop
-the tests that legitimately read it, and a suite that cannot run is a worse
-trade than one that reports what it broke.
+fails at. So the check sits outside every test: the refs of the enclosing
+repository, and the config a fixture can leak into it, are read before the
+tests run and again after, and a difference fails the run naming what moved
+— except where a ref belongs to another worktree of the same repository,
+which is that worktree's to move and so is reported rather than failed on.
+Detection rather than prevention — a ceiling that stopped git discovering
+the enclosing repository would also stop the tests that legitimately read
+it, and a suite that cannot run is a worse trade than one that reports what
+it broke.
 
 Read around every test, and per worker, rather than once around the session.
 Under xdist each worker is a session of its own over one shared ref store, so
-a difference closed once per session lands on whichever test that worker ran
-last: a policy row about `gh pr create` was failed for a branch a sibling
-session cut forty seconds into the run. A :class:`RepositoryWatch` settles
-after each test against a baseline that moves with it, so a change is laid at
-the door of the test whose window saw it, naming the worker that saw it; and
-the sibling worktrees are re-read when something moved, so a worktree cut
-mid-run answers for its own branch instead of the suite.
+a difference closed once per session would land on whichever test that
+worker ran last — a policy row about `gh pr create`, failed for a branch a
+sibling session cut forty seconds into the run. A :class:`RepositoryWatch`
+settles after each test against a baseline that moves with it, so a change is
+laid at the door of the test whose window saw it, naming the worker that saw
+it; and the sibling worktrees are re-read when something moved, so a worktree
+cut mid-run answers for its own branch instead of the suite.
 
 Nothing here needs the repository to exist: a suite running outside a checkout
-gets an empty snapshot both times and never fails.
+gets an empty snapshot at every reading and never fails.
 """
 
 from collections.abc import Iterator
