@@ -219,7 +219,7 @@
     {
       "path": ".codex/plugins/lup/hooks/runtime/kernel/bindings.py",
       "category": "generated",
-      "sha256": "c28ea1d7c4a201c02ac4bd39e4ca8fc02acd15ab8b918e1b73203cf791c57d9a",
+      "sha256": "b2cb2e9f6d512e8bc9352bcf29a6a18119c3fdef338808ef31ca30c7439d20dc",
       "semantic_id": "hooks.lup-policy",
       "executable": false
     },

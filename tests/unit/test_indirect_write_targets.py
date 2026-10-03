@@ -18,6 +18,15 @@ substitution, a glob, find's `{}`, a directory a `cd` may or may not have
 reached -- is judged as the command it is spelled as, which asks wherever the
 same command naming a protected path would.
 
+A literal assignment behind nothing in its chain that can fail -- another
+literal assignment, a `cd` to a literal directory -- runs whenever its chain
+does, so `cd w && S=/abs; git show A > $S/out` writes `/abs/out` past the `;`,
+while `false && S=…` may be skipped and leaves `S` unread. A literal loop's
+pass binds what it assigns for the rest of that pass, so
+`for v in a b; do W=tmp/$v; rm -rf $W; done` removes `tmp/a` and then
+`tmp/b`, and a name the loop assigns is unread where a pass begins and after
+the loop.
+
 Driven the way a session drives it: each runtime's generated dispatcher on
 the payload its harness sends, under no boundary, the runtime's own sandbox
 and a measured container, and beside it `dev policy`'s reading of the same
@@ -72,6 +81,25 @@ RESOLVED = [
         id="nested-past-the-walk",
     ),
     pytest.param("select x in a; do :; done; rm {protected}", id="after-select"),
+    pytest.param(
+        "cd {checkout} && F={protected}; sed -i 1d $F", id="past-the-chain-assignment"
+    ),
+    pytest.param(
+        "for v in shell; do F=packages/lup/src/lup/policy/kernel/$v.py; sed -i 1d $F; done",
+        id="loop-assignment",
+    ),
+    pytest.param(
+        "for d in kernel; do for v in shell; do"
+        " F=packages/lup/src/lup/policy/$d/$v.py; rm $F; done; done",
+        id="nested-loop-assignment",
+    ),
+    pytest.param(
+        "for d in packages/lup/src/lup/policy/kernel; do F=$d; for v in shell; do rm $F/$v.py; done; done",
+        id="outer-pass-assignment",
+    ),
+    pytest.param(
+        "for v in tmp/x.txt {protected}; do F=$v; rm $F; done", id="loop-one-protected"
+    ),
 ]
 """A protected path the line itself resolves, each spelling its own way there."""
 
@@ -104,6 +132,26 @@ UNRESOLVED = [
     pytest.param("eval 'sed -i 1d {protected}'", id="eval"),
     pytest.param("echo {protected} | xargs rm", id="xargs"),
     pytest.param("bash -c 'sed -i 1d {protected}'", id="bash-c"),
+    pytest.param(
+        "false && F={protected}; sed -i 1d $F", id="skippable-chain-assignment"
+    ),
+    pytest.param("(F={protected}); sed -i 1d $F", id="subshell-assignment"),
+    pytest.param(
+        "for v in shell; do F=packages/lup/src/lup/policy/kernel/$v.py; done; sed -i 1d $F",
+        id="after-the-loop",
+    ),
+    pytest.param(
+        "for v in shell; do if true; then F=packages/lup/src/lup/policy/kernel/$v.py; fi; sed -i 1d $F; done",
+        id="loop-branch-assignment",
+    ),
+    pytest.param(
+        "for v in x shell; do sed -i 1d $F; F=packages/lup/src/lup/policy/kernel/$v.py; done",
+        id="loop-earlier-pass",
+    ),
+    pytest.param(
+        "for v in shell; do F=$(echo packages/lup/src/lup/policy/kernel/$v.py); sed -i 1d $F; done",
+        id="loop-substituted-assignment",
+    ),
 ]
 """A write whose target nothing on the line can read, where it may be protected."""
 
@@ -134,6 +182,31 @@ AS_WRITTEN = [
     pytest.param("cd tmp || rm src/app.py", "rm src/app.py", id="failed-cd-ordinary"),
     pytest.param("if cd tmp; then rm x.txt; fi", "rm tmp/x.txt", id="if-cd-scratch"),
     pytest.param("cd tmp && rm x.txt", "rm tmp/x.txt", id="cd-scratch"),
+    pytest.param(
+        "cd {checkout} && S={checkout}/tmp; git show HEAD > $S/out.txt",
+        "git show HEAD > {checkout}/tmp/out.txt",
+        id="past-the-chain-redirect",
+    ),
+    pytest.param(
+        "cd {checkout} && W={checkout}/tmp/x.txt; rm -rf $W",
+        "rm -rf {checkout}/tmp/x.txt",
+        id="past-the-chain-rm",
+    ),
+    pytest.param(
+        "for v in a b; do W=tmp/$v.txt; rm -rf $W; done",
+        "rm -rf tmp/a.txt; rm -rf tmp/b.txt",
+        id="loop-assignment-scratch",
+    ),
+    pytest.param(
+        "for v in app; do F=src/$v.py; sed -i 1d $F; done",
+        "for v in app; do sed -i 1d src/$v.py; done",
+        id="loop-assignment-ordinary",
+    ),
+    pytest.param(
+        "for d in tmp; do for v in a b; do F=$d/$v.txt; rm $F; done; done",
+        "rm tmp/a.txt; rm tmp/b.txt",
+        id="nested-loop-scratch",
+    ),
 ]
 """An ordinary or scratch path through the same shapes, and the literal it resolves to."""
 

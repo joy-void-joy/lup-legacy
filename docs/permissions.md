@@ -247,7 +247,16 @@ knows.** A variable the line settles is resolved before any rule reads a
 word: an assignment standing first in its chain holds for everything after
 it, and one reached through nothing but `&&` holds for the rest of that
 chain, so `cd w && F=<protected path> && sed -i … $F` asks exactly as the
-same `sed` naming the path does. Where the line cannot settle the value — a
+same `sed` naming the path does. Where nothing before it in the chain can
+fail — another literal assignment, a `cd` to one literal directory, which the
+placing pass already takes to succeed — it holds past the chain too:
+`cd w && S=/abs; git show A > $S/out` writes `/abs/out`. Behind anything that
+can fail, as in `false && S=/abs`, the assignment may be skipped, and past the
+chain `S` holds whatever it held before. A loop over literal words reads its
+body once per word, and an assignment standing in the body holds for the rest
+of that pass: `for v in a b; do W=tmp/$v; rm -rf $W; done` removes `tmp/a`,
+then `tmp/b`. A name the body assigns is unread as each pass begins and after
+the loop. Where the line cannot settle the value — a
 `read`, a substitution, an assignment an `||` or a branch may skip, a loop
 over a glob or over more words than it reads, `find`'s `{}`, a path named
 from a directory a `cd` may or may not have reached — the word is left as

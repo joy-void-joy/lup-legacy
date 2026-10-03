@@ -211,11 +211,40 @@ class Placed(TypedDict):
 
     command: Command
     standing: bool
-    """An assignment here holds for every word after it in the list."""
+    """An assignment here holds for every word after it in the list.
+
+    Behind `&&` too, where nothing before it in the chain can fail
+    (:func:`certain`): what such a chain holds runs whenever the chain does."""
     chained: bool
     """An assignment here holds for the rest of its `&&` chain, and no further."""
     opens: bool
     """What a chain before this command bound stops holding here."""
+
+
+def certain(pipeline: Pipeline) -> bool:
+    """Whether a `&&` chain member is taken to run and succeed whenever it is reached.
+
+    An assignment of literal values cannot fail. A `cd` naming one literal
+    directory is taken to have reached it, which is the reading the placing
+    pass gives every literal `cd` a later command is placed behind; a
+    `cd` that fails leaves the shell where it was, and that reading is
+    already the one judged. Anything else -- `false`, `test -f x`, an
+    assignment whose value runs a command -- can fail, and skip what its
+    chain holds after it.
+    """
+    match pipeline["commands"]:
+        case [command] if command["kind"] == "simple" and not command["redirects"]:
+            texts = [word_text(word) for word in command["words"]]
+            match texts:
+                case ["cd", operand] if not operand.startswith("-"):
+                    return literal_loop_word(command["words"][1])
+                case _:
+                    assigned = pure_assignment_names(texts)
+                    return bool(assigned) and all(
+                        pair["value"] is not None for pair in assigned or []
+                    )
+        case _:
+            return False
 
 
 def placed_commands(script: Script, standing: bool) -> list[Placed]:
@@ -231,25 +260,31 @@ def placed_commands(script: Script, standing: bool) -> list[Placed]:
     whatever `F` held before. An `||` runs what follows where something
     before it failed or was skipped, and the next item runs either way, so
     the chain ends at the first of them, and past it the name holds whichever
-    value ran.
+    value ran. Where nothing before it in the chain can fail (:func:`certain`)
+    it runs whenever the chain does, and stands: `cd w && S=/abs; … $S` reads
+    `/abs` past the `;`, while `false && S=/abs; … $S` reads whatever `S`
+    already held.
     """
     return [
         Placed(
             command=command,
             standing=standing
             and item["terminator"] != "&"
-            and index == 0
-            and len(pipeline["commands"]) == 1,
+            and len(pipeline["commands"]) == 1
+            and all(operator == "&&" for operator in operators[:index])
+            and all(certain(before) for before in pipelines[:index]),
             chained=standing
             and item["terminator"] != "&"
             and index > 0
             and len(pipeline["commands"]) == 1
-            and all(operator == "&&" for operator in operators[:index]),
+            and all(operator == "&&" for operator in operators[:index])
+            and not all(certain(before) for before in pipelines[:index]),
             opens=position == 0 and (index == 0 or operators[index - 1] == "||"),
         )
         for item in script["items"]
         for operators in [item["andor"]["operators"]]
-        for index, pipeline in enumerate(item["andor"]["pipelines"])
+        for pipelines in [item["andor"]["pipelines"]]
+        for index, pipeline in enumerate(pipelines)
         for position, command in enumerate(pipeline["commands"])
     ]
 
@@ -472,21 +507,44 @@ def unrollable(command: Command, limit: int = 16) -> bool:
     return assigned is not None and command["name"] not in assigned
 
 
-def unrolled_body(command: Command) -> Script:
-    """A literal loop's body once per word, in order: every pass it makes.
+def bound_passes(
+    command: Command, bindings: tuple[ShellBinding, ...], unsettled: list[str]
+) -> Script:
+    """A literal loop's passes, each binding what it assigns for the rest of itself.
+
+    A pass runs its body's list in order, so an assignment standing in it --
+    `W=tmp/$v; rm -rf $W` -- holds for the rest of that pass, which reads
+    `rm -rf tmp/a` on one pass and `rm -rf tmp/b` on the next. What a name
+    the body assigns holds as a pass begins is the outer value or whatever an
+    earlier pass left, and a `break` or `continue` there decides which, so
+    each pass starts with it unread. What stands nowhere in the pass -- an
+    assignment in a branch, beside a pipe, after an `||` -- stays unread for
+    the whole pass, as it does anywhere. After the loop the names it assigns
+    stay unread too: :func:`bind_script` counts them unsettled for the line.
 
     Sequential rather than side by side, because a pass leaves the shell
     where its `cd` took it for the next one, which is where the placing pass
     reads each copy's words from.
     """
-    passes = [
-        expanded_script(
+    assigned = unsettled_names(command["body"], standing=False) or []
+    outside = [name for name in unsettled if name not in assigned]
+    start = bindings
+    for name in assigned:
+        start = bind_name(start, name, None)
+    items: list[Item] = []
+    for word in command["words"]:
+        body = expanded_script(
             command["body"],
             (ShellBinding(name=command["name"], value=word_text(word)),),
         )
-        for word in command["words"]
-    ]
-    return Script(items=[item for body in passes for item in body["items"]])
+        within = unsettled_names(body)
+        if within is None:
+            items.extend(bound_list(body, start, unsettled, False)["script"]["items"])
+            continue
+        items.extend(
+            bound_list(body, start, [*outside, *within], True)["script"]["items"]
+        )
+    return Script(items=items)
 
 
 class BoundList(TypedDict):
@@ -546,9 +604,8 @@ def bound_list(
                 # Read once per word here, for every reader of the line: a
                 # redirection's target or a `cd`'s directory in the body then
                 # names each path a pass reaches, where it named the variable.
-                scope = bindings
-                passes = bound_list(unrolled_body(expanded), scope, unsettled, False)
-                return rebuilt_lists(expanded, lambda _body: passes["script"])
+                passes = bound_passes(expanded, bindings, unsettled)
+                return rebuilt_lists(expanded, lambda _body: passes)
             case _:
                 scope = bindings
                 return rebuilt_lists(
