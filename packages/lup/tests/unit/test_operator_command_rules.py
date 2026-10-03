@@ -119,6 +119,18 @@ def test_a_session_may_open_a_child_session(runtime: str, flags: str) -> None:
     assert decision.effect == "allow", decision.reason
 
 
+@pytest.mark.parametrize("runtime", ["", " --runtime codex"])
+def test_switching_the_repositorys_account_asks_the_operator(runtime: str) -> None:
+    decision = devtools_policy().decide(
+        ShellCommand(
+            command=f"uv run lup-devtools harness profile switch work{runtime}"
+        )
+    )
+
+    assert decision.effect == "ask", decision.reason
+    assert "another account's login" in decision.reason
+
+
 @pytest.mark.parametrize("runtime", ["claude", "codex"])
 def test_a_child_session_without_a_boundary_is_asked(runtime: str) -> None:
     decision = devtools_policy().decide(
@@ -138,6 +150,8 @@ def test_a_child_session_without_a_boundary_is_asked(runtime: str) -> None:
         "review cancel abc --reason withdrawn",
         "dashboard status",
         "dashboard line /state/lent/dashboard.json",
+        "dashboard budget",
+        "harness profile list",
     ],
 )
 def test_generation_and_review_inspection_do_not_open_operator_authority(
@@ -148,5 +162,3 @@ def test_generation_and_review_inspection_do_not_open_operator_authority(
     )
 
     assert decision.effect == "allow", decision.reason
-        "dashboard budget",
-        "harness profile list",

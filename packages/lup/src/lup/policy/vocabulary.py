@@ -1215,6 +1215,31 @@ def devtools_rules() -> list[ShellSubcommandRule]:
                     reason="a requesting agent cannot accept replacement destination policy",
                     recovery="The operator must refresh from a terminal outside the agent session.",
                 ),
+                # Moving a repository's sessions onto another account is the
+                # operator's to choose, each time: one an agent made on its
+                # own when its account ran out would be the automatic
+                # failover the providers' terms rule out. Asked rather than
+                # refused, so a session the person told to switch puts it to
+                # them and carries it out once they approve.
+                ShellOperationRule(
+                    name="switch",
+                    parents=["profile"],
+                    effects=[
+                        declare(
+                            "mutates_environment",
+                            scope="repository sessions' account",
+                            reach="credential",
+                        )
+                    ],
+                    reason=(
+                        "it moves every contained session of the repository onto "
+                        "another account's login"
+                    ),
+                    recovery=(
+                        "The operator approves it, switches on the dashboard "
+                        "(`:switch`), or runs it from their own terminal."
+                    ),
+                ),
                 # A launch from inside a session opens a session of its own, and
                 # these flags lend it what no registration names -- for that one
                 # launch, the widening a registration makes for every launch
