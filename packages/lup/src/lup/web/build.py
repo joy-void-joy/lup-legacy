@@ -77,6 +77,7 @@ def source_files(
     globs: tuple[str, ...] = (
         "package.json",
         "bun.lock",
+        "bunfig.toml",
         "tsconfig.json",
         "vite.config.ts",
         "schema/**/*",
@@ -86,7 +87,9 @@ def source_files(
     """Every file the bundles are built from, in one stable order.
 
     The globs are what a bundle is compiled from, and therefore what its proof
-    digests; a workspace laid out differently names its own. Only what a clone
+    digests; a workspace laid out differently names its own. `bunfig.toml` is
+    one, since every bun command the build runs reads it, down to which
+    runtime runs the build script. Only what a clone
     of the checkout holds counts — tracked, or new and not ignored. A file git
     ignores under `src/` is a tool's state or a build's scratch that no import
     reaches, and digesting it would make the proof hold only in the checkout
