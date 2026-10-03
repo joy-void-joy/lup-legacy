@@ -570,7 +570,7 @@ CLAUDE_DISPATCHER = DispatcherDeclaration(
     ],
     hook_events=["PreToolUse", "PostToolUse"],
     observation_event="PostToolUse",
-    observed_tools=["Edit", "Write", "Bash"],
+    observed_tools=["Edit", "Write", "Bash", "Agent"],
     failure="conservative_ask",
     runtime_modules=["caller_payload", "policy_data"],
 )
