@@ -545,7 +545,8 @@ def test_a_writer_is_told_its_own_fork_holds_what_it_wrote(
 
     assert asked == "allow"
     assert said.splitlines() == [
-        "cli.py: your subagent sweep holds this file and is still running"
+        "warning: `cli.py` — your subagent sweep holds this file and is still running",
+        "→ tell it what you wrote, before it writes over your change",
     ]
 
 

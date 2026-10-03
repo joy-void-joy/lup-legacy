@@ -2,24 +2,25 @@
 // place, so no stylesheet rule can leave a closed one on the screen — and every
 // one closes the same way: `q`, `Esc` or `Ctrl+[`, its ✕, or the key that
 // opened it. Floats have a border and no shadow, as the high-contrast themes do.
-import { useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
+import { lazy, Suspense, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import type { TranscriptEntry } from "../generated/views";
 import type { Dashboard } from "./dashboard";
 import { COMMANDS, openCommand, runCommand } from "./commands";
 import { rowHere } from "./editor";
 import { found, pick, type FinderItem } from "./finder";
-import { highlightedLines } from "./highlight";
+import { GRAMMARS, highlightedLines, languageFor, useGrammars } from "./highlight";
 import { CATALOG, prettyKeys } from "./keys";
 import { MODE_TEXT, PALETTE, worst } from "./palette";
 import { exceptionRules, headOf, headText, judgedOf, markerLabel, plural, reviewLabel, sentComments } from "./review";
 import type { Feature } from "./served";
-import type { PageState } from "./state";
+import type { CodeAsk, PageState } from "./state";
 import { activityBrief, attention, clock, kindWords, mailHeads, standing, stamp } from "./supervision";
 import { memberName } from "./threads";
 
 /** A value as pretty-printed JSON, coloured, every string's `\n` followed by a real line break so a document reads by its lines and stays exact JSON. */
 export function Json({ value }: { value: unknown }) {
-  const lines = useMemo(() => highlightedLines(JSON.stringify(value, null, 2) ?? "null", "json"), [value]);
+  const grammars = useGrammars(["json"]);
+  const lines = useMemo(() => highlightedLines(JSON.stringify(value, null, 2) ?? "null", "json"), [value, grammars]);
   return <pre className="json">{lines.map((line, index) => <span key={index}>{line.tokens.map((token, at) => <span key={at} className={token.classes === "" ? undefined : token.classes}>{token.text.replaceAll("\\n", "\\n\n")}</span>)}{"\n"}</span>)}</pre>;
 }
 
@@ -173,8 +174,61 @@ function Checkouts({ d, state }: { d: Dashboard; state: PageState }) {
   </Shell>;
 }
 
-/** What `K` says of what the cursor is on. */
-function hovered(d: Dashboard, state: PageState): ReactNode {
+/** Markdown, read by react-markdown, which turns it into elements and never into HTML: loaded with the first hover that needs it. */
+const Markdown = lazy(() => import("react-markdown"));
+
+/** A fence's language as a grammar: its name where one is called that, else read as a file extension (`py`, `ts`, `sh`). */
+function fenced(language: string): string | null {
+  return Object.hasOwn(GRAMMARS, language) ? language : languageFor(`fenced.${language}`);
+}
+
+/** A code block of a hover — a signature, a docstring's example — coloured by its language's grammar once it loads. */
+function Fenced({ text, language }: { text: string; language: string | null }) {
+  const settled = useGrammars([language]);
+  const lines = useMemo(() => highlightedLines(text.replace(/\n$/, ""), language), [text, language, settled]);
+  return <pre className="hv-pre">{lines.map((line, index) => <span key={index}>{line.tokens.map((token, at) => <span key={at} className={token.classes === "" ? undefined : token.classes}>{token.text}</span>)}{"\n"}</span>)}</pre>;
+}
+
+/** The text a Markdown element holds, its children's text joined. */
+function textOf(node: { type: string; value?: string; children?: unknown[] } | undefined): string {
+  if (node === undefined) return "";
+  if (node.type === "text") return node.value ?? "";
+  return (node.children ?? []).map((child) => textOf(child as { type: string; value?: string; children?: unknown[] })).join("");
+}
+
+/**
+ * What a language server says of a name, as Markdown: its type or signature
+ * in a fence, coloured as code, and its documentation as prose. A fence that
+ * names no language is read in the document's own. Links are drawn as text,
+ * since nothing a hover says is somewhere the page goes.
+ */
+function HoverMarkdown({ markdown, language }: { markdown: string; language: string | null }) {
+  return <Markdown skipHtml components={{
+    pre: ({ node }) => {
+      const code = node?.children[0];
+      const named = code?.type === "element" ? code.properties.className : undefined;
+      const fence = Array.isArray(named) ? String(named.find((each) => String(each).startsWith("language-")) ?? "").slice("language-".length) : "";
+      return <Fenced text={textOf(code as never)} language={fence === "" ? language : fenced(fence)} />;
+    },
+    a: ({ children }) => <span className="link">{children}</span>,
+    img: ({ alt }) => <span className="muted">{alt}</span>,
+  }}>{markdown}</Markdown>;
+}
+
+/** The language server's answer in the hover: asking, what it said, or why it said nothing. */
+function CodeAnswer({ ask }: { ask: CodeAsk }) {
+  const language = languageFor(ask.at.source.path);
+  const hover = ask.hover;
+  if (hover === null) return <p className="muted">asking what {ask.at.name} is…</p>;
+  if (hover.markdown === "") return <p className="muted"><b>{ask.at.name}</b>: {hover.why || "nothing is known about it"}</p>;
+  return <div className="hv-code">
+    <Suspense fallback={<pre className="hv-pre">{hover.markdown}</pre>}><HoverMarkdown markdown={hover.markdown} language={language} /></Suspense>
+    <p className="muted">{hover.server} · gd its definition · gr its uses</p>
+  </div>;
+}
+
+/** What `K` says of what the cursor is on; beside a language server's answer (`code`), only what is attached to the line. */
+function hovered(d: Dashboard, state: PageState, code = false): ReactNode {
   const live = state.live;
   if (live === null) return null;
   if (state.focus === "queue" && state.view !== "history") {
@@ -209,6 +263,7 @@ function hovered(d: Dashboard, state: PageState): ReactNode {
           at.exception !== null ? <div key="x"><p className="orange">rule exception: {exceptionRules(at.exception, true)} · {at.exception.introduced ? "added by this change" : "already there"}</p><p>{at.exception.reason || "No reason supplied"}</p><p className="muted">{reviewLabel(at.exception.review_effect)}: {at.exception.review_reason}</p></div> : null,
           ...comments.map((comment, index) => <p key={`c${index}`} className="info">● {"author" in comment ? comment.author : "draft"}: {comment.note || "(empty draft)"}</p>),
         ].filter((each) => each !== null);
+        if (code) return said.length > 0 ? <>{said}</> : null;
         return <><h4>{file.path.slice(file.path.lastIndexOf("/") + 1)} · {at.kind === "add" ? "added" : at.kind === "remove" ? "removed" : "unchanged"} line{at.old !== null ? ` · before ${at.old}` : ""}{at.new !== null ? ` · after ${at.new}` : ""}</h4>
           {said.length > 0 ? said : <p className="muted">Nothing is attached to this line. i comments on it; V picks a range.</p>}</>;
       }
@@ -237,7 +292,7 @@ function hovered(d: Dashboard, state: PageState): ReactNode {
   return <p className="muted">Nothing to say about this line.</p>;
 }
 
-function Hover({ d, state, top, left }: { d: Dashboard; state: PageState; top: number; left: number }) {
+function Hover({ d, state, top, left, code }: { d: Dashboard; state: PageState; top: number; left: number; code: CodeAsk | undefined }) {
   const element = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const float = element.current;
@@ -247,9 +302,11 @@ function Hover({ d, state, top, left }: { d: Dashboard; state: PageState; top: n
     float.style.top = `${top + height + 8 < window.innerHeight ? top : Math.max(4, top - height - 24)}px`;
     float.style.left = `${Math.min(Math.max(4, left), window.innerWidth - width - 4)}px`;
   });
-  return <div id="hover" className="float" ref={element} role="dialog" aria-label="Hover">
-    {hovered(d, state)}
-    <p className="muted">K or Esc closes</p>
+  return <div id="hover" className={`float${code !== undefined ? " code" : ""}`} ref={element} role="dialog" aria-label="Hover"
+    onMouseLeave={() => { if (code?.pointer === true) d.set({ float: null }); }}>
+    {code !== undefined && <CodeAnswer ask={code} />}
+    {code?.pointer !== true && hovered(d, state, code !== undefined)}
+    {code?.pointer !== true && <p className="muted">K or Esc closes</p>}
     <button type="button" className="fx" aria-label="Close" onClick={() => d.set({ float: null, touch: { ...state.touch, sheet: "" } })}>✕</button>
   </div>;
 }
@@ -323,7 +380,7 @@ export function Floats({ d, state }: { d: Dashboard; state: PageState }) {
     {float?.kind === "contrast" && <Contrast d={d} />}
     {float?.kind === "keys" && <Keys d={d} />}
     {float?.kind === "checkouts" && <Checkouts d={d} state={state} />}
-    {float?.kind === "hover" && <Hover d={d} state={state} top={float.top} left={float.left} />}
+    {float?.kind === "hover" && <Hover d={d} state={state} top={float.top} left={float.left} code={float.code} />}
     {float?.kind === "finder" && <Finder d={d} state={state} picker={float.picker} query={float.query} cur={float.cur} />}
     {float?.kind === "transcript" && <Transcript d={d} state={state} />}
   </>;

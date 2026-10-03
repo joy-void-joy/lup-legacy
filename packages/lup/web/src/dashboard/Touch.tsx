@@ -7,7 +7,8 @@
 // runs on the desktop, and nothing is hover-only.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Answer, Dashboard } from "./dashboard";
-import { commitVisual, cancelVisual, gotoJudged, hover, moveAgent, moveException, moveFile, moveInbox, moveMarker, moveReview, rowHere, rowsOf, setCursor, startVisual, toggleWhole, transcriptHere, visualSpan } from "./editor";
+import { columnAt } from "./caret";
+import { askHover, codeAt, commitVisual, cancelVisual, gotoJudged, hover, moveAgent, moveException, moveFile, moveInbox, moveMarker, moveReview, rowHere, rowsOf, setCursor, startVisual, toggleWhole, transcriptHere, visualSpan } from "./editor";
 import { openCommand, runCommand } from "./commands";
 import { openFinder } from "./finder";
 import { askedBy, exceptionStops, headOf, headShort, judgedOf, markerStops, plural, stateLabel, stateSign, type Row } from "./review";
@@ -226,11 +227,14 @@ export function useGestures(d: Dashboard, narrow: boolean): void {
       now.at = performance.now();
       const row = event.target.closest<HTMLElement>(".r");
       if (row === null || d.centerKind() !== "review" || d.state.visual !== null) return;
+      // A long press on a name in code asks what it is, as K does; anywhere else on a line it starts a range.
+      const index = pane.dataset.pane === "1" ? 1 : 0;
+      const code = event.target.closest(".tx") === null ? null : codeAt(d, index, Number(row.dataset.i), columnAt(row, event.clientX, event.clientY));
       now.timer = setTimeout(() => {
         now.suppress = true;
-        const index = pane.dataset.pane === "1" ? 1 : 0;
         d.set({ pane: index, focus: "editor" });
         setCursor(d, index, Number(row.dataset.i));
+        if (code !== null && code.name !== "") { askHover(d, code, now.y, now.x, false); return; }
         const at = rowsOf(d, index)[Number(row.dataset.i)];
         if (at?.t !== "line" || at.num === null) { d.say("long-press a line of a file to comment on it"); return; }
         startVisual(d);

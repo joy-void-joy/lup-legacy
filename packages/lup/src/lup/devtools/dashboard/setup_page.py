@@ -41,6 +41,8 @@ from lup.devtools.dashboard.wizard import (
     Wizard,
 )
 from lup.devtools.setup import Integration
+from lup.diagnostics import refuse
+from lup.policy.kernel.diagnostic import devtools, spelled
 from lup.types import EnvVars
 from lup.web.serve import serve_local_page
 
@@ -86,20 +88,21 @@ class IntegrationStep(SetupStep[EnvScope], frozen=True):
 
     def standing(self, scope: EnvScope) -> StepStanding:
         status = self.integration.check_status(self.integration.stored())
+        command = spelled(devtools("setup", self.integration.command))
         refused = self.integration.refused_here()
         if refused:
             return StepStanding(
-                done=status.ok, detail=status.detail, offered=False, blocked=refused
+                done=status.ok,
+                detail=status.detail,
+                offered=False,
+                blocked=f"{refused}; set it from a terminal on the host: `{command}`",
             )
         if self.integration.setup_func is not None and not self.integration.fields:
             return StepStanding(
                 done=status.ok,
                 detail=status.detail,
                 offered=False,
-                blocked=(
-                    "This one prompts on a terminal: run "
-                    f"`uv run lup-devtools setup {self.integration.command}`."
-                ),
+                blocked=f"This one prompts on a terminal: run `{command}`.",
             )
         return StepStanding(done=status.ok, detail=status.detail)
 
@@ -224,6 +227,6 @@ def create_setup_page_app(
         try:
             serve_local_page(build, "Lup setup", host, port, open_page)
         except ValueError as error:
-            raise typer.BadParameter(str(error)) from error
+            refuse(str(error), code=2)
 
     return app

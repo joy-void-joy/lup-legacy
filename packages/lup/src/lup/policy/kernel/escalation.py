@@ -25,6 +25,8 @@ a rule id.
 import re
 from typing import Literal
 
+from .diagnostic import Step, step
+
 type EscalationKind = Literal["decision", "sandbox"]
 """Which axis a marker asks to move.
 
@@ -81,11 +83,7 @@ agent would spend a turn discovering the call still ran inside.
 """
 
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
-MISSING_KIND = (
-    "escalation names no kind: write '# lup: escalate[decision]: <why>' to put"
-    " this to a reviewer, or '# lup: escalate[sandbox]: <why>' to run it on the"
-    " host"
-)
+MISSING_KIND = "escalation names no kind"
 """What a marker naming no kind is refused with.
 
 Refused rather than read as a decision, because the kind is the request: a
@@ -93,6 +91,14 @@ marker that does not name one asks for nothing settlement can act on, and
 the sandbox half — the one an agent stuck inside the boundary needs — is
 learned from this refusal or not at all.
 """
+
+
+# lup: ignore[library-default] — refusal wording, declared with its verdict
+KIND_RECOVERY = (
+    step("put it to a reviewer with a first line `# lup: escalate[decision]: <why>`"),
+    step("or run it on the host with a first line `# lup: escalate[sandbox]: <why>`"),
+)
+"""The ways past a marker that named no kind: the two kinds it could name."""
 
 
 class EscalationRequest:
@@ -138,13 +144,19 @@ class MarkerReading:
     request: EscalationRequest | None
     refusal: str
     remainder: str
+    recovery: tuple[Step, ...]
 
     def __init__(
-        self, request: EscalationRequest | None, refusal: str, remainder: str
+        self,
+        request: EscalationRequest | None,
+        refusal: str,
+        remainder: str,
+        recovery: tuple[Step, ...] = (),
     ) -> None:
         self.request = request
         self.refusal = refusal
         self.remainder = remainder
+        self.recovery = recovery
 
 
 def read_escalation(text: str) -> MarkerReading:
@@ -170,7 +182,7 @@ def read_escalation(text: str) -> MarkerReading:
         return MarkerReading(None, MISSING_REASON, remainder)
     named = marker.group("kinds")
     if named is None:
-        return MarkerReading(None, MISSING_KIND, remainder)
+        return MarkerReading(None, MISSING_KIND, remainder, KIND_RECOVERY)
     # lup: ignore[string-split] — the marker's own comma-separated kind list,
     # a grammar this repository defines and nothing else parses
     named_kinds = [word.strip().lower() for word in named.split(",")]

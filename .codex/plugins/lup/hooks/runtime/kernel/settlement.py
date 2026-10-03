@@ -36,6 +36,7 @@ from .decision import (
     joined_placement,
     recovery_dischargeable,
 )
+from .diagnostic import Step, step
 from .escalation import EscalationRequest
 from .roles import is_session_scratch_target, is_temporary_root_target
 from .rows import DisplacedTargetRow, TargetLandingRow
@@ -59,15 +60,13 @@ ESCALATED_PREFIX = "escalated ({reason}): "
 # lup: ignore[constant-declaration] — a row's own wording
 CONTAINED_READ = " — run inside the containment boundary, which confines it"
 # lup: ignore[constant-declaration] — a row's own wording
-RECOVERED_LOSS = " — allowed without asking: {held}"
+RECOVERED_LOSS = "the paths it changes are captured and can be restored"
 # lup: ignore[constant-declaration] — a row's own wording
 CHECKPOINT_FAILED = " — the snapshot that would have made this undoable failed"
 # lup: ignore[constant-declaration] — a row's own wording
 NO_REVIEWER = ", and nobody who could approve it is reachable from this session"
 # lup: ignore[constant-declaration] — a row's own wording
-CONTAINED_JUDGED = (
-    " — allowed without asking: what it changes stays inside this container"
-)
+CONTAINED_JUDGED = "what it changes stays inside this container"
 
 
 class SettlementFacts:
@@ -99,7 +98,7 @@ class SettlementFacts:
     would refuse it."""
     displaced: list[DisplacedTargetRow]
     landings: list[TargetLandingRow]
-    hint: str
+    hint: tuple[Step, ...]
 
     def __init__(
         self,
@@ -117,7 +116,7 @@ class SettlementFacts:
         readonly: list[str] | None = None,
         displaced: list[DisplacedTargetRow] | None = None,
         landings: list[TargetLandingRow] | None = None,
-        hint: str = "",
+        hint: tuple[Step, ...] = (),
         guarded: list[str] | None = None,
     ) -> None:
         self.decision = decision
@@ -476,8 +475,8 @@ class UnleasedWrite(SettlementRule):
         # read. A deferral's own reason stays, since "nobody judged this"
         # is a second fact the same approval answers.
         written = (
-            f"writes {', '.join(reported)}, which this launch did not mount"
-            " writable and nothing captured"
+            "the write lands where this launch mounted nothing writable, and"
+            " nothing captured it"
         )
         return facts.decision.revised(
             effect="ask",
@@ -487,6 +486,7 @@ class UnleasedWrite(SettlementRule):
                 else f"{facts.decision.reason}; {written}"
             ),
             purpose="unrecovered_local_mutation",
+            subject=" ".join(reported),
             # Named, because the verdict this replaces is reached by the
             # vocabulary finding nothing to say and carries no id of its own.
             # An ask that names no rule is one nobody can write a case for.
@@ -552,11 +552,15 @@ class ReadOnlyWrite(SettlementRule):
             effect="deny",
             reason="; ".join([*held, *pointed]),
             recovery=(
-                "Work in a worktree of that repository; git's own commands --"
-                " `git worktree add`, `move`, `remove` and `prune`, `git"
-                " update-ref` -- reach what they need without writing config,"
-                " hooks, pointers or refs by hand, and a setting that has to"
-                " change is changed from an operator terminal."
+                step(
+                    "work in a worktree of that repository",
+                    ["git", "worktree", "add", "<path>", "<branch>"],
+                ),
+                step(
+                    "let git's own commands write what they need: `git worktree"
+                    " move`, `remove` and `prune`, `git update-ref`"
+                ),
+                step("ask the operator to change a setting from their own terminal"),
             ),
             cause="deliberate",
             purpose=None,
@@ -684,13 +688,16 @@ class ContainedJudgement(SettlementRule):
             facts.stays_inside(part.reach) for part in (decision, *judged)
         ):
             return None
+        # The allow says why it is allowed, in place of the question it
+        # settles: "requires approval" beside "allowed without asking" told
+        # the reader both at once.
         return decision.revised(
             effect="allow",
-            reason=decision.reason + CONTAINED_JUDGED,
+            reason=CONTAINED_JUDGED,
             sandbox="inside",
             purpose=None,
             cause=None,
-            recovery="",
+            recovery=(),
             abstention=None,
         )
 
@@ -734,7 +741,7 @@ class RecoveredLoss(SettlementRule):
             return None
         match facts.checkpoint:
             case "complete":
-                held = "the affected paths are captured and restorable"
+                pass
             case "failed":
                 return facts.decision.revised(
                     reason=facts.decision.reason + CHECKPOINT_FAILED,
@@ -744,8 +751,9 @@ class RecoveredLoss(SettlementRule):
                 return None
         return facts.decision.revised(
             effect="allow",
-            reason=facts.decision.reason + RECOVERED_LOSS.format(held=held),
+            reason=RECOVERED_LOSS,
             purpose=None,
+            recovery=(),
             visibility="notice",
         )
 

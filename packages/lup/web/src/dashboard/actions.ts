@@ -4,7 +4,7 @@
 // the keymap in effect: lup's keys, with the person's and this tab's over them.
 import type { LiveSession } from "../generated/views";
 import type { Dashboard } from "./dashboard";
-import { cancelVisual, changeJump, closeComment, commentAtCursor, commitVisual, copyLink, cursorColumn, cycleWin, edge, enter, escape, fold, foldTree, goAsker, goReview, gotoJudged, gotoLine, halfPage, hover, lineEdge, memberHere, moveAgent, moveCursor, moveException, moveFile, moveInbox, moveMarker, moveReview, moveWin, quit, replyHere, replyToMessage, repositoryHere, rowHere, searchStep, setCursor, setPaneView, split, startSearch, startVisual, toggleFull, toggleSide, toggleWhole, transcriptHere, undoDelete, wordMotion, xHere } from "./editor";
+import { cancelVisual, changeJump, closeComment, commentAtCursor, commitVisual, copyLink, cursorColumn, cycleWin, edge, enter, escape, findReferences, fold, foldTree, goAsker, goDefinition, goReview, gotoJudged, gotoLine, halfPage, hover, jumpBack, lineEdge, memberHere, moveAgent, moveCursor, moveException, moveFile, moveInbox, moveMarker, moveReview, moveWin, quit, replyHere, replyToMessage, repositoryHere, rowHere, searchStep, setCursor, setPaneView, split, startSearch, startVisual, toggleFull, toggleSide, toggleWhole, transcriptHere, undoDelete, wordMotion, xHere } from "./editor";
 import { keyName, type Bound } from "./keys";
 import { commandKey, openCommand } from "./commands";
 import { openFinder } from "./finder";
@@ -196,6 +196,9 @@ export const HANDLERS: Record<string, Handler> = {
   "fold.all": (d) => fold(d, "all-open"),
   "fold.none": (d) => fold(d, "all-close"),
   hover: (d) => hover(d),
+  definition: (d) => void goDefinition(d),
+  references: (d) => void findReferences(d),
+  "jump.back": (d) => jumpBack(d),
   "context.full": (d) => toggleFloat(d, { kind: "context" }),
   "find.review": (d) => openFinder(d, "reviews"),
   "find.agent": (d) => openFinder(d, "agents"),

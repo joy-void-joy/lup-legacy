@@ -4,20 +4,24 @@
 // back where an answer is refused, and owns where the page is — the view, what
 // is selected, which window has focus, and the cursor in each pane. The keymap
 // and the `:` commands call into it; React draws what it holds.
-import type { KeyLine, LiveMessage, LiveSession, ReviewDecision, ReviewDetail, ReviewRoot, ReviewSummary } from "../generated/views";
+import type { CodeSource, KeyLine, LiveMessage, LiveSession, ReviewDecision, ReviewDetail, ReviewRoot, ReviewSummary } from "../generated/views";
 import {
-  answerReview, broadcastTo, describeYou, followDashboard, followTranscripts, holdPath, pauseAt, postInto, postNotice, readHistory, readInbox, readMessages, readReview, readReviewLink,
-  readSetupPanes, readTranscript, releasePath, remarkReview, renameAgent, resumeAt, reviewLink, ReviewError, sendReply, stopAgent, takeToken, tryKeys, wakeAgent, withdrawNotice,
-  writeKeys, type Reach, type Sending,
+  answerReview, askTokens, broadcastTo, describeYou, followDashboard, followTranscripts, holdPath, pauseAt, postInto, postNotice, readHistory, readInbox, readMessages,
+  readReview, readReviewLink, readSetupPanes, readTranscript, releasePath, remarkReview, renameAgent, resumeAt, reviewLink, ReviewError, sendReply, stopAgent, takeToken,
+  tryKeys, wakeAgent, withdrawNotice, writeKeys, type Reach, type Sending,
 } from "./api";
 import { Keymap, Sequencer, type Where } from "./keys";
 import { discussions, threadBuffer, type Discussion } from "./threads";
 import { applied, codeNotice, moved, NO_KEYS, paged, type LiveState } from "./live";
-import { askedBy, CLOSED_UI, EMPTY_DRAFT, headOf, headShort, headText, plural, reviewBuffer, type Buffer, type Draft, type Entry, type ReviewUi } from "./review";
+import { askedBy, CLOSED_UI, codeBuffer, EMPTY_DRAFT, headOf, headShort, headText, plural, reviewBuffer, type Buffer, type Draft, type Entry, type ReviewUi } from "./review";
 import { checkoutLabel } from "./review";
+import { HIGHLIGHT_LIMIT, languageFor, semanticPaint } from "./highlight";
 import { inboxBuffer, memberBuffer, memberById, memberOfReview, repoBuffer, repositoryOf, treeItems, youBuffer, type TreeItem, holdersOf, parentOf, counterpart, inboxOf } from "./supervision";
-import { initialState, Store, type Float, type Notice, type PageState, type Tone, type View, type Win } from "./state";
+import { initialState, Store, type Float, type Notice, type PageState, type Peek, type Tone, type View, type Win } from "./state";
 import { unserved, type Feature } from "./served";
+
+/** One document a question about code names, as a key: the review and side, or the checkout, and the path. */
+export const semanticKey = (source: CodeSource) => JSON.stringify([source.review, source.side, source.checkout, source.path]);
 
 /** What an interrupt says where the operator wrote nothing of their own. */
 export const INTERRUPTING = "The person watching interrupts your turn: stop what you are doing, read your mailbox, and say where you are with `coordination_describe` before carrying on.";
@@ -890,6 +894,39 @@ export class Dashboard {
     return "normal";
   }
 
+  /** The document a window shows in place of the open review after `gd`, where it does. */
+  peek(pane: 0 | 1, state = this.state): Peek | null {
+    const peek = state.peeks[pane];
+    return peek !== null && state.sel.kind === "review" && peek.owner === state.sel.key ? peek : null;
+  }
+
+  /** When each document was last asked about, by its key. */
+  private readonly tokensAsked = new Map<string, number>();
+
+  /**
+   * Ask the language server reading a document what every name in it is,
+   * once a document: its paint lands in `semantic` and the document is drawn
+   * again over it. A document no server reads, or one past the highlighting
+   * limit, is not asked about. One whose server did not answer — still
+   * starting, too slow, or the request failed — is asked again once `retry`
+   * has passed, the next time it is drawn, and never sooner.
+   */
+  askSemantic(source: CodeSource, text: string, retry = 30_000): void {
+    const key = semanticKey(source);
+    const asked = this.tokensAsked.get(key);
+    if ((asked !== undefined && (asked < 0 || Date.now() - asked < retry)) || text.length > HIGHLIGHT_LIMIT || languageFor(source.path) === null) return;
+    this.tokensAsked.set(key, Date.now());
+    askTokens(source, this.state.access.token).then((tokens) => {
+      if (!tokens.served && tokens.server !== "") return;
+      this.tokensAsked.set(key, -1);
+      if (!tokens.served || tokens.data.length === 0) return;
+      const paint = semanticPaint(text, tokens);
+      this.set((state) => ({ semantic: new Map(state.semantic).set(key, paint) }));
+    }, (failure: unknown) => {
+      console.warn(`no semantic tokens for ${source.path} yet: ${failure instanceof Error ? failure.message : String(failure)}`);
+    });
+  }
+
   /** One pane's buffer: the open review's rows, or the agent, your row, the repository or the inbox. */
   buffer(pane: 0 | 1, state = this.state): Buffer {
     const live = state.live;
@@ -901,6 +938,12 @@ export class Dashboard {
       case "review": {
         const entry = this.current(state);
         if (entry === null || entry.detail === null) return empty;
+        const peek = this.peek(pane, state);
+        if (peek !== null) {
+          const shown = this.buffers.get(peek) ?? new Map([["code", codeBuffer(peek.text)]]);
+          this.buffers.set(peek, shown);
+          return shown.get("code") ?? empty;
+        }
         const detail = entry.detail;
         const ui = this.ui(entry.row.key, state);
         const drafts = this.draft(entry.row.key, state).comments;
@@ -993,7 +1036,7 @@ export class Dashboard {
       linked: options.keepLink === true ? state.linked : null,
       visual: null, editing: null, ctxCur: -1, judgedAt: -1, exceptionAt: -1, markerAt: -1,
       editor: [{ ...state.editor[0], cur: 0, want: 0 }, { ...state.editor[1], cur: 0, want: 0 }],
-      touch: { drawer: "", sheet: "" },
+      touch: { drawer: "", sheet: "" }, peeks: [null, null], jumps: [[], []], refs: state.refs?.owner === key ? state.refs : null,
     }));
     this.syncTree();
     this.landOnJudged();

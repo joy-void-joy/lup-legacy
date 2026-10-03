@@ -16,6 +16,7 @@ from pathlib import Path
 import typer
 from pydantic import BaseModel, ValidationError
 
+from lup.diagnostics import refuse
 from lup.execution.shell import git
 
 CSS = (
@@ -79,7 +80,7 @@ def load_manifest(path: Path) -> list[ManifestEntry]:
     try:
         parsed = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        raise typer.BadParameter(f"{path} is not valid JSON: {e}") from e
+        refuse(f"is not valid JSON: {e}", what=str(path), code=2)
     match parsed:
         case list():
             raw = parsed
@@ -88,11 +89,15 @@ def load_manifest(path: Path) -> list[ManifestEntry]:
         case {"result": {"manifest": list() as entries}}:
             raw = entries
         case _:
-            raise typer.BadParameter(f"No manifest array found in {path}")
+            refuse("holds no manifest array", what=str(path), code=2)
     try:
         return [ManifestEntry.model_validate(entry) for entry in raw]
     except ValidationError as e:
-        raise typer.BadParameter(f"Manifest entry does not validate: {e}") from e
+        refuse(
+            f"holds a manifest entry that does not validate: {e}",
+            what=str(path),
+            code=2,
+        )
 
 
 def summarize(manifest_path: Path) -> None:

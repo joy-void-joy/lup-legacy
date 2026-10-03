@@ -72,7 +72,7 @@ def test_the_verb_behind_the_redirect_is_still_judged() -> None:
     """
     forced = verdict("git -C ../sibling push --force origin topic")
     assert forced.effect == "ask"
-    assert "--force-with-lease" in forced.reason
+    assert "--force-with-lease" in forced.addressed()
 
     assert verdict("git -C ../sibling push --delete origin topic").effect == "ask"
     assert verdict("git -C ../sibling reset --hard").effect == "ask"

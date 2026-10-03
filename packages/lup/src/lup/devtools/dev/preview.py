@@ -30,8 +30,9 @@ import sh
 import typer
 from pydantic import BaseModel, Field
 
-from lup.execution.git import Repository
 from lup.devtools.utils import decode_stderr, output_json, short_sha
+from lup.diagnostics import refuse
+from lup.execution.git import Repository
 from lup.execution.shell import git
 
 # lup: ignore[dict-str-payload] — subject → commit; subjects are open text
@@ -260,8 +261,7 @@ def run_preview(branches: list[str], into: str, as_json: bool) -> None:
     try:
         result = preview(branches, into)
     except sh.ErrorReturnCode as error:
-        typer.echo(f"git refused the preview: {decode_stderr(error)}", err=True)
-        raise typer.Exit(1) from error
+        refuse(f"git refused the preview: {decode_stderr(error)}", what=into)
     if as_json:
         output_json(result)
         return

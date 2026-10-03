@@ -91,7 +91,7 @@ def test_a_send_to_a_peer_on_the_roster_is_denied_and_redirected(
     assert isinstance(specific, dict)
     assert specific["permissionDecision"] == "deny"
     reason = str(specific["permissionDecisionReason"])
-    assert reason.startswith("feat-touches:")
+    assert reason.startswith("refused: `feat-touches` — ")
     assert "coordination_send" in reason
 
 
@@ -272,5 +272,7 @@ def test_the_wake_socket_directory_is_withheld_where_the_image_binds_it() -> Non
     """The refusal follows the declaration, and an empty one refuses nothing."""
     refused = wake_socket_refusal("/run/sessions")
     assert [paths.paths for paths in refused] == [["/run/sessions/**"]]
-    assert "coordination_send" in refused[0].recovery
+    assert any(
+        "coordination_send" in through["says"] for through in refused[0].recovery
+    )
     assert wake_socket_refusal("") == []

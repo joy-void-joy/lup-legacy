@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 import sh
-import typer
 
 from lup.devtools.dev import library, scaffold, update
+from lup.diagnostics import Refusal
 
 
 def test_a_revision_uses_the_selected_scaffold_registration(
@@ -45,8 +45,9 @@ def test_an_unconfigured_revision_refuses_before_mutating_the_pin(
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(update, "uv", lambda *args, **_kwargs: calls.append(args))
 
-    with pytest.raises(typer.BadParameter, match="No repository is configured"):
+    with pytest.raises(Refusal) as refused:
         update.resolved_pin(tmp_path, "lup-agents", "revision", lambda _line: None)
+    assert refused.value.said["why"] == "no repository is configured for it"
     assert manifest.read_text() == original
     assert calls == []
 
@@ -64,9 +65,10 @@ def test_deleted_branch_refuses_before_relocking(
     calls: list[tuple[str, ...]] = []
     monkeypatch.setattr(update, "uv", lambda *args, **_kwargs: calls.append(args))
 
-    with pytest.raises(typer.BadParameter, match="--branch <replacement>"):
+    with pytest.raises(Refusal) as refused:
         update.resolved_pin(tmp_path, "lup-agents", "", lambda _line: None)
 
+    assert refused.value.said["steps"][0]["run"][-2:] == ["--branch", "<replacement>"]
     assert calls == []
     assert manifest.read_text() == original
 
@@ -74,8 +76,9 @@ def test_deleted_branch_refuses_before_relocking(
 def test_unreachable_remote_does_not_claim_branch_absence(tmp_path: Path) -> None:
     source = library.GitSource(url=str(tmp_path / "unreachable"), ref="dev")
 
-    with pytest.raises(typer.BadParameter, match="absence is unconfirmed"):
+    with pytest.raises(Refusal) as refused:
         source.require_available_branch()
+    assert "whether it is gone is unknown" in refused.value.said["why"]
 
 
 def test_existing_remote_branch_is_accepted(tmp_path: Path) -> None:
@@ -106,7 +109,7 @@ def test_update_diagnoses_deleted_pin_before_materializing_its_worktree(
 
     monkeypatch.setattr(update, "upstream_checkout", unexpected_checkout)
 
-    with pytest.raises(typer.BadParameter, match="Pinned branch 'deleted' is absent"):
+    with pytest.raises(Refusal) as refused:
         update.updated(
             tmp_path,
             scaffold.ScaffoldSource(),
@@ -115,3 +118,5 @@ def test_update_diagnoses_deleted_pin_before_materializing_its_worktree(
             "lup-agents",
             lambda _line: None,
         )
+    assert refused.value.said["what"] == "deleted"
+    assert "the pinned branch is gone" in refused.value.said["why"]

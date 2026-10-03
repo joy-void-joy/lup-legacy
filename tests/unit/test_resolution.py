@@ -424,6 +424,7 @@ def test_the_hook_row_declares_that_its_verdict_needs_a_declaration() -> None:
             id="dict-get",
             pattern=r"\.get\s*\(",
             message=rows[0]["message"],
+            remedy="model the payload as a BaseModel or TypedDict and read the field",
             context="code",
             matcher="dict_get_sites",
             strength="soft",
@@ -461,7 +462,7 @@ def test_the_gate_asks_where_nothing_resolved_the_receiver() -> None:
     )
 
     assert decision is not None and decision.effect == "ask"
-    assert "could not resolve" in decision.recovery
+    assert "could not resolve" in decision.addressed()
 
 
 def test_a_resolved_receiver_is_admitted_without_a_directive() -> None:

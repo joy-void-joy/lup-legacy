@@ -10,8 +10,8 @@ loop, which is why the request is one declaration and only the words differ.
 from pathlib import Path
 
 import pytest
-import typer
 
+from lup.diagnostics import Refusal
 from lup.harness.models import Resumption
 from lup.launch.declaration import Latest, Pick, Reopen
 from lup.sessions.events import SessionId
@@ -88,11 +88,11 @@ def test_a_contradicted_request_never_reaches_a_runtime(
         resume=Resumption(pick=True, session="abc123")
     )
 
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal):
         launch.launch_claude(
             composition(root, "claude"), contradicted, profiles(), False
         )
-    with pytest.raises(typer.BadParameter):
+    with pytest.raises(Refusal):
         launch.launch_codex(
             composition(root, "codex"), contradicted, None, False, False
         )
@@ -148,14 +148,15 @@ def test_a_relaxed_launch_says_what_it_retired_and_what_it_did_not(
     )
 
     announce_relaxed_rules(False, plugin)
-    assert capsys.readouterr().out == ""
+    assert capsys.readouterr() == ("", "")
 
     announce_relaxed_rules(True, plugin)
-    said = capsys.readouterr().out
-    assert "retired for this session: 2 rules" in said
-    assert "dev check --antipatterns` still holds this repository" in said
-    assert "before committing" in said
-    assert "dev seams --retire-all" in said
+    out, err = capsys.readouterr()
+    assert "retired for this session: 2 rules" in out
+    assert "still holds this repository" in err
+    assert "`uv run lup-devtools dev check --antipatterns`" in err
+    assert "before committing: `uv run lup-devtools harness generate all`" in err
+    assert "`uv run lup-devtools dev seams --retire-all`" in err
 
 
 def test_every_rule_retired_names_them_rather_than_standing_for_them() -> None:

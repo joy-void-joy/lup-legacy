@@ -1,4 +1,5 @@
 import type {
+  CodeHover, CodeLocations, CodeQuestion, CodeSource, CodeText, CodeTokens,
   Broadcast, Claimed, ClaimRequest, Described, DescriptionRequest, FollowedFrom, FollowOutcome, FollowRequest, InboxRead, InboxReadRequest, KeyBindings, KeyLine, KeyTry,
   LiveNotice, MessagePage, MessageRequest, NameRequest, Nothing, PauseOutcome, PauseRequest, PostOutcome, PostRequest, Released, Renamed, ReplyOutcome, ResumeRequest, ReviewAnswer,
   ReviewDecision, ReviewDetail, ReviewHistory, ReviewRemarkRequest, ReviewSnapshot, SetupPane, Stopped, StreamFrame, TextRequest, TranscriptPage, Withdrawn,
@@ -315,4 +316,29 @@ export async function tryKeys(lines: KeyLine[], token: string): Promise<KeyBindi
 export async function writeKeys(lines: KeyLine[], token: string): Promise<KeyBindings> {
   const tried: KeyTry = { lines };
   return posted("api/keys", tried, token);
+}
+
+/** What the language server reading a document says of the symbol at one place in it. */
+export async function askHover(question: CodeQuestion, token: string): Promise<CodeHover> {
+  return posted("api/code/hover", question, token);
+}
+
+/** Where the symbol at one place is defined. */
+export async function askDefinition(question: CodeQuestion, token: string): Promise<CodeLocations> {
+  return posted("api/code/definition", question, token);
+}
+
+/** Every place the symbol at one place is used. */
+export async function askReferences(question: CodeQuestion, token: string): Promise<CodeLocations> {
+  return posted("api/code/references", question, token);
+}
+
+/** What the language server reading a document calls every name in it. */
+export async function askTokens(source: CodeSource, token: string): Promise<CodeTokens> {
+  return posted("api/code/tokens", source, token);
+}
+
+/** A document whole, where a definition or a use the server named lies. */
+export async function readCode(source: CodeSource, token: string): Promise<CodeText> {
+  return posted("api/code/text", source, token);
 }

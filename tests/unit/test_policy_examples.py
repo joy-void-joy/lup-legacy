@@ -16,6 +16,7 @@ from examples import semantic_policy, semantic_policy_shell
 from lup.providers.claude import Claude
 from lup.providers.claude.runtime import build_claude_options
 from lup.policy.kernel.decision import ESCALATE_HINT
+from lup.policy.kernel.diagnostic import way
 from lup.types import JsonObject
 
 ALLOWED_URL = "https://docs.example.com/api/runtime"
@@ -71,7 +72,7 @@ async def test_fetch_example_refuses_the_url_its_policy_denies() -> None:
         {"url": semantic_policy.DENIED_URL},
     )
 
-    assert decision == permission("deny", "URL is denied")
+    assert decision == permission("deny", "refused: URL is denied")
 
 
 async def test_fetch_example_allows_the_scope_it_declares() -> None:
@@ -105,7 +106,9 @@ async def test_shell_example_refuses_the_command_its_policy_denies() -> None:
         {"command": semantic_policy_shell.DENIED_COMMAND},
     )
 
-    assert decision == permission("deny", f"URL is denied\n{ESCALATE_HINT}")
+    assert decision == permission(
+        "deny", "\n".join(["refused: URL is denied", *map(way, ESCALATE_HINT)])
+    )
 
 
 async def test_shell_example_allows_a_read_only_command() -> None:
@@ -153,5 +156,5 @@ async def test_shell_example_asks_before_a_destructive_command() -> None:
     )
 
     assert decision == permission(
-        "ask", "deleting files requires approval — `rm -rf build`"
+        "ask", "asks: `rm build` — deleting files requires approval"
     )

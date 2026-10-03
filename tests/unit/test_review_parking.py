@@ -109,8 +109,9 @@ def test_with_a_dashboard_held_the_same_question_is_parked_and_said_to_be(
     (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
     reason = spoken["hookSpecificOutput"]["permissionDecisionReason"]
     assert spoken["hookSpecificOutput"]["permissionDecision"] == "deny"
-    assert f"Queued for the operator as review {question.id} — not refused." in reason
-    assert "Don't change the command." in reason
+    assert reason.startswith("queued: ")
+    assert f"it waits on the operator as review {question.id}, not refused" in reason
+    assert "don't change the command" in reason
     assert DASHBOARD in reason
     assert question.id in spoken["systemMessage"]
     assert DASHBOARD in spoken["systemMessage"]
@@ -124,12 +125,11 @@ def test_a_session_s_own_conversation_is_woken_by_the_answer_and_holds_no_waiter
     reason = refusal(hooked(root, "claude", QUALITY, INTERACTIVE), "claude")
     (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
 
-    assert (
-        "Carry on with other work, or end your turn: the operator's answer wakes "
-        "this session, and "
-        f"`uv run --directory {root} lup-devtools review wait {question.id}` then "
-        "carries the call out at once. Don't start a waiter."
-    ) in reason
+    assert "end your turn: the operator's answer wakes this session" in reason
+    assert f"`uv run --directory {root} lup-devtools review wait {question.id}`" in (
+        reason
+    )
+    assert "don't start a waiter" in reason
     assert "run_in_background" not in reason
     assert "--timeout" not in reason
 
@@ -144,12 +144,15 @@ def test_a_subagent_holds_a_background_waiter_and_restarts_it_quietly(
     (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
 
     assert (
-        f"hold `uv run --directory {root} lup-devtools review wait {question.id} "
-        "--timeout 7140` in the background (run_in_background, with the longest "
-        "timeout the tool takes, 7200000 ms)"
+        "hold this in the background (run_in_background, with the longest timeout"
+        " the tool takes, 7200000 ms)"
+    ) in reason
+    assert (
+        f"`uv run --directory {root} lup-devtools review wait {question.id}"
+        " --timeout 7140`"
     ) in reason
     assert "start it again quietly, reporting that to nobody" in reason
-    assert "Don't start a waiter" not in reason
+    assert "don't start a waiter" not in reason
     assert question.agent == SUBAGENT
 
 
@@ -160,7 +163,8 @@ def test_a_print_run_waits_in_the_foreground_once_nothing_else_is_left(
     environment = {**HELD, "CLAUDE_CODE_ENTRYPOINT": "sdk-cli"}
     reason = refusal(hooked(root, "claude", QUALITY, environment), "claude")
 
-    assert "--timeout 540` in the foreground" in reason
+    assert "in the foreground" in reason
+    assert "--timeout 540`" in reason
     assert "run_in_background" not in reason
 
 
@@ -170,14 +174,14 @@ def test_codex_s_own_thread_is_woken_by_the_queue_and_holds_no_waiter(
     reason = codex_denial(hooked(root, "codex", QUALITY))
 
     (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
-    assert f"Queued for the operator as review {question.id} — not refused." in reason
+    assert f"it waits on the operator as review {question.id}, not refused" in reason
     assert "the operator's answer is queued into this thread, which starts a turn" in (
         reason
     )
-    assert (
-        f"`uv run --directory {root} lup-devtools review wait {question.id}` then "
-        "carries the call out at once. Don't start a waiter."
-    ) in reason
+    assert f"`uv run --directory {root} lup-devtools review wait {question.id}`" in (
+        reason
+    )
+    assert "don't start a waiter" in reason
     assert "run_in_background" not in reason
     assert "review approve" in reason
 
@@ -187,10 +191,12 @@ def test_a_codex_subagent_holds_its_waiter_until_it_reports(root: Path) -> None:
     reason = codex_denial(hooked(root, "codex", QUALITY, agent=SUBAGENT))
 
     (question,) = QuestionRelay(root / ".lup/questions.jsonl").pending()
-    assert (
-        f"hold `uv run --directory {root} lup-devtools review wait {question.id}` "
-        "in your shell tool, reading its output before you report"
-    ) in reason
+    assert "hold this in your shell tool, reading its output before you report" in (
+        reason
+    )
+    assert f"`uv run --directory {root} lup-devtools review wait {question.id}`" in (
+        reason
+    )
     assert "start it again quietly, reporting that to nobody" in reason
     assert question.agent == SUBAGENT
 
@@ -200,7 +206,7 @@ def test_a_call_from_a_subdirectory_parks_in_the_checkout_s_own_queue(
     root: Path, runtime: str
 ) -> None:
     """The dashboard reads the checkout's queue, never one a subdirectory would keep."""
-    below = root / "docs" / "guide"
+    below = root / "notes" / "guide"
     below.mkdir(parents=True)
 
     reason = refusal(hooked(root, runtime, QUALITY, INTERACTIVE, cwd=below), runtime)

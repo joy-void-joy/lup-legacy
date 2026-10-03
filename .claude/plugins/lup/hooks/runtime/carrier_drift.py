@@ -128,7 +128,7 @@ def merged(branch: str) -> str:
 
 
 def drifted(library: str, scaffold: str, distribution: str) -> list[str]:
-    """The one line a session needs, or none because the carriers agree.
+    """The warning a session needs and its way through, or none because the carriers agree.
 
     Silence in every case but the one a reader can act on. A project with no
     pinned commit, or none merged, is not out of step with anything — it is a
@@ -142,10 +142,10 @@ def drifted(library: str, scaffold: str, distribution: str) -> list[str]:
     if not library or not scaffold or library == scaffold:
         return []
     return [
-        f"This project holds two commits of {distribution}: the library at "
-        f"{library}, the copied half merged at {scaffold}. Until `dev update` "
-        f"runs, library code and the code calling it come from different "
-        f"commits."
+        f"warning: this project holds two commits of {distribution}, the library"
+        f" at {library} and the copied half merged at {scaffold}, so library code"
+        " and the code calling it come from different commits",
+        "→ bring them to one commit: `uv run lup-devtools dev update`",
     ]
 
 

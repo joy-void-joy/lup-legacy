@@ -41,6 +41,8 @@ from typing import TypedDict
 # interpreter and for a type checker alike.
 sys.path.insert(0, str(Path(__file__).parent))
 from coordination.holds import Waiting, held_call, refusal
+from coordination.store import RETRY
+from kernel.diagnostic import diagnostic, rendered, step
 from coordination.runtime import stdin_runtime
 from coordination.store import own_member, subagent_id, text
 from policy_data import HOLD_SECONDS
@@ -119,7 +121,8 @@ def main() -> None:
         parent=member if agent else "",
     )
     if holds:
-        print(json.dumps(refused(refusal(holds))), flush=True)
+        said = diagnostic("refused", refusal(holds), steps=[step(says=RETRY)])
+        print(json.dumps(refused(rendered(said))), flush=True)
 
 
 if __name__ == "__main__":

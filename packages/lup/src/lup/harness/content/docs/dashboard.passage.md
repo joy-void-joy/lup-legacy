@@ -718,7 +718,7 @@ background keep running. A pause is a file in the repository's coordination
 store, so it outlives a restart of the dashboard and lasts until it is
 resumed or the agent leaves. A pause
 lasting a day refuses the call it holds with "paused by the operator; this
-call didn't run; retry it", and the retry is held again.
+call didn't run", its way through "retry it", and the retry is held again.
 
 `Space a Z` (`:freeze`) is the second level: the pause, and the agent's
 running commands stopped too — every process group its runtime's tools run
@@ -906,7 +906,7 @@ permissions. Approval still applies to the exact complete submission. Where
 recorded evidence cannot establish a file's status, it remains visible rather
 than being treated as automatically allowed. `[` and `]` move between files,
 and `Space f f` finds one by its path. Each file shows as a coloured, numbered
-diff, its syntax highlighted by the file's extension; `Space v` shows the file
+diff, its syntax highlighted as its language reads it (below); `Space v` shows the file
 before or after instead, or the unified diff as text, and `Space w v` splits
 before | after side by side. The lines a diff leaves out fold into one row per
 gap, which `Enter` or `za` opens, and `f` shows the whole file with the
@@ -924,6 +924,66 @@ customization point (`template:`), and a rule exception (`ignore[<rule>]`).
 files, opening the whole file where a marker stands outside the diff's hunks.
 Rule exceptions are listed by rule in the context, with `n` and `p` to jump
 between them; existing exceptions appear only in the full operation.
+
+### Code: what a name is, where it is defined, where it is used
+
+A file's syntax is coloured the way Neovim colours it. Its language's
+tree-sitter grammar reads the document whole, and the grammar package's own
+highlights query colours it: a type, a constructor (a capitalized call), a
+function or method, a parameter, a module, a decorator, `self`, a keyword, a
+string, a number, a comment, each in the palette's syntax colours. Where
+several patterns capture one name the last of them wins, as tree-sitter and
+Neovim read a query; where a published query leaves out what nvim-treesitter
+reads — in Python a capitalized call, parameters, `self`, modules and
+decorators — the page adds the pattern after it. Each grammar is a
+WebAssembly module the page fetches the first time a file in its language is
+drawn, so the first paint waits on no grammar it does not need, and a file is
+drawn plain until its grammar arrives. Where a language server reads the
+file, its semantic tokens are laid over tree-sitter's, as Neovim lays them: a
+name the server calls a class, a function, a parameter or a module takes that
+colour, whatever its spelling suggests. pydantic's `Field` is a function, so
+once the server has answered it is drawn as one.
+
+`K` on a name in code opens a float with what its language server says of
+it: its type or signature, coloured as code, and its documentation. Resting
+the pointer on a name opens the same float after half a second, and a long
+press does on a phone. `gd` opens the name's definition in the window,
+read-only, its name and file in the window's bar; `Ctrl+o` or `q` comes back
+to where the window stood. `gr` lists every use of the name in the context,
+which takes focus: `j`/`k` walk them and `Enter` opens one. What the policy
+asks about is walked with `g?`. A question about a line of a review is about
+the version that line shows: a removed line asks about the file as it was
+recorded, any other about the after-document the approval would write. That
+document is handed to the language server as an unsaved buffer under the
+file's own name, so its imports resolve as the written file's would.
+
+The dashboard asks a language server through its own routes
+(`/api/code/hover`, `definition`, `references`, `tokens` and `text`), behind
+the same capability, Host and Origin checks as every route; the browser never
+reaches a server. One server runs per repository and language, started on the
+first question about it, each checkout of the repository a workspace folder
+of its own, so a worktree's imports resolve in that worktree; it stops after
+ten minutes unasked. Every question is bounded: five seconds for a hover or a
+definition, ten for references, twenty for a document's tokens. A server that
+does not answer in time is answered as not served, with why, and never hangs
+the page. Python is read by basedpyright, the fork of the pyright `dev check`
+runs, which serves the semantic tokens pyright does not; TypeScript and
+JavaScript by TypeScript 7's own compiler, `tsc --lsp`. A language no server
+reads, or a server the dashboard's environment does not have, is said
+plainly in the float: "no language server reads .md files", "basedpyright is
+not installed beside the dashboard's interpreter".
+
+A language server only reads code; it never runs the code it reads. The
+dashboard runs as the operator, outside every sandbox, so a server is started
+from the dashboard's own environment — basedpyright beside its own
+interpreter, TypeScript from lup's own web workspace or the operator's
+`PATH` — never from a checkout's `.venv`, whose interpreter would run whatever
+`.pth` file its site-packages hold. basedpyright is handed the dashboard's
+own interpreter, and a checkout's packages as the directories its
+environment's site-packages and `.pth` files name, read off the disk the way
+`site` reads them, an `import` line skipped. A file is shown whole — a
+definition, a use — only where it lies inside a checkout the dashboard
+serves, or where a language server named it.
 
 `i`, `a`, `o` or `Enter` on a line comments on it; `V`, then `j`/`k`, then `gc`
 comments on the range picked; a click on a line number comments on that line
@@ -963,8 +1023,9 @@ letter for agents, the inbox, discussions, History, a review's files, the
 buffer's lines, every message, the commands, the keys or the markers) filters
 as you type and previews what `Enter` opens. `Space` shows what the leader
 does after a moment, `?` lists every key with its action's name, and `K`
-shows what is attached to the line, file, step, message or tree row under the
-cursor.
+says what is under the cursor: on a name in code, what its language server
+says of it; anywhere else, what is attached to the line, file, step, message
+or tree row there.
 
 `Space y` copies a link to share a request without sharing a credential. Links use
 `#review=<question-id>`; copied links also name the checkout to distinguish
@@ -1071,8 +1132,9 @@ shows the whole file at the cursor until it reads `back to diff`. The editor's
 bar drops what the top bar already says and folds what the policy asks about
 to two lines, and a note, what an agent said, a message or a post folds to
 four lines with `more`. A sideways swipe over the buffer moves to the next or
-previous item, a long press on a line starts a range that taps stretch, and a
-tap on a line with something attached shows it. Notices sit under the top bar,
+previous item, a long press on a name in code shows what it is as `K` does,
+one on a line's numbers starts a range that taps stretch, and a tap on a line
+with something attached shows it. Notices sit under the top bar,
 never over its buttons.
 
 ## Behind a reverse proxy

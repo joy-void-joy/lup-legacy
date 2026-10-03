@@ -395,6 +395,262 @@
       "title": "Claimed",
       "type": "object"
     },
+    "CodeHover": {
+      "additionalProperties": false,
+      "description": "What the server says of the symbol at a position: its type, signature and documentation, as Markdown.",
+      "properties": {
+        "markdown": {
+          "default": "",
+          "title": "Markdown",
+          "type": "string"
+        },
+        "served": {
+          "title": "Served",
+          "type": "boolean"
+        },
+        "server": {
+          "default": "",
+          "title": "Server",
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "served",
+        "server",
+        "why",
+        "markdown"
+      ],
+      "title": "CodeHover",
+      "type": "object"
+    },
+    "CodeLocation": {
+      "additionalProperties": false,
+      "description": "One place in a file, one-based line and UTF-16 column, with the line it is on.",
+      "properties": {
+        "column": {
+          "title": "Column",
+          "type": "integer"
+        },
+        "line": {
+          "title": "Line",
+          "type": "integer"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "preview": {
+          "default": "",
+          "title": "Preview",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line",
+        "column",
+        "preview"
+      ],
+      "title": "CodeLocation",
+      "type": "object"
+    },
+    "CodeLocations": {
+      "additionalProperties": false,
+      "description": "Where a symbol is defined, or every place it is used.",
+      "properties": {
+        "locations": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CodeLocation"
+          },
+          "title": "Locations",
+          "type": "array"
+        },
+        "served": {
+          "title": "Served",
+          "type": "boolean"
+        },
+        "server": {
+          "default": "",
+          "title": "Server",
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "served",
+        "server",
+        "why",
+        "locations"
+      ],
+      "title": "CodeLocations",
+      "type": "object"
+    },
+    "CodeQuestion": {
+      "additionalProperties": false,
+      "description": "A question about the symbol at one place in a document: a one-based line and a UTF-16 column.",
+      "properties": {
+        "column": {
+          "minimum": 0,
+          "title": "Column",
+          "type": "integer"
+        },
+        "line": {
+          "minimum": 1,
+          "title": "Line",
+          "type": "integer"
+        },
+        "source": {
+          "$ref": "#/$defs/CodeSource"
+        }
+      },
+      "required": [
+        "source",
+        "line",
+        "column"
+      ],
+      "title": "CodeQuestion",
+      "type": "object"
+    },
+    "CodeSource": {
+      "additionalProperties": false,
+      "description": "Which document a question about code is about.\n\nA review's version of one of its files \u2014 ``before`` as it was recorded,\n``after`` as the approval would write it \u2014 where ``review`` names one;\notherwise the file as it stands in ``checkout``, one the dashboard\nserves, read only where it lies inside that checkout or a language\nserver pointed at it.",
+      "properties": {
+        "checkout": {
+          "default": "",
+          "title": "Checkout",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "review": {
+          "default": "",
+          "title": "Review",
+          "type": "string"
+        },
+        "side": {
+          "default": "after",
+          "enum": [
+            "before",
+            "after"
+          ],
+          "title": "Side",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "review",
+        "side",
+        "checkout"
+      ],
+      "title": "CodeSource",
+      "type": "object"
+    },
+    "CodeText": {
+      "additionalProperties": false,
+      "description": "A file a server pointed at, whole, for a page to show.",
+      "properties": {
+        "path": {
+          "default": "",
+          "title": "Path",
+          "type": "string"
+        },
+        "served": {
+          "title": "Served",
+          "type": "boolean"
+        },
+        "server": {
+          "default": "",
+          "title": "Server",
+          "type": "string"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "served",
+        "server",
+        "why",
+        "path",
+        "text"
+      ],
+      "title": "CodeText",
+      "type": "object"
+    },
+    "CodeTokens": {
+      "additionalProperties": false,
+      "description": "What the server says each name in a document is, in its own legend.\n\nFive numbers a token, as the protocol relays them: the line and the\nUTF-16 start, each relative to the token before, then the length, the\ntype's index in *types*, and the modifiers as bits over *modifiers*.",
+      "properties": {
+        "data": {
+          "default": [],
+          "items": {
+            "type": "integer"
+          },
+          "title": "Data",
+          "type": "array"
+        },
+        "modifiers": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Modifiers",
+          "type": "array"
+        },
+        "served": {
+          "title": "Served",
+          "type": "boolean"
+        },
+        "server": {
+          "default": "",
+          "title": "Server",
+          "type": "string"
+        },
+        "types": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Types",
+          "type": "array"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "served",
+        "server",
+        "why",
+        "types",
+        "modifiers",
+        "data"
+      ],
+      "title": "CodeTokens",
+      "type": "object"
+    },
     "CommandSegment": {
       "additionalProperties": false,
       "description": "One command of a parked line, and the verdict it reached on its own.\n\nThe line's record as a reviewer reads it: every command that asks, each\nwith its own reason and rule, beside the ones allowed on their own: the\nrows the verdict kept when it parked\n(:attr:`~lup.policy.kernel.decision.KernelDecision.segments`). ``command``\nis blank for a verdict about the line rather than one of its commands.",
@@ -3431,20 +3687,20 @@
             },
             {
               "also": [],
-              "description": "jump to what the policy asks about; again for the next part",
+              "description": "jump to what the policy asks about (the lines marked ?); again for the next part",
               "focus": "any",
               "group": "editor",
               "hidden": false,
               "keys": [
-                "gd"
+                "g?"
               ],
               "mode": "normal",
               "name": "judged",
               "needs": null,
               "note": "",
               "scope": "review",
-              "stands": "new",
-              "was": ""
+              "stands": "changed",
+              "was": "gd, which now goes to a definition"
             },
             {
               "also": [
@@ -3538,7 +3794,7 @@
             },
             {
               "also": [],
-              "description": "hover: what is attached to this line, file, step, message, agent or tree row",
+              "description": "what is this: on code, the name under the cursor as its language server describes it (type, signature, docs); on anything else, what is attached to the line, file, step, message, agent or tree row",
               "focus": "any",
               "group": "editor",
               "hidden": false,
@@ -3548,8 +3804,59 @@
               "mode": "normal",
               "name": "hover",
               "needs": null,
-              "note": "",
+              "note": "on code it asks the language server",
               "scope": "anywhere",
+              "stands": "changed",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "go to the definition of the name under the cursor, shown read-only in the buffer; Ctrl+o comes back",
+              "focus": "buffer",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "gd"
+              ],
+              "mode": "normal",
+              "name": "definition",
+              "needs": null,
+              "note": "",
+              "scope": "review",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "list every use of the name under the cursor in the context; Enter on one opens it",
+              "focus": "buffer",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "gr"
+              ],
+              "mode": "normal",
+              "name": "references",
+              "needs": null,
+              "note": "",
+              "scope": "review",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "back to where gd or a reference jumped from",
+              "focus": "any",
+              "group": "editor",
+              "hidden": false,
+              "keys": [
+                "<C-o>"
+              ],
+              "mode": "normal",
+              "name": "jump.back",
+              "needs": null,
+              "note": "",
+              "scope": "review",
               "stands": "new",
               "was": ""
             },
