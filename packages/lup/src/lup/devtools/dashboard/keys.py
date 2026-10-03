@@ -151,6 +151,10 @@ class KeymapCatalog(BaseModel, frozen=True):
         KeymapGroup(id="search", title="search"),
         KeymapGroup(id="agent", title="act on an agent (Space a)"),
         KeymapGroup(id="you", title="you as a peer (Space p): one level down"),
+        KeymapGroup(
+            id="budget",
+            title="the budget (Space b): the turtle, and an agent's priority and caps",
+        ),
         KeymapGroup(id="view", title="windows, views and tabs"),
         KeymapGroup(id="comment", title="comment and write"),
         KeymapGroup(id="editor", title="the editor"),
@@ -246,6 +250,9 @@ class KeymapCatalog(BaseModel, frozen=True):
         action("agent.transcript", ["T", "<leader>at"], "its whole transcript, live", "agent", scope="notreview", needs="transcript"),
         action("agent.rename", "<leader>aR", "rename it", "agent", needs="rename"),
         action("agent.stop", "<leader>ax", "stop it (twice confirms)", "agent", needs="stop"),
+        action("budget.turtle", "<leader>bt", "the turtle: every account under its slower limits, or back under its usual ones (:turtle)", "budget", needs="budgets"),
+        action("budget.priority", "<leader>bp", "its priority under its account's limits: high, normal or low (:priority)", "budget", needs="budgets"),
+        action("budget.cap", "<leader>bc", "its caps: a rate per hour and a total, in dollars or tokens (:cap)", "budget", needs="budgets"),
         action("message.reply", "r", "reply in the thread of the message under the cursor", "agent", scope="buffer", needs="reply-thread"),
         action("messages.earlier", "E", "load earlier messages (an older page of the mail record)", "agent", scope="buffer", stands="changed", note="was the Load earlier messages button"),
         # the operator as a peer

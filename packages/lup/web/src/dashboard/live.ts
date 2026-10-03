@@ -126,7 +126,8 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
       users: keyed(event.users),
       served: event.served,
       keys: event.keys,
-      budget: event.budget,
+      // A dashboard running older code than the page says nothing of a budget.
+      budget: event.budget ?? NO_BUDGET,
     };
   }
   const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), earlier: new Map(), reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, users: new Map(), served: [], keys: NO_KEYS, budget: NO_BUDGET }), cursor: frame.cursor };

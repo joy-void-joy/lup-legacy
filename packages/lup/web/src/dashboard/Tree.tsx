@@ -7,7 +7,7 @@ import { grouped, type Dashboard } from "./dashboard";
 import { openItem, toggleStopped } from "./editor";
 import { checkoutLabel, plural, staleSentences, stateClass, stateLabel, stateSign } from "./review";
 import type { PageState } from "./state";
-import { activityBrief, ago, GLYPH, membersOf, repositoryOf, reviewsOf, standing, unreadCount, wroteYou, type TreeItem } from "./supervision";
+import { activityBrief, ago, clears, GLYPH, membersOf, meterOf, repositoryOf, reviewsOf, spendLine, standing, unreadCount, wroteYou, type TreeItem } from "./supervision";
 import { discussionLine } from "./threads";
 
 /** A tree row's second line: what the agent is doing, its first line whole, and how many more a hover reads. */
@@ -51,6 +51,8 @@ function TreeRow({ d, state, item, index }: { d: Dashboard; state: PageState; it
       const asks = reviewsOf(live, d.roots(state), d.pending(state), session).length;
       const wrote = wroteYou(live, session);
       const what = brief(activityBrief(session, state.now));
+      const meter = session.running ? meterOf(live, session) : undefined;
+      const spend = meter === undefined ? "" : spendLine(meter);
       const foldable = asks > 0 || membersOf(live, session.repository).some((each) => each.parent === session.id);
       return <button type="button" className={`${classes}${session.running ? "" : " stopped"}`} style={style} data-ti={index} onClick={open}>
         <span className="t1">
@@ -66,6 +68,11 @@ function TreeRow({ d, state, item, index }: { d: Dashboard; state: PageState; it
           </span>
         </span>
         <span className="t2">{what.first}{what.more > 0 && <span className="muted"> · {plural(what.more, "more line")}, K</span>}</span>
+        {meter !== undefined && (spend !== "" || meter.held !== null || meter.priority !== "normal") && <span className="t3">
+          {meter.held !== null && <span className="warn" title={meter.held.until !== null ? `until ${clears(Date.parse(meter.held.until), state.now)}` : "until what holds it changes"}>⏸ {meter.held.said}</span>}
+          {meter.held !== null && spend !== "" && " · "}{spend}
+          {meter.priority !== "normal" && <span className={meter.priority === "high" ? "info" : "muted"}> · {meter.priority}</span>}
+        </span>}
       </button>;
     }
     case "folded": return <button type="button" className={classes} style={style} data-ti={index} onClick={open}>

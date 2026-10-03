@@ -206,6 +206,15 @@
       "title": "ActorRef",
       "type": "object"
     },
+    "AdapterName": {
+      "description": "Which native runtime a caller means, as a closed set.\n\nThe library ships exactly these adapter packages, so naming them is a\nfact about this library rather than a judgement an adopter could make\ndifferently \u2014 which is why it is a type and not a table of strings.\nCarrying it as one keeps a mistyped selector from resolving to whichever\nbranch a chain of string comparisons happened to end in.",
+      "enum": [
+        "claude",
+        "codex"
+      ],
+      "title": "AdapterName",
+      "type": "string"
+    },
     "AgentBudgetRequest": {
       "additionalProperties": false,
       "description": "The operator's limits on one agent; a field left out stays as it was.",
@@ -2619,6 +2628,57 @@
             },
             {
               "also": [],
+              "description": "the turtle: every account under its slower limits, or back under its usual ones (:turtle)",
+              "focus": "any",
+              "group": "budget",
+              "hidden": false,
+              "keys": [
+                "<leader>bt"
+              ],
+              "mode": "normal",
+              "name": "budget.turtle",
+              "needs": "budgets",
+              "note": "",
+              "scope": "anywhere",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "its priority under its account's limits: high, normal or low (:priority)",
+              "focus": "any",
+              "group": "budget",
+              "hidden": false,
+              "keys": [
+                "<leader>bp"
+              ],
+              "mode": "normal",
+              "name": "budget.priority",
+              "needs": "budgets",
+              "note": "",
+              "scope": "anywhere",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
+              "description": "its caps: a rate per hour and a total, in dollars or tokens (:cap)",
+              "focus": "any",
+              "group": "budget",
+              "hidden": false,
+              "keys": [
+                "<leader>bc"
+              ],
+              "mode": "normal",
+              "name": "budget.cap",
+              "needs": "budgets",
+              "note": "",
+              "scope": "anywhere",
+              "stands": "new",
+              "was": ""
+            },
+            {
+              "also": [],
               "description": "reply in the thread of the message under the cursor",
               "focus": "any",
               "group": "agent",
@@ -4175,6 +4235,10 @@
               "title": "you as a peer (Space p): one level down"
             },
             {
+              "id": "budget",
+              "title": "the budget (Space b): the turtle, and an agent's priority and caps"
+            },
+            {
               "id": "view",
               "title": "windows, views and tabs"
             },
@@ -5077,6 +5141,35 @@
         "activity"
       ],
       "title": "LiveSession",
+      "type": "object"
+    },
+    "LoginOwner": {
+      "additionalProperties": false,
+      "description": "Whose login a container start hands its repository's volume.",
+      "properties": {
+        "home": {
+          "format": "path",
+          "title": "Home",
+          "type": "string"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profile"
+        }
+      },
+      "required": [
+        "home",
+        "profile"
+      ],
+      "title": "LoginOwner",
       "type": "object"
     },
     "MailExtent": {
@@ -6750,6 +6843,34 @@
         "stored"
       ],
       "title": "RecordedQuestion",
+      "type": "object"
+    },
+    "Relaunch": {
+      "additionalProperties": false,
+      "description": "The command that opens one session again under another profile, and what it keeps.",
+      "properties": {
+        "resumes": {
+          "title": "Resumes",
+          "type": "boolean"
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        },
+        "words": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Words",
+          "type": "array"
+        }
+      },
+      "required": [
+        "words",
+        "resumes",
+        "why"
+      ],
+      "title": "Relaunch",
       "type": "object"
     },
     "Released": {
@@ -8458,6 +8579,53 @@
       "title": "SessionId",
       "type": "object"
     },
+    "SessionMove": {
+      "additionalProperties": false,
+      "description": "What switching a repository's login to a profile comes to for one running session.",
+      "properties": {
+        "contained": {
+          "title": "Contained",
+          "type": "boolean"
+        },
+        "member": {
+          "title": "Member",
+          "type": "string"
+        },
+        "moved": {
+          "title": "Moved",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "relaunch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Relaunch"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "why": {
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "member",
+        "name",
+        "contained",
+        "moved",
+        "why",
+        "relaunch"
+      ],
+      "title": "SessionMove",
+      "type": "object"
+    },
     "SessionProcess": {
       "additionalProperties": false,
       "description": "The runtime process one row answers for, and whether this dashboard could stop it.",
@@ -9055,6 +9223,118 @@
         "last_activity"
       ],
       "title": "SupervisorState",
+      "type": "object"
+    },
+    "SwitchOutcome": {
+      "additionalProperties": false,
+      "description": "What moving one repository's sessions of one runtime to a profile came to.",
+      "properties": {
+        "before": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VolumeLogin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "checkout": {
+          "format": "path",
+          "title": "Checkout",
+          "type": "string"
+        },
+        "held": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VolumeLogin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "profile": {
+          "title": "Profile",
+          "type": "string"
+        },
+        "runtime": {
+          "$ref": "#/$defs/AdapterName"
+        },
+        "sessions": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/SessionMove"
+          },
+          "title": "Sessions",
+          "type": "array"
+        },
+        "volume": {
+          "title": "Volume",
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkout",
+        "runtime",
+        "profile",
+        "volume",
+        "before",
+        "held",
+        "why",
+        "sessions"
+      ],
+      "title": "SwitchOutcome",
+      "type": "object"
+    },
+    "SwitchReply": {
+      "additionalProperties": false,
+      "description": "What moving a repository's sessions came to, and the lines that say it.",
+      "properties": {
+        "outcome": {
+          "$ref": "#/$defs/SwitchOutcome"
+        },
+        "said": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Said",
+          "type": "array"
+        }
+      },
+      "required": [
+        "outcome",
+        "said"
+      ],
+      "title": "SwitchReply",
+      "type": "object"
+    },
+    "SwitchRequest": {
+      "additionalProperties": false,
+      "description": "Move a repository's sessions of one runtime onto a profile.",
+      "properties": {
+        "profile": {
+          "minLength": 1,
+          "title": "Profile",
+          "type": "string"
+        },
+        "runtime": {
+          "$ref": "#/$defs/AdapterName",
+          "default": "claude"
+        }
+      },
+      "required": [
+        "profile",
+        "runtime"
+      ],
+      "title": "SwitchRequest",
       "type": "object"
     },
     "TextRequest": {
@@ -9852,6 +10132,42 @@
         "output"
       ],
       "title": "VerificationRecord",
+      "type": "object"
+    },
+    "VolumeLogin": {
+      "additionalProperties": false,
+      "description": "The login lup last handed one configuration-home volume: whose, and when.",
+      "properties": {
+        "fingerprint": {
+          "default": "",
+          "title": "Fingerprint",
+          "type": "string"
+        },
+        "handed_at": {
+          "format": "date-time",
+          "title": "Handed At",
+          "type": "string"
+        },
+        "owner": {
+          "$ref": "#/$defs/LoginOwner"
+        },
+        "runtime": {
+          "title": "Runtime",
+          "type": "string"
+        },
+        "volume": {
+          "title": "Volume",
+          "type": "string"
+        }
+      },
+      "required": [
+        "volume",
+        "runtime",
+        "owner",
+        "fingerprint",
+        "handed_at"
+      ],
+      "title": "VolumeLogin",
       "type": "object"
     },
     "WakePriority": {

@@ -9,7 +9,7 @@ import { openFinder, PICKERS } from "./finder";
 import { CATALOG } from "./keys";
 import type { Feature } from "./served";
 import { VIEWS, type View } from "./state";
-import { counterpart, inboxOf, parentOf } from "./supervision";
+import { counterpart, inboxOf, parentOf, parseCaps } from "./supervision";
 
 export type Command = {
   name: string;
@@ -202,6 +202,31 @@ export const COMMANDS: Command[] = [
   { name: "interrupt", description: "interrupt an agent's turn with the standard words", args: agentNames, needs: "interrupt", run: (d, arg) => onAgent(d, arg, (session) => void d.interrupt(session, "")) },
   { name: "transcript", description: "an agent's whole transcript, live (T)", args: agentNames, needs: "transcript", run: (d, arg) => onAgent(d, arg, (session) => void d.openTranscript(session)) },
   { name: "stop", description: "stop an agent's runtime; :stop! confirms", args: agentNames, needs: "stop", run: (d, arg, bang) => onAgent(d, arg, (session) => void d.stopRuntime(session, bang)) },
+  { name: "turtle", description: "the turtle: every account under its slower limits; :turtle on or off, or flip it", args: () => ["on", "off"], needs: "budgets", run: (d, arg) => {
+    const word = arg.trim();
+    if (word !== "" && word !== "on" && word !== "off") { d.say("E: :turtle [on|off]", "err"); return; }
+    void d.turtle(word === "" ? undefined : word === "on");
+  } },
+  { name: "priority", description: "an agent's priority under its account's limits: :priority [agent] high|normal|low", args: () => ["high", "normal", "low"], takes: true, needs: "budgets", run: (d, arg) => {
+    const { session, text } = agentAndText(d, arg);
+    const priority = text.trim();
+    if (session === undefined || (priority !== "high" && priority !== "normal" && priority !== "low")) { d.say("E: :priority [agent] high|normal|low", "err"); return; }
+    void d.settleBudget(session, { priority, caps: null });
+  } },
+  { name: "cap", description: "an agent's caps, a rate per hour and a total: :cap [agent] $2/h $10, 500k/h 2M; nothing clears them", args: agentNames, takes: true, needs: "budgets", run: (d, arg) => {
+    const { session, text } = agentAndText(d, arg);
+    if (session === undefined) { d.say("E: :cap [agent] <caps>", "err"); return; }
+    const caps = parseCaps(text);
+    if (typeof caps === "string") { d.say(`E: ${caps}`, "err"); return; }
+    void d.settleBudget(session, { priority: null, caps });
+  } },
+  { name: "switch", description: "move this repository's sessions onto a profile: :switch <profile> [claude|codex]", args: (d) => [...new Set((d.state.live?.budget.accounts ?? []).map((each) => each.account.profile))], takes: true, needs: "profiles", run: (d, arg) => {
+    const [profile = "", runtime = "claude"] = arg.trim().split(/\s+/);
+    if (profile === "" || (runtime !== "claude" && runtime !== "codex")) { d.say("E: :switch <profile> [claude|codex]", "err"); return; }
+    const repository = repositoryHere(d);
+    if (repository === "") { d.say("E: :switch acts on a repository: open one of its agents first", "err"); return; }
+    void d.switchProfile(repository, profile, runtime);
+  } },
   { name: "older", description: "load older requests into History", run: (d) => void d.loadOlder() },
   { name: "earlier", description: "load earlier messages: an older page of the mail record here", alias: ["ea"], run: (d) => void d.loadEarlier(repositoryHere(d)) },
   { name: "map", description: "your keys: :map lists them; :map {action} {keys} tries one in this tab", args: () => CATALOG.actions.map((action) => action.name), takes: true, run: (d, arg) => void map(d, arg) },

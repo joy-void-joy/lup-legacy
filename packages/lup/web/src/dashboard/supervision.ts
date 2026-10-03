@@ -5,7 +5,7 @@
 // last words, holds and mailbox, the person's own row, and the mail between
 // members. What a server older than the page does not serve stays behind the
 // seam in `served.ts`.
-import type { LiveMessage, LiveRepository, LiveSession, ReviewRoot, ReviewSummary } from "../generated/views";
+import type { AccountMeter, AgentCaps, AgentMeter, BudgetView, LiveMessage, LiveRepository, LiveSession, MeteredWindow, ReviewRoot, ReviewSummary, Spend } from "../generated/views";
 import { called, conversation, type LiveState } from "./live";
 import { unserved, type Feature } from "./served";
 import { askedBy, claimCovers, plural, Rows, type Buffer, type Holder } from "./review";
@@ -330,4 +330,88 @@ export function inRepository(path: string, repository: LiveRepository | undefine
   if (home === "") return path;
   if (path === home) return home.slice(home.lastIndexOf("/") + 1);
   return path.startsWith(`${home}/`) ? path.slice(home.length + 1) : path;
+}
+
+/** Dollars as the meter says them: cents under a hundred, whole dollars past it. */
+export function money(usd: number): string {
+  return usd >= 100 ? `$${Math.round(usd)}` : `$${usd.toFixed(2)}`;
+}
+
+/** A token count in a few characters: `950`, `12k`, `1.4M`. */
+export function tokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}k`;
+  return `${tokens}`;
+}
+
+/** What spend is said in: dollars where the runtime priced it, tokens where it did not. */
+function spent(spend: Spend, per = ""): string {
+  return spend.usd > 0 ? `${money(spend.usd)}${per}` : `${tokenCount(spend.tokens)} tok${per}`;
+}
+
+/** One agent's spend in a few words for its tree row: its rate over the last hour, and its total. */
+export function spendLine(meter: AgentMeter): string {
+  if (meter.total.usd === 0 && meter.total.tokens === 0) return "";
+  return `${spent(meter.hour, "/h")} · ${spent(meter.total)}`;
+}
+
+/** The operator's caps on one agent, as they write them: `$2/h · $10`, `500k/h`, nothing for none. */
+export function capsText(caps: AgentCaps): string {
+  return [
+    caps.rate_usd !== null ? `${money(caps.rate_usd)}/h` : "",
+    caps.rate_tokens !== null ? `${tokenCount(caps.rate_tokens)}/h` : "",
+    caps.total_usd !== null ? money(caps.total_usd) : "",
+    caps.total_tokens !== null ? tokenCount(caps.total_tokens) : "",
+  ].filter((each) => each !== "").join(" · ");
+}
+
+export const NO_CAPS: AgentCaps = { rate_usd: null, rate_tokens: null, total_usd: null, total_tokens: null };
+
+/**
+ * Caps as the operator types them, or why they do not read: words apart, each a dollar amount or a
+ * token count, `/h` making it a rate — `$2/h $10`, `500k/h 2M`; nothing clears every cap.
+ */
+export function parseCaps(text: string): AgentCaps | string {
+  let caps = NO_CAPS;
+  for (const word of text.split(/[\s,·]+/).filter((each) => each !== "")) {
+    const found = /^(\$)?(\d+(?:\.\d+)?)([km])?(\/h)?$/i.exec(word);
+    if (found === null) return `"${word}" is neither a dollar amount ($5, $2/h) nor a token count (500k, 2M/h)`;
+    const [, dollars, digits, scale, hourly] = found;
+    const amount = Number(digits) * (scale?.toLowerCase() === "m" ? 1_000_000 : scale?.toLowerCase() === "k" ? 1_000 : 1);
+    if (amount <= 0) return `"${word}" is no cap: a cap is more than nothing`;
+    if (dollars !== undefined && scale !== undefined) return `"${word}" mixes dollars with a token scale`;
+    const field = dollars !== undefined ? (hourly !== undefined ? "rate_usd" : "total_usd") : (hourly !== undefined ? "rate_tokens" : "total_tokens");
+    caps = { ...caps, [field]: field.endsWith("tokens") ? Math.round(amount) : amount };
+  }
+  return caps;
+}
+
+/** The budget's line for one agent, where the dashboard governs one. */
+export const meterOf = (live: LiveState, session: LiveSession): AgentMeter | undefined => live.budget.agents.find((each) => each.session === session.key);
+
+/** Where a window stands at *now*: how much of it is used, how much even pace allows, and when it clears. */
+export function windowAt(metered: MeteredWindow, now = Date.now()): { used: number; even: number; resets: number; ahead: boolean } {
+  const window = metered.window;
+  const resets = Date.parse(window.resets_at);
+  const length = window.window_hours * 3_600_000;
+  const even = length > 0 ? Math.min(Math.max((length - (resets - now)) / length * 100, 0), 100) : 0;
+  return { used: window.utilization_pct, even, resets, ahead: window.utilization_pct > even };
+}
+
+/** When a window clears, as the meter says it: its time today, else its day and time. */
+export function clears(resets: number, now = Date.now()): string {
+  const at = new Date(resets);
+  const time = at.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  return at.toDateString() === new Date(now).toDateString() ? time : `${at.toLocaleDateString([], { weekday: "short" })} ${time}`;
+}
+
+/** The accounts the meter shows: every one with a window read or an agent drawing on it, busiest first. */
+export function metered(budget: BudgetView): AccountMeter[] {
+  return budget.accounts.filter((each) => each.windows.length > 0 || each.agents > 0 || each.error !== "")
+    .sort((left, right) => right.agents - left.agents || left.key.localeCompare(right.key));
+}
+
+/** The fullest window of an account, which a narrow meter shows alone. */
+export function fullest(account: AccountMeter): MeteredWindow | undefined {
+  return [...account.windows].sort((left, right) => right.window.utilization_pct - left.window.utilization_pct)[0];
 }

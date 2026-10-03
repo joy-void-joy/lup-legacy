@@ -12,6 +12,7 @@ import { openCommand, runCommand } from "./commands";
 import { openFinder } from "./finder";
 import { askedBy, exceptionStops, headOf, headShort, judgedOf, markerStops, plural, stateLabel, stateSign, type Row } from "./review";
 import { HANDLERS } from "./actions";
+import { Meter } from "./Shell";
 import type { Feature } from "./served";
 import { VIEW_NAMES, VIEWS, type NavKind, type PageState } from "./state";
 import { GLYPH, inboxOf, kindWords, standing, unreadCount } from "./supervision";
@@ -62,6 +63,7 @@ export function TopBar({ d, state }: { d: Dashboard; state: PageState }) {
     <button type="button" className="tb" aria-label="Find" onClick={() => openFinder(d, kind === "review" ? "reviews" : "agents")}>⌕</button>
     <button type="button" className="tb" aria-label="Context" onClick={() => drawer("context")}>ⓘ</button>
     <button type="button" className="tb" aria-label="More" onClick={() => d.set({ touch: { drawer: "", sheet: "more" } })}>⋯</button>
+    <Meter d={d} state={state} compact />
   </header>;
 }
 

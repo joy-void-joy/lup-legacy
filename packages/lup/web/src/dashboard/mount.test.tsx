@@ -28,6 +28,18 @@ function supervised(path: string, method: string, body: unknown): Response | nul
     if (verb === "stop") return Response.json({ session: `r1/${member}`, pid: 4242, detail: "Sent SIGTERM to pid 4242, the runtime its row recorded." });
     return Response.json({ session: `r1/${member}`, entries: [{ at: 0, block: 0, kind: "text", role: "assistant", text: "Reading the roster.", tool: "", call: "", arguments: {}, error: false, time: "2026-09-24T10:00:00Z" }], earlier: 0, end: 120 });
   }
+  if (path === "api/budget/turtle") return Response.json({ on: (body as { on: boolean }).on });
+  if (path === "api/repositories/r1/profile") {
+    const asked = body as { profile: string; runtime: string };
+    return Response.json({ outcome: { checkout: "/project", runtime: asked.runtime, profile: asked.profile, volume: "lup-claude-lup", before: null, held: null, why: "", sessions: [] },
+      said: [`lup-claude-lup now holds ${asked.profile}'s ${asked.runtime} login.`, "  lead: runs on the host — relaunch it there: uv run lup-devtools harness claude --profile home"] });
+  }
+  const settled = path.match(/^api\/repositories\/r1\/sessions\/([^/]+)\/budget$/);
+  if (settled !== null) {
+    const asked = body as { priority: string | null; caps: object | null };
+    return Response.json({ session: `r1/${settled[1]}`, account: "claude:work", hour: { usd: 0, tokens: 0 }, total: { usd: 0, tokens: 0 }, priority: asked.priority ?? "normal",
+      caps: asked.caps ?? { rate_usd: null, rate_tokens: null, total_usd: null, total_tokens: null }, exempt: false, held: null });
+  }
   if (path === "api/transcripts/follow") return Response.json({ sessions: ["r1/lead"], refused: [], seconds: 60 });
   if (path === "api/repositories/r1/broadcast") return Response.json({ post: "pb", outcomes: [outcome("lead", "Queued."), outcome("lead-a1", "Queued.", { woken: false })] });
   if (path === "api/repositories/r1/notices") return Response.json({ id: "n1", text: asked.text, by: "user", door: "page", posted_at: "2026-09-24T10:00:00Z" });
@@ -113,9 +125,10 @@ describe("dashboard page", () => {
   let code = { source: "fixture", root: "/project/packages/lup/src/lup", since: null as string | null, older: false, failing: "", restarted: "" };
   let served: string[] = [...SERVED_ALL];
   let users: object[] = [];
+  let budget: object = { accounts: [], agents: [], turtle: false, telemetry: false, refused: "", holds: false };
   const settled = () => [...rows.filter((row) => row.state !== "pending"), ...older];
   const queue = () => ({ roots: [root], reviews: rows, errors: [], history: settled().length });
-  const snapshot = () => sent({ type: "snapshot", repositories: [repository], sessions, messages, extents, reviews: queue(), code, keys, users, served });
+  const snapshot = () => sent({ type: "snapshot", repositories: [repository], sessions, messages, extents, reviews: queue(), code, keys, users, served, budget });
   const deliver = async (text: string) => { await act(async () => stream?.enqueue(new TextEncoder().encode(text))); };
   const posted = () => requests.filter((request) => request.method === "POST");
 
@@ -138,6 +151,7 @@ describe("dashboard page", () => {
     code = { source: "fixture", root: "/project/packages/lup/src/lup", since: null, older: false, failing: "", restarted: "" };
     served = [...SERVED_ALL];
     users = [];
+    budget = { accounts: [], agents: [], turtle: false, telemetry: false, refused: "", holds: false };
     Object.defineProperty(window, "innerWidth", { value: 1920, configurable: true });
     localStorage.clear();
     window.history.replaceState(null, "", "/#token=browser-secret");
@@ -521,6 +535,48 @@ describe("dashboard page", () => {
     expect(interrupt.priority).toBe("now");
     expect(interrupt.text).toContain("interrupts your turn");
     expect(supervisedPosts()[3]?.body).toEqual({ name: "chief" });
+  });
+
+  test("the meter shows each account's windows; an agent's spend, hold and limits are on its row and set through their routes", async () => {
+    served = [...SERVED_ALL, "budgets", "profiles"];
+    const resets = new Date(Date.now() + 2 * 3_600_000).toISOString();
+    budget = {
+      accounts: [{ account: { runtime: "claude", profile: "work" }, key: "claude:work", home: "/home/me/.config/lup/profiles/work/claude-config", signed_in: true,
+        windows: [{ window: { label: "5-hour", utilization_pct: 100, resets_at: resets, window_hours: 5 }, per_hour: 12.5 }], read_at: null, error: "",
+        limits: { pace: "even", ceilings: null, tolerance: null, reserve: 10, max_active: 2 }, agents: 1, held: 1, exhausted: "5-hour window used up until 14:20" }],
+      agents: [{ session: "r1/lead", account: "claude:work", hour: { usd: 0.42, tokens: 9000 }, total: { usd: 3.1, tokens: 80000 }, priority: "low",
+        caps: { rate_usd: null, rate_tokens: null, total_usd: 5, total_tokens: null }, exempt: false, held: { key: "r1/lead", cause: "window", said: "5-hour window used up until 14:20", until: resets } }],
+      turtle: false, telemetry: true, refused: "", holds: true,
+    };
+    const page = await landed();
+    const meter = one(page.root, "#meter");
+    expect(meter.textContent).toContain("claude:work");
+    expect(meter.textContent).toContain("12.5%/h");
+    expect(meter.querySelector('[role="meter"]')?.getAttribute("aria-valuenow")).toBe("100");
+    await until(() => said().includes("claude:work: 5-hour window used up until 14:20"), "the window's notice");
+    const row = [...page.root.querySelectorAll(".tr.member")].find((each) => (each.textContent ?? "").includes("lead"));
+    expect(row?.textContent).toContain("$0.42/h · $3.10");
+    expect(row?.textContent).toContain("⏸ 5-hour window used up until 14:20");
+    await click(one(page.root, "#meter .turtle"));
+    await key("Escape", {}, note());
+    await command("priority lead high");
+    await command("cap lead $2/h $10");
+    await command("cap lead ten");
+    await until(() => supervisedPosts().filter((request) => request.path.endsWith("/budget")).length === 2, "the limits");
+    expect(supervisedPosts().map((request) => `${request.method} ${request.path}`)).toEqual([
+      "POST api/budget/turtle",
+      "POST api/repositories/r1/sessions/lead/budget",
+      "POST api/repositories/r1/sessions/lead/budget",
+    ]);
+    expect(supervisedPosts()[0]?.body).toEqual({ on: true });
+    expect(supervisedPosts()[1]?.body).toEqual({ priority: "high", caps: null });
+    expect(supervisedPosts()[2]?.body).toEqual({ priority: null, caps: { rate_usd: 2, rate_tokens: null, total_usd: 10, total_tokens: null } });
+    expect(said()).toContain("neither a dollar amount");
+    await command("switch home");
+    await until(() => supervisedPosts().some((request) => request.path.endsWith("/profile")), "the switch");
+    expect(supervisedPosts().at(-1)?.body).toEqual({ profile: "home", runtime: "claude" });
+    await until(() => said().includes("relaunch it there"), "what each session does");
+    expect(said()).toContain("lup-claude-lup now holds home's claude login.");
   });
 
   test("Space a r answers the last message between the agent and you, in its thread", async () => {

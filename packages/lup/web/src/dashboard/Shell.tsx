@@ -1,12 +1,14 @@
 // The page's chrome, one text row each: the tabline with the views and their
-// counts, the statusline from the mode block to the code the dashboard runs,
-// the command line under it, and the notices stacked at the top right.
+// counts and the budget's meter under it, the statusline from the mode block
+// to the code the dashboard runs, the command line under it, and the notices
+// stacked at the top right, under whatever height the tabline takes.
 import { useLayoutEffect, useRef } from "react";
 import type { Dashboard } from "./dashboard";
 import { commandInput, completions } from "./commands";
 import { basename, checkoutLabel, plural, stateClass, stateLabel, stateSign } from "./review";
 import { VIEW_NAMES, VIEWS, type PageState } from "./state";
-import { clock, GLYPH, kindWords, standing, unreadCount } from "./supervision";
+import type { AccountMeter, MeteredWindow } from "../generated/views";
+import { clears, clock, fullest, GLYPH, kindWords, metered, standing, unreadCount, windowAt } from "./supervision";
 import { rowHere } from "./editor";
 
 export function Tabline({ d, state }: { d: Dashboard; state: PageState }) {
@@ -21,13 +23,86 @@ export function Tabline({ d, state }: { d: Dashboard; state: PageState }) {
     setup: "",
   };
   const roots = d.roots(state);
-  return <header id="tabline" role="tablist" aria-label="Views">
+  const header = useRef<HTMLElement>(null);
+  // Notices sit under the tabline however many lines its meter takes, so they never cover it.
+  useLayoutEffect(() => {
+    const element = header.current;
+    if (element === null) return;
+    const place = () => document.documentElement.style.setProperty("--tabtop", `${element.offsetHeight}px`);
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return <header id="tabline" ref={header} role="tablist" aria-label="Views">
     {VIEWS.map((view, index) => <button key={view} type="button" className="tab" role="tab" aria-selected={state.view === view} title={`${index + 1}gt`} onClick={() => d.setView(view)}>
       {index + 1} {VIEW_NAMES[view]}{counts[view] !== "" && <span className="n">{counts[view]}</span>}</button>)}
     <span className="tl-right"><span className="tl-brand">lup</span><span className="muted">dashboard · {window.location.host}</span>
       <button type="button" className="link plain" title=":checkouts" onClick={() => d.set({ float: { kind: "checkouts" } })}>{plural(live?.repositories.size ?? 0, "repository", "repositories")} · {plural(roots.length, "checkout queue")}</button>
       <span className="muted">? keys · / search · : commands · Space leader</span></span>
+    <Meter d={d} state={state} />
   </header>;
+}
+
+/** One window as a bar: the share of it used, a mark where even pace stands, how fast it fills and when it clears. */
+function WindowBar({ metered: each, now, compact }: { metered: MeteredWindow; now: number; compact: boolean }) {
+  const at = windowAt(each, now);
+  const tone = at.used >= 100 ? "err" : at.ahead ? "warn" : "ok";
+  const rate = each.per_hour === null ? "" : ` · ${each.per_hour.toFixed(1)}%/h`;
+  const title = `${each.window.label}: ${at.used.toFixed(0)}% used, ${at.even.toFixed(0)}% of it gone${rate}; clears ${clears(at.resets, now)}`;
+  return <span className="mw" title={title}>
+    {!compact && <span className="ml">{each.window.label}</span>}
+    <span className="bar" role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(at.used)} aria-label={title}>
+      <span className={`fill ${tone}`} style={{ width: `${Math.min(at.used, 100)}%` }} />
+      <span className="even" style={{ left: `${at.even}%` }} />
+    </span>
+    <span className={tone}>{at.used.toFixed(0)}%</span>
+    {!compact && each.per_hour !== null && <span className="muted">{each.per_hour.toFixed(1)}%/h</span>}
+    <span className="muted">{compact ? "→" : "until "}{clears(at.resets, now)}</span>
+  </span>;
+}
+
+/** One account's meter: its windows, the agents drawing on it, and what holds them. */
+function AccountBars({ account, now, compact }: { account: AccountMeter; now: number; compact: boolean }) {
+  const shown = compact ? [fullest(account)].filter((each) => each !== undefined) : account.windows;
+  const reserve = account.limits.reserve;
+  const limits = [
+    account.limits.pace === "even" ? "even pace" : "",
+    ...(account.limits.ceilings ?? []).map((each) => `${each.window} ≤${each.per_hour}%/h`),
+    reserve !== null && reserve > 0 ? `keep ${reserve}%` : "",
+    account.limits.max_active !== null ? `≤${account.limits.max_active} at once` : "",
+  ].filter((each) => each !== "");
+  return <span className={`acct${account.exhausted !== "" ? " spent" : ""}`} title={[account.home, ...limits, account.error].filter((each) => each !== "").join(" · ")}>
+    <span className="an">{account.key}</span>
+    {shown.map((each) => <WindowBar key={each.window.label} metered={each} now={now} compact={compact} />)}
+    {!account.signed_in && <span className="muted">not signed in</span>}
+    {account.signed_in && account.error !== "" && <span className="err">⚠ {compact ? "unread" : account.error}</span>}
+    {!compact && limits.length > 0 && <span className="muted">{limits.join(" · ")}</span>}
+    {!compact && account.agents > 0 && <span className="muted">{account.agents} {account.agents === 1 ? "agent" : "agents"}</span>}
+    {account.held > 0 && <span className="warn">⏸{account.held}</span>}
+  </span>;
+}
+
+/**
+ * The budget's meter, as a torrent client's status bar draws its links: each account's windows
+ * with where even pace stands, how fast each fills and when it clears, and the turtle. Folded to
+ * each account's fullest window on a phone. Nothing where the dashboard governs no budget.
+ */
+export function Meter({ d, state, compact = false }: { d: Dashboard; state: PageState; compact?: boolean }) {
+  const live = state.live;
+  if (live === null || !live.served.includes("budgets")) return null;
+  const budget = live.budget;
+  const accounts = metered(budget);
+  const turtle = <button type="button" className={`turtle${budget.turtle ? " on" : ""}`} aria-pressed={budget.turtle} title="Space b t · :turtle" onClick={() => void d.turtle()}>🐢{compact ? "" : budget.turtle ? " turtle on" : " turtle"}</button>;
+  return <div id={compact ? "t-meter" : "meter"} role="region" aria-label="Accounts">
+    {compact && turtle}
+    {compact ? <span className="accts">{accounts.map((account) => <AccountBars key={account.key} account={account} now={state.now} compact />)}</span>
+      : accounts.map((account) => <AccountBars key={account.key} account={account} now={state.now} compact={false} />)}
+    {accounts.length === 0 && <span className="muted">no account's windows read yet</span>}
+    {budget.refused !== "" && <span className="err" title={budget.refused}>[budget] unread: no limits hold</span>}
+    {!budget.telemetry && <span className="muted" title="Claude sessions' spend arrives through their telemetry, which this dashboard does not receive">no telemetry</span>}
+    {!compact && <><span className="grow" />{turtle}</>}
+  </div>;
 }
 
 function Code({ d, state }: { d: Dashboard; state: PageState }) {
@@ -108,6 +183,7 @@ export function Statusline({ d, state }: { d: Dashboard; state: PageState }) {
     {unread > 0 && <button type="button" className="seg warn" title="gi" onClick={() => d.setView("inbox")}>✉ {unread} to you</button>}
     <button type="button" className={`seg ${waiting > 0 ? "warn" : "ok"}`} onClick={() => d.setView("supervise")}>{d.counted(waiting, state)} wait on you</button>
     <button type="button" className={`seg wrap ${current ? "ok" : state.connection === "Live" ? "warn" : "err"}`} title="Reconnect" onClick={() => d.reconnect()}>{current ? "● live" : state.connection === "Live" ? "◐ some queues unavailable" : `◌ ${state.connection}`}</button>
+    {live?.budget.turtle === true && <button type="button" className="seg warn" title="Space b t · :turtle" onClick={() => void d.turtle(false)}>🐢 turtle</button>}
     <Code d={d} state={state} />
     <button type="button" className="seg" onClick={() => d.set({ float: { kind: "help" } })}>? keys</button>
   </footer>;
