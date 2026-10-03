@@ -1360,6 +1360,44 @@ def claim_holders(
     )
 
 
+def family_holds(
+    root: Path, target: str, mine: str, now: datetime | None = None
+) -> list[str]:
+    """What the writer is told of its own descendants' holds over the path it wrote.
+
+    The other half of :func:`claim_holders`: a member is not asked before
+    writing what a subagent it spawned holds, since that is its own work
+    further on, and is told instead, one line for each — who holds it, and
+    whether that one is still running — so it can tell them rather than
+    overwrite their work unawares.
+    """
+    live = live_ids(root, now)
+    names = called(root, now)
+    members = {text(member.get("id")): member for member in present(root, now)}
+    holders = sorted(
+        {
+            holder
+            for row in covering(root, Path(target).resolve(), live, now)
+            for holder in [actor_id(found) for found in row["holders"]]
+            if holder and holder != mine and descends_from(holder, mine, members)
+        }
+    )
+    return [
+        family_note(names.get(holder) or holder, members[holder]) for holder in holders
+    ]
+
+
+def family_note(name: str, member: Member) -> str:
+    """One descendant's hold, as the writer is told it, the same on every runtime."""
+    who = (
+        f"your subagent {name}"
+        if text(member.get("kind")) == SUBAGENT_KIND
+        else f"{name}, a runtime your shell started,"
+    )
+    running = " and is still running" if member.get("running") else ""
+    return f"{who} holds this file{running}"
+
+
 def claimed(member: Member, paths: list[str], prefix: bool) -> Member:
     """This member holding these paths as well as whatever it held already.
 

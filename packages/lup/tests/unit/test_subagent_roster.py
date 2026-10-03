@@ -247,6 +247,12 @@ def test_a_member_writes_what_its_own_descendants_hold_and_its_sibling_is_asked(
         peers.root, str(module), sibling.id, session=SESSION
     ) == ["fork"]
     assert [claim.path for claim in peers.holding(module)] == [str(module)]
+    # Not asked, and told: whose hold it is, and that it is still running.
+    told = ["your subagent fork holds this file and is still running"]
+    assert store.family_holds(peers.root, str(module), builder.id) == told
+    assert store.family_holds(peers.root, str(module), SESSION) == told
+    assert store.family_holds(peers.root, str(module), sibling.id) == []
+    assert store.family_holds(peers.root, str(module), fork.id) == []
 
 
 def test_a_runtime_a_session_s_shell_started_is_its_descendant(
@@ -263,6 +269,22 @@ def test_a_runtime_a_session_s_shell_started_is_its_descendant(
 
     assert store.claim_holders(peers.root, str(module), SESSION) == []
     assert store.claim_holders(peers.root, str(module), "def456") == ["lead-spawned"]
+    assert store.family_holds(peers.root, str(module), SESSION) == [
+        "lead-spawned, a runtime your shell started, holds this file "
+        "and is still running"
+    ]
+    assert store.family_holds(peers.root, str(module), "def456") == []
+
+
+def test_the_note_says_still_running_only_of_a_holder_that_is(tmp_path: Path) -> None:
+    """Said from the holder's own row: a row that has stopped running says only that it holds."""
+    stopped: store.Member = {"kind": store.SUBAGENT_KIND, "running": False}
+    running: store.Member = {"kind": store.SUBAGENT_KIND, "running": True}
+
+    assert store.family_note("scout", stopped) == "your subagent scout holds this file"
+    assert store.family_note("scout", running) == (
+        "your subagent scout holds this file and is still running"
+    )
 
 
 async def test_a_subagent_reaches_its_own_session_and_not_itself(
