@@ -36,13 +36,8 @@ from lup.devtools.dev.branches import (
 from lup.devtools.dev.remote_auth import check_forge_api
 
 from lup.execution.shell import git
-from lup.devtools.utils import (
-    gh,
-    decode_stderr,
-    output_json,
-    refuse,
-    repository_arguments,
-)
+from lup.devtools.utils import gh, decode_stderr, output_json, repository_arguments
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, step
 
 logger = logging.getLogger(__name__)

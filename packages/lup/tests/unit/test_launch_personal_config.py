@@ -16,7 +16,7 @@ import pytest
 import sh
 
 import lup.devtools.harness.launch as launch
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 import lup.providers.claude.launch as claude_launch
 import lup.providers.codex.launch as codex_launch
 import lup.providers.profile_tree as profile_tree

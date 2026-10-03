@@ -30,7 +30,7 @@ import lup.providers.codex.launch as codex_launch
 from lup.devtools.harness.app import create_harness_app
 from lup.devtools.harness.composition import NativeTargets
 from lup.devtools.harness.launch import launch_claude, launch_codex
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.harness.codescan.common import RuleSelection
 from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import ContainerClient

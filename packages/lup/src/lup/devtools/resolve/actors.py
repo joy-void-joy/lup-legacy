@@ -5,7 +5,7 @@ from typing import Annotated
 import typer
 
 from lup.devtools.supervisor.doors import resolve_state_root
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.resolver.actor_recovery import retire_actor_binding
 from lup.resolver.state import ResolverStateRepository, StateTransitionError
 

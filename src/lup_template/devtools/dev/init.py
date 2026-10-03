@@ -33,7 +33,7 @@ from lup.devtools.dev.library import VENDORED_ROOT
 from lup.devtools.dev.plugin import set_marketplace_name
 from lup.devtools.dev.scaffold import ScaffoldFile, ScaffoldSource
 from lup.devtools.dev.tracked import tracked_files
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup_template.harness.catalog import declared_plugin
 from lup.execution.shell import git
 

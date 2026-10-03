@@ -33,7 +33,7 @@ from lup.devtools.dev.worktree import (
     commits_ahead,
     register_worktree,
 )
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.execution.process import LaunchRequest, LocalProcessLauncher
 
 

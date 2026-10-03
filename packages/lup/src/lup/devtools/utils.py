@@ -4,7 +4,7 @@ import json
 import logging
 from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Literal, NoReturn
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 import sh
@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from lup.execution.git import GitError, Repository
 from lup.execution.shell import LazyCommand
 from lup.execution.writability import diagnose_git_admin, inspect_git_admin
-from lup.policy.kernel.diagnostic import Diagnostic, Step, diagnostic, rendered
+from lup.diagnostics import refuse
 from lup.sandbox.attribution import attribute_filesystem
 from lup.sandbox.observed import observed_topology
 from lup.sandbox.translation import MountTopology
@@ -264,49 +264,6 @@ def refuse_blocked_config_writes(cwd: Path | None = None) -> None:
     diagnosis = config_lock_diagnosis(cwd)
     if diagnosis:
         refuse(diagnosis)
-
-
-class Refusal(typer.Exit):
-    """A command's error exit, carrying the diagnostic it printed.
-
-    An exit rather than an error the CLI renders itself, because Typer draws
-    its own errors in a box, where a command meant to be copied picks up the
-    border. Raised by :func:`refuse`, which prints first, so whoever catches
-    one reads what was said as data in ``said``.
-    """
-
-    said: Diagnostic
-
-    def __init__(self, said: Diagnostic, code: int = 1) -> None:
-        super().__init__(code)
-        self.said = said
-
-
-def refuse(
-    why: str,
-    what: str = "",
-    steps: Sequence[Step] = (),
-    see: str = "",
-    code: int = 1,
-) -> NoReturn:
-    """End the command: print what was caught, why and the ways through, then exit.
-
-    The text is :func:`~lup.policy.kernel.diagnostic.rendered`, which a hook's
-    refusal goes through too, so a refusal reads the same whether a hook or a
-    command said it. ``what`` is the words that decided it, each step holds
-    the command it names as the words that run it, and ``code`` is the exit.
-    """
-    said = diagnostic("error", why, what=what, steps=steps, see=see)
-    typer.echo(rendered(said), err=True)
-    raise Refusal(said, code)
-
-
-def warn(why: str, what: str = "", steps: Sequence[Step] = (), see: str = "") -> None:
-    """Say something the reader should know on stderr, in the same shape, and carry on."""
-    typer.echo(
-        rendered(diagnostic("warning", why, what=what, steps=steps, see=see)),
-        err=True,
-    )
 
 
 def output_json(

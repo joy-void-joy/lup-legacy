@@ -63,7 +63,8 @@ from lup.workspace.paths import (
     traces_path,
 )
 
-from lup.devtools.utils import format_table, output_json, refuse
+from lup.devtools.utils import format_table, output_json
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, step
 
 # lup: ignore[constant-declaration] — how much of a trace the default view

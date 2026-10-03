@@ -8,7 +8,7 @@ rather than a detail of either caller.
 
 from pathlib import Path
 
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.workspace.paths import worktrees_directory
 
 

@@ -48,13 +48,8 @@ from lup.devtools.launcher import (
 from lup.execution.shell import git
 from lup.types import EnvVars
 from lup.workspace.paths import find_nearest_pyproject
-from lup.devtools.utils import (
-    format_table,
-    decode_stderr,
-    output_json,
-    refuse,
-    short_sha,
-)
+from lup.devtools.utils import format_table, decode_stderr, output_json, short_sha
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import step
 
 logger = logging.getLogger(__name__)

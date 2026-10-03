@@ -14,7 +14,7 @@ import pytest
 
 import lup.devtools.harness.launch as launch
 import lup.providers.claude.launch as claude_launch
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.launch.declaration import LaunchSandbox
 from tests.unit.harness_launch import Caught, checkout, composition, profiles, stub_host
 

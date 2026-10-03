@@ -37,7 +37,8 @@ from lup.devtools.git.prepare import prepare
 from lup.devtools.git.settle import settle
 from lup.devtools.entrypoint import in_process
 from lup.devtools.launcher import console_script
-from lup.devtools.utils import decode_stderr, refuse
+from lup.devtools.utils import decode_stderr
+from lup.diagnostics import refuse
 
 
 def create_git_app(declared: Callable[[], DevDeclarations]) -> typer.Typer:

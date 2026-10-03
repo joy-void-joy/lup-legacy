@@ -56,7 +56,8 @@ from lup.devtools.review.notifications import (
     notify_requester,
 )
 from lup.devtools.sync import registered_difftool
-from lup.devtools.utils import output_json, refuse
+from lup.devtools.utils import output_json
+from lup.diagnostics import refuse
 from lup.harness.models import HookSet
 from lup.harness.codescan.markers import (
     MarkerScan,

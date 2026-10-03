@@ -36,7 +36,7 @@ from lup.coordination.rendering import USER_HOLDER, render
 from lup.coordination.repository import RepositoryPeers
 from lup.coordination.tasks import NEEDS_NAMES, Needs, Task
 from lup.coordination.refs import ActorRef
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.ledger.cite import read_cites
 from lup.ledger.journal import LedgerRefusal, LedgerStore
 from lup.ledger.kinds import by_kind, declared_fields, kind_of, summary_of

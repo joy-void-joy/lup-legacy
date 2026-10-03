@@ -18,7 +18,7 @@ from lup.devtools.conversation.checkpoint import checkpoint_delivery
 from lup.devtools.conversation.errors import ConversationDownloadError
 from lup.devtools.conversation.selection import RetentionAttempt, RetentionRequest
 from lup.devtools.harness.composition import claude_profile_directory
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, spelled, step
 from lup.providers.profiles import ProfileDirectory
 from lup.workspace.paths import project_root

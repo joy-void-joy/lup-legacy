@@ -17,7 +17,7 @@ from lup.harness.reconciliation import source_patch_base_digest
 from lup.policy.kernel.diagnostic import devtools, step
 from lup.workspace.paths import project_root
 from lup.devtools.harness.drift import generate_with_report, report_drift
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.harness.generate import NativeHarnessComposition, inspect_generation
 
 

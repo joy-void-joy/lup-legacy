@@ -27,7 +27,7 @@ from rich.panel import Panel
 from rich.table import Table
 from lup.devtools.harness.composition import claude_profile_directory
 from lup.devtools.harness.profile_app import create_profile_app
-from lup.devtools.utils import refuse, warn
+from lup.diagnostics import refuse, warn
 from lup.harness.environment import Placement
 from lup.launch.secrets import HostSecrets
 from lup.policy.kernel.diagnostic import Step, devtools, spelled, step

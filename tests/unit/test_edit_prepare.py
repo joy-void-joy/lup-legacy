@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 import lup.devtools.dev.edit_prepare as preparing
 from lup.devtools.project import DevProject
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.harness.codescan.antipatterns import RuleSet
 from lup.harness.codescan.oracle import (
     ClassDeclaration,

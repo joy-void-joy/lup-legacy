@@ -6,7 +6,7 @@ import pytest
 import sh
 
 from lup.devtools.dev import library, scaffold, update
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 
 
 def test_a_revision_uses_the_selected_scaffold_registration(

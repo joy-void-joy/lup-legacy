@@ -6,7 +6,8 @@ from typing import Annotated
 import typer
 
 from lup.devtools.supervisor.doors import resolve_state_root
-from lup.devtools.utils import format_table, refuse
+from lup.devtools.utils import format_table
+from lup.diagnostics import refuse
 from lup.resolver.cost import CostReport, read_cost
 from lup.resolver.status import compact_interval
 

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.harness.models import Resumption
 from lup.launch.declaration import Latest, Pick, Reopen
 from lup.sessions.events import SessionId

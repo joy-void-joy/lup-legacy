@@ -128,13 +128,8 @@ from lup.harness.credential import same_repository
 import lup.harness.content.docs.upstream_reports as upstream_reports
 from lup.launch.preflight import reopened
 from lup.devtools.subapps import subapp
-from lup.devtools.utils import (
-    Refusal,
-    decode_stderr,
-    format_table,
-    refuse,
-    short_sha,
-)
+from lup.devtools.utils import decode_stderr, format_table, short_sha
+from lup.diagnostics import Refusal, refuse
 from lup.execution.shell import git
 from lup.harness.devices import Device, registered_devices
 from lup.harness.requirements import Finding, Manifest

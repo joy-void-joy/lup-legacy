@@ -17,7 +17,7 @@ import sh
 import typer
 
 from lup.devtools.dev import branches
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from tests.unit.repos import commit_file, initialized_repo
 
 

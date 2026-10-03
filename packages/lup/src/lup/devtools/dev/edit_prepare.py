@@ -16,7 +16,7 @@ from lup.devtools.dev.antipatterns import (
 )
 from lup.devtools.dev.pyright_oracle import default_oracle
 from lup.devtools.project import DevProject
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.devtools.utils import output_json
 from lup.harness.codescan.antipatterns import RuleSet, audit_text
 from lup.policy.kernel.diagnostic import step

@@ -34,7 +34,7 @@ import typer
 
 from lup.devtools.dev.worktree import sync_dependencies
 from lup.devtools.launcher import ENVIRONMENT_VARIABLE
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.policy.assets.host import project_environment
 from lup.policy.kernel.diagnostic import devtools, spelled, step
 from lup.workspace.paths import project_root

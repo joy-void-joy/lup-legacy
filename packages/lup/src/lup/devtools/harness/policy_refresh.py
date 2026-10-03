@@ -9,7 +9,7 @@ import typer
 import sh
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.execution.git import GitError, Repository
 from lup.launch.preflight import NONCE_VARIABLE, ledger_path
 from lup.policy.snapshots import DestinationPolicy, RepositoryPolicyAuthority

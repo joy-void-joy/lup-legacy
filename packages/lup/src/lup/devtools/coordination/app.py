@@ -29,7 +29,7 @@ from lup.coordination.roster import Delivery
 from lup.coordination.touches import HeldPath
 from lup.coordination.watch import Watcher
 from lup.coordination.watcher import watcher_pipeline
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, step
 from lup.runs.pipeline import RunRequest
 from lup.workspace.paths import project_root

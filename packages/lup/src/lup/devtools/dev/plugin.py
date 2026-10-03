@@ -25,7 +25,7 @@ from typing import TypedDict
 import typer
 from pydantic import ConfigDict, TypeAdapter, with_config
 
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.harness.models import Plugin
 from lup.workspace.paths import find_project_root
 

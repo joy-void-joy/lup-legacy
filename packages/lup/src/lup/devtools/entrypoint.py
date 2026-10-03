@@ -28,7 +28,7 @@ def project_application() -> typer.Typer:
     The refusals are imported here rather than at the top, so the routes that
     load nothing of the project pay nothing for them.
     """
-    from lup.devtools.utils import refuse
+    from lup.diagnostics import refuse
     from lup.policy.kernel.diagnostic import step
 
     match list(entry_points(group="lup.devtools", name="application")):

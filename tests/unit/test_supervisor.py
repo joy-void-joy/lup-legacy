@@ -48,7 +48,7 @@ from lup.resolver.state import ResolverStateRepository
 from lup.devtools.supervisor import doors
 from lup.devtools.supervisor.app import create_supervisor
 from lup.devtools.supervisor.events import stream
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.devtools.supervisor.projection import (
     LIVENESS_WINDOW_SECONDS,
     RunIndex,

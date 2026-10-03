@@ -31,7 +31,7 @@ from lup.workspace.paths import project_root
 from lup_template.harness.catalog import declared_hook_set
 from lup_template.devtools.main import app
 from lup.devtools.sync import load_json
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 
 # Typer renders usage errors through Rich, which styles option tokens whenever
 # it believes it is writing to a terminal. That splits a flag name from the

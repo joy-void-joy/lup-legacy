@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from lup.providers.claude.login import CLAUDE_LOGIN
 from lup.harness.codescan.common import RuleSelection
 from lup.devtools.harness.drift import refuse_generation
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.harness.generate import (
     NativeHarnessComposition,
     obstruction_at,

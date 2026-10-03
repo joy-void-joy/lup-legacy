@@ -15,7 +15,7 @@ from typing import Annotated
 
 import typer
 
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.providers.profile_migration import migrate_profiles
 from lup.providers.profiles import Profile, ProfileDirectory, ProfileScope
 from lup.providers.user_config import UserConfigFile

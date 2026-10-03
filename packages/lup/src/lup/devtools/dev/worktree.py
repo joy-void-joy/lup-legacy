@@ -37,10 +37,10 @@ from lup.devtools.utils import (
     config_lock_diagnosis,
     decode_stderr,
     format_table,
-    refuse,
     refuse_blocked_config_writes,
     short_sha,
 )
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, step
 
 

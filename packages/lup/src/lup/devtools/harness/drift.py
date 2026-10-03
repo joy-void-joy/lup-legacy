@@ -19,7 +19,7 @@ from pathlib import Path
 import typer
 from pydantic import BaseModel
 
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import diagnostic, devtools, rendered, step, way
 from lup.providers.profile_tree import profile_directory
 from lup.harness.generate import (

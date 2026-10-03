@@ -35,7 +35,8 @@ from pathlib import Path
 import typer
 from pydantic import BaseModel
 
-from lup.devtools.utils import output_json, refuse
+from lup.devtools.utils import output_json
+from lup.diagnostics import refuse
 from lup.execution.git import GitError, Repository
 from lup.workspace.paths import notes_path, project_root
 from lup.workspace.shared_directory import ARCHIVE_DIRECTORY_NAME

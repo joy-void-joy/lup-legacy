@@ -19,7 +19,8 @@ from pathlib import Path
 import typer
 from pydantic import AnyHttpUrl, BaseModel
 
-from lup.devtools.utils import output_json, refuse
+from lup.devtools.utils import output_json
+from lup.diagnostics import refuse
 from lup.harness.enforcement import semantic_policy_for
 from lup.harness.environment import Placement
 from lup.harness.models import HookSet

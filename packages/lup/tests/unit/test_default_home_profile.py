@@ -26,7 +26,7 @@ from pydantic import ValidationError
 from typer.testing import CliRunner
 
 import lup.devtools.harness.launch as launch
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.launch.declaration import LaunchSandbox
 import lup.providers.claude.usage.reader as claude_usage
 from lup.devtools.harness.composition import NativeTargets

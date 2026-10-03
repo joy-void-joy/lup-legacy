@@ -8,7 +8,7 @@ import sh
 
 import lup.devtools.harness.resolve as resolve
 from lup.devtools.harness.resolve import AdmissionFlags, DetachedRun, SupervisorSpawn
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.resolver.state import ResolverStateRepository
 
 

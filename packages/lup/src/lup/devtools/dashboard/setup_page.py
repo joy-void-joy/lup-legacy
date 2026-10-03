@@ -41,7 +41,7 @@ from lup.devtools.dashboard.wizard import (
     Wizard,
 )
 from lup.devtools.setup import Integration
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, spelled
 from lup.types import EnvVars
 from lup.web.serve import serve_local_page

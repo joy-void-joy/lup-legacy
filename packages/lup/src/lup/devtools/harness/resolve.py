@@ -98,7 +98,7 @@ from lup.sessions.surface import Agent
 from lup.providers.profiles import SessionAccount
 from lup.types import EnvVars
 from lup.workspace.paths import project_root
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, step
 from lup.devtools.dev.branches import probe_base_freshness, require_fresh_base
 from lup.devtools.dev.comments import FoundComment, scan_tracked

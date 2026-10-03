@@ -39,7 +39,8 @@ from lup.harness.codescan.markers import (
     scan_mode_for,
 )
 from lup.devtools.dev.tracked import tracked_files
-from lup.devtools.utils import decode_stderr, output_json, refuse
+from lup.devtools.utils import decode_stderr, output_json
+from lup.diagnostics import refuse
 from lup.execution.shell import git
 from lup.policy.kernel.diagnostic import devtools, step
 

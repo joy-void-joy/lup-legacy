@@ -1533,7 +1533,7 @@ project's own CLI. The `documented commands` row of `dev check` resolves
 every devtools command a way through names against the CLI that serves it,
 and `tests/unit/test_diagnostics_standard.py` refuses a command named in a
 way through's prose, and a command's error exit built from a bare string:
-a command ends on an error through `lup.devtools.utils.refuse`.
+a command ends on an error through `lup.diagnostics.refuse`.
 
 Neither carries reference. A scope table, a rule index, the marker grammar:
 each is the same on every occurrence and read on none, so a diagnostic names

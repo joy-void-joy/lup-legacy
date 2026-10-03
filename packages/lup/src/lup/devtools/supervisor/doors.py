@@ -35,7 +35,7 @@ from lup.policy.kernel.diagnostic import devtools, step
 from lup.workspace.paths import project_root
 from lup.devtools.harness.resolve import parse_answer_flags
 from lup.devtools.supervisor.projection import PendingQuestionView
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 
 
 def resolve_state_root() -> Path:

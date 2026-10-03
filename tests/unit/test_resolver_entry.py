@@ -38,7 +38,7 @@ from lup.resolver.models import (
 from lup.resolver.state import ResolverStateRepository
 from lup.harness.models import ResolveSpec, SkillInvocation
 from lup.devtools.dev.comments import FoundComment
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.policy.kernel.diagnostic import rendered
 from lup.harness.ownership import (
     OWNERSHIP_FILENAME,

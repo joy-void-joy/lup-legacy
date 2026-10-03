@@ -20,7 +20,7 @@ import sh
 import typer
 
 import lup.devtools.dev.check as check
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.devtools.dev.check import (
     ChangeBase,
     ChangedScope,

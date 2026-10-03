@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import NoReturn
 
 import pytest
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 
 import lup.devtools.dev.check as check
 from lup.devtools.dev.admission import (

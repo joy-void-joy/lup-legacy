@@ -17,7 +17,7 @@ import pytest
 from pydantic import ValidationError
 
 import lup.devtools.dev.library as library
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.execution.shell import git
 from lup.types import JsonValue
 

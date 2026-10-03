@@ -82,7 +82,7 @@ from lup.devtools.review.notifications import (
 )
 from lup.devtools.review.preimages import PreimageWatch
 from lup.devtools.review.thread import ReviewThread, spoken_on
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.launch.companions import lent_directory
 from lup.policy.relay import (
     LineComment,

@@ -31,7 +31,8 @@ from pydantic import BaseModel
 from lup.execution.git import Repository
 import lup.devtools.dev.library as library
 import lup.devtools.dev.scaffold as scaffold
-from lup.devtools.utils import format_table, refuse, short_sha
+from lup.devtools.utils import format_table, short_sha
+from lup.diagnostics import refuse
 from lup.execution.shell import git
 from lup.policy.kernel.diagnostic import Step, devtools, spelled, step
 

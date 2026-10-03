@@ -49,7 +49,8 @@ from lup.devtools.feedback.state import (
     match_outcomes,
     save_analyzed,
 )
-from lup.devtools.utils import format_table, output_json, refuse
+from lup.devtools.utils import format_table, output_json
+from lup.diagnostics import refuse
 
 logger = logging.getLogger(__name__)
 

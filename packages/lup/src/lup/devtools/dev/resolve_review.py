@@ -16,7 +16,7 @@ from pathlib import Path
 import typer
 from pydantic import BaseModel, ValidationError
 
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.execution.shell import git
 
 CSS = (

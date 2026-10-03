@@ -40,7 +40,7 @@ from lup.devtools.supervisor.doors import (
     show_status,
 )
 from lup.devtools.supervisor.page import SUPERVISOR_PORT
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, spelled, step
 from lup.providers.profiles import DefaultHomeProfile, ProfileDirectory
 from lup.workspace.paths import project_root

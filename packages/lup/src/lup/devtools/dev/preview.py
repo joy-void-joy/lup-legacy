@@ -30,7 +30,8 @@ import sh
 import typer
 from pydantic import BaseModel, Field
 
-from lup.devtools.utils import decode_stderr, output_json, refuse, short_sha
+from lup.devtools.utils import decode_stderr, output_json, short_sha
+from lup.diagnostics import refuse
 from lup.execution.git import Repository
 from lup.execution.shell import git
 

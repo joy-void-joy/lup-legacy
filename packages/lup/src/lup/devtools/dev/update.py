@@ -29,7 +29,8 @@ import lup.devtools.dev.scaffold as scaffold
 import lup.devtools.dev.scaffold_fit as scaffold_fit
 from lup.formats.banner import REGENERATE_COMMAND
 from lup.devtools.sync import ensure_local, find_project
-from lup.devtools.utils import decode_stderr, refuse, short_sha, uv
+from lup.devtools.utils import decode_stderr, short_sha, uv
+from lup.diagnostics import refuse
 from lup.execution.shell import git
 from lup.policy.kernel.diagnostic import devtools, step
 

@@ -17,7 +17,7 @@ import sh
 from lup.devtools.dev.antipatterns import mirrored_file, scan_antipatterns
 from lup.devtools.dev.check import changed_paths
 from lup.devtools.project import DevProject
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.policy.kernel.rows import PathRoleRow
 from lup.observability.trace import TraceLogger
 from lup.sandbox.models import Mount
@@ -318,7 +318,7 @@ class TestPrCreate:
 
     def test_body_and_body_file_together_refused(self, tmp_path: Path) -> None:
         from lup.devtools.dev.pr import resolve_body
-        from lup.devtools.utils import Refusal
+        from lup.diagnostics import Refusal
 
         source = tmp_path / "body.md"
         source.write_text("from the file", encoding="utf-8")
@@ -329,7 +329,7 @@ class TestPrCreate:
 
     def test_neither_body_refused(self) -> None:
         from lup.devtools.dev.pr import resolve_body
-        from lup.devtools.utils import Refusal
+        from lup.diagnostics import Refusal
 
         with pytest.raises(Refusal) as refused:
             resolve_body(None, None)
@@ -337,7 +337,7 @@ class TestPrCreate:
 
     def test_unreadable_body_file_names_the_path(self, tmp_path: Path) -> None:
         from lup.devtools.dev.pr import resolve_body
-        from lup.devtools.utils import Refusal
+        from lup.diagnostics import Refusal
 
         missing = tmp_path / "absent.md"
         with pytest.raises(Refusal) as refused:

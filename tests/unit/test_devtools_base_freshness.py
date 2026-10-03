@@ -24,7 +24,7 @@ from lup.devtools.dev.branches import (
     settle_base_freshness,
     sync_upstream,
 )
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.execution.process import LocalProcessLauncher
 from tests.unit.repos import TEST_IDENTITY, commit_file, initialized_repo
 

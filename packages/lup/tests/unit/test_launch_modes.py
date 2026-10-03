@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 import lup.devtools.harness.launch as launch
 from lup.devtools.harness.composition import NativeTargets
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.harness.models import PromptDocument, TextPart
 from lup.launch.companions import CompanionLaunch, Contribution, HostCompanion
 from lup.launch.declaration import (

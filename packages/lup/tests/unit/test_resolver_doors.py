@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from lup.devtools.supervisor import doors
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.policy.kernel.diagnostic import rendered
 
 

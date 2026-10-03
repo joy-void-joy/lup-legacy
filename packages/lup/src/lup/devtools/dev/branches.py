@@ -40,10 +40,10 @@ from lup.devtools.utils import (
     attributed_stderr,
     decode_stderr,
     output_json,
-    refuse,
     repository_arguments,
     short_sha,
 )
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import Step, devtools, spelled, step
 
 logger = logging.getLogger(__name__)

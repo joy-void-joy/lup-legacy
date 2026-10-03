@@ -11,7 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from lup.devtools.py.search import name_candidates
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, step
 from lup.workspace.paths import find_nearest_pyproject
 

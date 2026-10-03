@@ -31,7 +31,7 @@ from lup.devtools.harness.drift import (
     generate_with_report,
 )
 from lup.devtools.sync import accessible_roots, granted_devices
-from lup.devtools.utils import refuse, warn
+from lup.diagnostics import refuse, warn
 from lup.harness.devices import Device
 from lup.harness.generate import NativeHarnessComposition
 from lup.harness.image import Image, MemoryLimit

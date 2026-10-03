@@ -16,6 +16,8 @@ from typer.testing import CliRunner
 
 from lup.devtools.dev.commands import CommandSurface
 from lup.devtools.dev.documented import WrittenCommand, written_commands
+from lup.diagnostics import Refusal, refuse
+from lup.policy.kernel.diagnostic import step
 from lup_template.devtools.main import cli
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -111,7 +113,7 @@ def test_no_error_exit_is_a_bare_string() -> None:
         for line in bare_refusals(tree)
     ]
     assert not found, (
-        "end the command with lup.devtools.utils.refuse(why, what=..., steps=[...]),"
+        "end the command with lup.diagnostics.refuse(why, what=..., steps=[...]),"
         " which prints the one diagnostic shape:\n  " + "\n  ".join(found)
     )
 
@@ -196,3 +198,15 @@ def test_a_refusal_prints_its_shape_and_exits_failing(tmp_path: Path) -> None:
         f"error: `{missing}` — is not a directory, so it holds no run",
         "→ pass the run directory the launch printed",
     ]
+
+
+def test_a_refusal_nobody_catches_reads_as_what_it_said() -> None:
+    """Outside a Typer app the exit is a traceback's last line, which says the diagnostic."""
+    with pytest.raises(Refusal) as stopped:
+        refuse("is not a directory", what="/nowhere", steps=[step("pass one that is")])
+
+    assert (
+        str(stopped.value)
+        == "error: `/nowhere` — is not a directory\n→ pass one that is"
+    )
+    assert stopped.value.exit_code == 1

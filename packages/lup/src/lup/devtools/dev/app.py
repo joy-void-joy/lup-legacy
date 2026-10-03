@@ -56,7 +56,8 @@ from lup.devtools.dev.declarations import DevDeclarations
 from lup.devtools.hooks.app import create_hooks_app
 from lup.devtools.report.app import create_report_app
 from lup.observability.usage.app import UsageEntry, create_usage_app
-from lup.devtools.utils import decode_stderr, output_json, refuse, repository_slug
+from lup.devtools.utils import decode_stderr, output_json, repository_slug
+from lup.diagnostics import refuse
 from lup.devtools.harness.composition import NativeTargets
 from lup.devtools.harness.drift import RepositoryWriter
 from lup.ledger.models import LedgerNode

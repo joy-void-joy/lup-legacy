@@ -34,7 +34,7 @@ for this project's CLI — and `dev check` confirms each one exists.
   `lup-devtools …` (which the policy refuses) name the real command.
 - `run monitor` on a path that is not a directory is an error, where it used
   to read as a run with nothing landed and wait forever.
-- A devtools command ends on an error through `lup.devtools.utils.refuse`, and
+- A command ends on an error through `lup.diagnostics.refuse`, and
   a test refuses an error exit built from a bare string.
 
 A project's own shell rules, refused tools and paths declare `recovery` as a

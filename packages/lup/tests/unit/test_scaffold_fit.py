@@ -30,7 +30,8 @@ from lup.devtools.dev.scaffold_fit import (
     strided,
     surveyed,
 )
-from lup.devtools.utils import Refusal, short_sha
+from lup.devtools.utils import short_sha
+from lup.diagnostics import Refusal
 from lup.execution.shell import git
 from lup.policy.kernel.diagnostic import rendered
 from tests.unit.test_ledger_placement import committed

@@ -16,7 +16,7 @@ import sh
 import typer
 
 from lup.devtools import sync
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 from lup.execution.git import Repository
 from tests.unit.repos import commit_file, git_in, initialized_repo
 

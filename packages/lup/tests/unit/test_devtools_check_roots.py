@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 import sh
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 
 import lup.devtools.dev.check as check
 

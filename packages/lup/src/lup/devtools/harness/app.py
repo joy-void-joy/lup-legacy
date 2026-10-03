@@ -57,7 +57,7 @@ from lup.harness.requirements import Manifest
 from lup.providers.profiles import ProfileDirectory
 from lup.providers.runtime_homes import runtime_logins
 from lup.devtools.harness.drift import RepositoryWriter
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, step
 from lup.workspace.paths import project_root
 from lup.policy.assets.host import boundary_description

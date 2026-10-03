@@ -27,7 +27,8 @@ from lup.devtools.harness.drift import RepositoryWriter
 from lup.devtools.report.build import authored_headings, build_report
 from lup.devtools.report.models import DEFAULT_SCRATCH_ROOT, inside_scratch
 from lup.devtools.supervisor.doors import resolve_state_root
-from lup.devtools.utils import output_json, refuse
+from lup.devtools.utils import output_json
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, step
 from lup.workspace.paths import project_root
 

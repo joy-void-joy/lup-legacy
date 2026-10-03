@@ -61,7 +61,8 @@ from lup.harness.codescan.common import LIBRARY_PACKAGE_ROOT
 from lup.harness.credential import parse_remote, resolved_host
 from lup.devtools.project import Tracker
 from lup.types import JsonObject, JsonValue
-from lup.devtools.utils import decode_stderr, refuse, slug_from_remote
+from lup.devtools.utils import decode_stderr, slug_from_remote
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import devtools, step
 from lup.providers.routing import Provider
 

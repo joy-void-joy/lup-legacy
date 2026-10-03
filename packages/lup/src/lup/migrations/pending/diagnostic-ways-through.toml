@@ -47,10 +47,10 @@ took arguments=."""
 
 [[steps]]
 instruction = """
-End a devtools command's error with refuse(why, what=..., steps=[...], code=...) \
-from lup.devtools.utils, in place of typer.echo(..., err=True) followed by \
+End a command's error with refuse(why, what=..., steps=[...], code=...) \
+from lup.diagnostics, in place of typer.echo(..., err=True) followed by \
 raise typer.Exit(1) and in place of raise typer.BadParameter(...). Catch \
-lup.devtools.utils.Refusal where a test caught typer.BadParameter."""
+lup.diagnostics.Refusal where a test caught typer.BadParameter."""
 
 [[steps]]
 instruction = """

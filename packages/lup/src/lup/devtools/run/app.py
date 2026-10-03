@@ -22,7 +22,7 @@ import typer
 from pydantic import BaseModel
 
 import lup.devtools.dev.monitor as monitor
-from lup.devtools.utils import refuse
+from lup.diagnostics import refuse
 from lup.policy.kernel.diagnostic import step
 from lup.runs.directory import WORKSPACE_ENV, RunDirectory
 from lup.runs.report import report_progress

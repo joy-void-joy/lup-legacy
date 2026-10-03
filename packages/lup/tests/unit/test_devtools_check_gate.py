@@ -20,7 +20,7 @@ from pathlib import Path
 from time import perf_counter
 
 import pytest
-from lup.devtools.utils import Refusal
+from lup.diagnostics import Refusal
 
 from lup.devtools.dev.antipatterns import within_scope
 from lup.devtools.dev.check import (

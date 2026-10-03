@@ -34,7 +34,8 @@ from lup.policy.foreign import foreign_warnings
 from lup.policy.kernel.diagnostic import rendered
 from lup.policy.models import Decision, FetchUrl
 from lup.workspace.paths import project_root
-from lup.devtools.utils import output_json, refuse
+from lup.devtools.utils import output_json
+from lup.diagnostics import refuse
 
 
 def input_text(file: Path) -> str:
