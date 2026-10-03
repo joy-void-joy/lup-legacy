@@ -512,6 +512,14 @@ PATH_RULES: list[PathRuleRow] = [
     },
     {
         "kind": "subtree",
+        "value": "packages/lup/src/lup/providers/codex/native.py",
+        "reason": "protected path requires approval",
+        "recovery": [],
+        "allow_autonomous": False,
+        "description": "what compiles the policy into the hooks",
+    },
+    {
+        "kind": "subtree",
         "value": "packages/lup/src/lup/harness/codescan/boundaries.py",
         "reason": "protected path requires approval",
         "recovery": [],

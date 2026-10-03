@@ -14,6 +14,7 @@ from pydantic import AnyHttpUrl, ValidationError
 
 from lup.providers.claude.harness import CLAUDE_DISPATCHER
 from lup.providers.claude.hooks import CLAUDE_SEMANTICS
+from lup.providers.codex.hooks import CODEX_SEMANTICS
 from lup.launch.declaration import InnerSandbox
 from lup.devtools.harness.resolve import worker_policy_hooks
 from lup.policy.hooks import LupHookInput, LupHookOutput
@@ -548,6 +549,57 @@ def test_refusing_a_tool_the_runtime_decodes_is_refused_outright() -> None:
                 )
             ]
         )
+
+
+def test_refusing_a_spawn_the_runtime_decodes_is_in_force() -> None:
+    """A spawn's branch asks the refusal table first, so refusing one is reachable.
+
+    Its own family judges only the name it goes out under, which leaves the
+    table as the one place a project can say it runs no subagents at all.
+    """
+    refusal = RefusedTool(
+        tool="Agent",
+        reason="this project runs no subagents",
+        recovery=[step("do the work in this conversation")],
+    )
+
+    routed = CLAUDE_SEMANTICS.also_refusing([refusal]).routed_tools
+
+    assert routed.count("Agent") == 1
+    assert routed == CLAUDE_SEMANTICS.routed_tools
+
+
+@pytest.mark.parametrize(
+    ("semantics", "spawn"),
+    [
+        pytest.param(CLAUDE_SEMANTICS, "Agent", id="claude"),
+        pytest.param(CODEX_SEMANTICS, "collaborationspawn_agent", id="codex-v2"),
+        pytest.param(CODEX_SEMANTICS, "spawn_agent", id="codex-v1"),
+    ],
+)
+def test_each_seam_knows_when_its_runtime_s_spawning_is_refused(
+    semantics: NativeSemantics, spawn: str
+) -> None:
+    """Asked of the seam, because only the adapter knows how its runtime spells a spawn.
+
+    Outright only: a refusal naming one subject of a spawn leaves the others
+    to go out.
+    """
+
+    def refusing(tool: str, specifier: str = "") -> list[RefusedTool]:
+        return [
+            RefusedTool(
+                tool=tool,
+                specifier=specifier,
+                reason="this project runs no subagents",
+                recovery=[step("do the work in this conversation")],
+            )
+        ]
+
+    assert semantics.spawning_refused(refusing(spawn))
+    assert not semantics.spawning_refused(refusing(spawn, "reviewer"))
+    assert not semantics.spawning_refused(refusing("Artifact"))
+    assert not semantics.spawning_refused([])
 
 
 def test_a_decoder_cannot_be_enforced_over_no_tools_at_all() -> None:

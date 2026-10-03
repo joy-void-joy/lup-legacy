@@ -49,6 +49,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from lup.providers.codex.native import (
+    CODEX_SPAWN_TOOLS,
     CodexBeforeToolEvent,
     CodexEventDecoder,
     CodexShellOperation,
@@ -158,6 +159,7 @@ def codex_approval_semantic_tool(event: LupHookInput) -> SemanticTool:
 CODEX_SEMANTICS = NativeSemantics(
     decode=codex_approval_semantic_tool,
     routed_tools=list(APPROVAL_METHODS),
+    spawn_tools=CODEX_SPAWN_TOOLS,
 )
 """What an in-process Codex session hands a semantic policy.
 
@@ -171,6 +173,11 @@ and ``escapable`` stays false. The agent's own escape is a different matter
 and it has one: Codex puts ``sandbox_permissions`` on the shell tool the
 model calls — see :meth:`~lup.providers.codex.harness.CodexSpellings.escape_sandbox`
 for the source it was read from.
+
+A spawn never reaches this seam, in either of Codex's spellings, since a
+spawn raises no approval request. So the spawns are named here only for
+what a declared refusal of one asks of a session composed in process: that
+it open without the agent tools (``spawning_refused``).
 """
 
 

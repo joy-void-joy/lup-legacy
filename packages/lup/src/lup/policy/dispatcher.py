@@ -349,12 +349,18 @@ class DispatcherDeclaration(BaseModel, frozen=True):
     read afterwards — a write, from an editing tool or the shell, and the
     name a spawn went out under. A matcher wide enough for the deciding set
     would spawn the script after every fetch to find nothing worth reading.
+
+    ``spawn_tools`` are the routed tools that start a subagent, in every
+    spelling the runtime has for it. Their branch asks the refusal table
+    before judging the name, so they are the routed tools a project may
+    still refuse outright.
     """
 
     runtime_name: str
     package: str
     managed_root_env: str
     routed_tools: list[str]
+    spawn_tools: list[str]
     hook_events: list[str]
     observation_event: str
     observed_tools: list[str]
@@ -746,6 +752,11 @@ def declaration_breaches(
     declared = sorted(declaration.routed_tools)
     return [
         *breach(routed != declared, f"routes {routed}, not the declared {declared}"),
+        *[
+            f"declares {name} a spawn it does not route"
+            for name in declaration.spawn_tools
+            if name not in declared
+        ],
         *[
             f"names the {event} hook event it is not registered for"
             for event in runtime.named_events()

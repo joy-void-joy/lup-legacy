@@ -15,7 +15,10 @@ from pathlib import Path
 import sh
 
 from lup.policy.kernel.spawns import decide_spawn, spawn_name, spawn_notice
+from lup.policy.kernel.diagnostic import step
+from lup.policy.refused_tools import RefusedTool, erase_refused_tools
 from lup.policy.relay import QuestionRelay
+from lup.providers.harness import compile_claude, compile_codex
 from lup.types import JsonObject
 from lup_template.harness.catalog import portable_harness
 from tests.unit.native import codex_denial
@@ -26,10 +29,10 @@ DESCRIPTION = "Run monitor leak probe"
 PROMPT = "Reply with the single word ok."
 
 
-def decide(payload: JsonObject) -> JsonObject:
-    """Run the generated Claude dispatcher over one hook payload."""
+def decide(payload: JsonObject, dispatcher: Path = DISPATCHER) -> JsonObject:
+    """Run a Claude dispatcher, the generated one unless named, over one hook payload."""
     return json.loads(
-        str(sh.Command("python3")("-I", "-S", str(DISPATCHER), _in=json.dumps(payload)))
+        str(sh.Command("python3")("-I", "-S", str(dispatcher), _in=json.dumps(payload)))
     )
 
 
@@ -82,19 +85,28 @@ def refusal(decision: JsonObject) -> str:
     return str(specific["permissionDecisionReason"])
 
 
-def codex_spawn(task_name: str | None) -> sh.RunningCommand:
-    """Run the generated Codex dispatcher over one spawn of the recorded shape."""
+def codex_spawn(
+    task_name: str | None,
+    tool: str = "collaborationspawn_agent",
+    dispatcher: Path = CODEX_DISPATCHER,
+) -> sh.RunningCommand:
+    """Run a Codex dispatcher over one spawn of the recorded shape.
+
+    ``tool`` is how the hook names the spawn: `multi_agent_v2`'s runs its
+    namespace and name together, `multi_agent_v1`'s is the bare
+    `spawn_agent`, measured on 0.159.2.
+    """
     named: JsonObject = {} if task_name is None else {"task_name": task_name}
     result = sh.Command(sys.executable)(
         "-I",
         "-S",
-        str(CODEX_DISPATCHER.resolve()),
+        str(dispatcher.resolve()),
         _in=json.dumps(
             {
                 "session_id": "spawn-probe",
                 "hook_event_name": "PreToolUse",
                 "cwd": str(Path.cwd()),
-                "tool_name": "collaborationspawn_agent",
+                "tool_name": tool,
                 "tool_input": {"message": PROMPT, **named},
             }
         ),
@@ -375,3 +387,137 @@ def test_the_other_runtime_has_no_description_to_read_a_name_from() -> None:
 
     assert declared.reason in reason
     assert "pass the name as `task_name`" in reason
+
+
+def test_the_other_runtime_s_unnameable_spawn_is_judged_and_asked_for_no_name() -> None:
+    """`multi_agent_v1`'s spawn reaches the dispatcher, and is asked for nothing.
+
+    Measured on 0.159.2: its schema lists no name, a `task_name` passed anyway
+    is accepted and ignored, and the subagent answers to a nickname Codex
+    generates — so a refusal for want of a name would send the caller after
+    an argument that changes nothing, and a rewrite would carry one nobody
+    reads.
+    """
+    for task_name in (None, "pty-arming-probe"):
+        result = codex_spawn(task_name, tool="spawn_agent")
+
+        assert result.exit_code == 0
+        assert result.stdout == b""
+
+
+def test_both_of_the_other_runtime_s_spawns_are_registered() -> None:
+    """A spawn the matcher leaves out reaches the runtime with nothing judging it."""
+    registered = json.loads(
+        (CODEX_DISPATCHER.parents[1] / "hooks.json").read_text(encoding="utf-8")
+    )["hooks"]
+
+    for event in ("PreToolUse", "PermissionRequest"):
+        matched = registered[event][0]["matcher"].split("|")
+        assert {"collaborationspawn_agent", "spawn_agent"} <= set(matched)
+
+
+SPAWN_REFUSALS = [
+    RefusedTool(
+        tool=tool,
+        reason="this project runs no subagents",
+        recovery=[step("do the work in this conversation")],
+    )
+    for tool in ("Agent", "collaborationspawn_agent", "spawn_agent")
+]
+"""Every spelling of a spawn the two runtimes have, refused outright."""
+
+
+def refusing(refused: list[RefusedTool], into: Path) -> tuple[Path, Path]:
+    """Both runtimes' dispatchers, compiled from this project's harness with *refused* added.
+
+    Laid out whole under *into*, as each plugin lays out its hooks, since a
+    dispatcher imports the runtime beside it.
+    """
+    harness = portable_harness()
+    declared = harness.declared_hooks
+    hooks = declared.model_copy(
+        update={"refused_tools": [*declared.refused_tools, *refused]}
+    )
+    changed = harness.model_copy(
+        update={
+            "plugins": [
+                plugin.model_copy(update={"hooks": hooks})
+                if plugin.hooks is not None
+                else plugin
+                for plugin in harness.plugins
+            ]
+        }
+    )
+    for tree, dispatcher in (
+        (compile_claude(changed), DISPATCHER),
+        (compile_codex(changed), CODEX_DISPATCHER),
+    ):
+        for artifact in tree.artifacts:
+            if artifact.path.is_relative_to(dispatcher.parents[1]):
+                landed = into / artifact.path
+                landed.parent.mkdir(parents=True, exist_ok=True)
+                landed.write_text(artifact.content, encoding="utf-8")
+    return into / DISPATCHER, into / CODEX_DISPATCHER
+
+
+def test_a_refused_spawn_is_refused_on_both_runtimes(tmp_path: Path) -> None:
+    """Refused before its name is judged, in every spelling, and never renamed.
+
+    A spawn's own family judges only its name, so the refusal table is the one
+    place a project says it runs no subagents; a refusal a routed tool could
+    never reach would read as one in force while every spawn went through.
+    """
+    claude, codex = refusing(SPAWN_REFUSALS, tmp_path)
+
+    assert "this project runs no subagents" in refusal(decide(spawn(None), claude))
+    for tool in ("collaborationspawn_agent", "spawn_agent"):
+        reason = codex_denial(codex_spawn("probe_child", tool, codex))
+        assert "this project runs no subagents" in reason
+        assert "do the work in this conversation" in reason
+
+
+def test_a_refused_spawn_still_takes_the_question_it_asks_for(tmp_path: Path) -> None:
+    claude, _ = refusing(SPAWN_REFUSALS, tmp_path)
+    payload = spawn(
+        "leak_probe", prompt="# lup: escalate[decision]: measuring a spawn\nok"
+    )
+    payload.update(cwd=str(tmp_path), session_id="asker", hook_event_name="PreToolUse")
+
+    specific = decide(payload, claude)["hookSpecificOutput"]
+
+    assert isinstance(specific, dict)
+    assert specific["permissionDecision"] == "ask"
+    assert "measuring a spawn" in str(specific["permissionDecisionReason"])
+
+
+def test_refusing_one_kind_of_spawn_leaves_the_rest_to_their_names(
+    tmp_path: Path,
+) -> None:
+    """A refusal naming a subject other spawns do not carry leaves them to be named."""
+    explorer = RefusedTool(
+        tool="Agent",
+        specifier="Explore",
+        reason="exploring is this conversation's job",
+        recovery=[step("read the files yourself")],
+    )
+    claude, _ = refusing([explorer], tmp_path)
+
+    assert rewritten(decide(spawn(None), claude))["name"] == "run_monitor_leak_probe"
+    explored = spawn("explorer")
+    explored["tool_input"] = {**arguments("explorer"), "subagent_type": "Explore"}
+    assert "exploring is this conversation's job" in refusal(decide(explored, claude))
+
+
+def test_the_kernel_asks_the_refusal_table_before_the_name() -> None:
+    declared = portable_harness().declared_hooks.spawn_names
+    assert declared is not None
+    rows = erase_refused_tools(SPAWN_REFUSALS)
+
+    for field in ("name", "task_name", ""):
+        refused = decide_spawn(
+            "named", "", [], declared.erased(), field, tool="spawn_agent", refused=rows
+        )
+        assert refused.effect == "deny"
+    unnamed = decide_spawn("", "", [], declared.erased(), "", tool="spawn_agent")
+    assert unnamed.effect == "defer"
+    assert "nickname" in unnamed.reason

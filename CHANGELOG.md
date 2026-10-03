@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+### Codex's other spawn is judged, and a project can refuse spawning
+
+Codex has two spawn tools. The policy judged only `multi_agent_v2`'s
+(`collaborationspawn_agent`), so `multi_agent_v1`'s `spawn_agent` — offered,
+measured on 0.159.2, to a model absent from the bundled catalog — reached
+the runtime with nothing judging it. It is now routed through the same
+dispatcher. It takes no name (Codex ignores one passed), so it is asked for
+none, and its subagent's roster row keeps the nickname Codex generated.
+
+- `refused_tools` may name a spawn tool — `Agent`, `collaborationspawn_agent`,
+  `spawn_agent` — and every spawn branch asks the refusals first. Before,
+  naming a routed spawn failed at generation, so no project could refuse
+  spawning.
+- A Codex session composed in process opens without the agent tools when its
+  declared policy refuses either spawn outright (`CodexBuiltins.agents`). It
+  is judged by the dispatcher only where the plugin is installed. Where
+  spawning is allowed the tools stay.
+- `docs/permissions.md` lists every tool a Codex session can call and what
+  judges it. `write_stdin` fires no hook at all.
+
 ### Codex's plugin marketplace is protected like its own tree
 
 `.agents/plugins/marketplace.json` decides which plugins Codex loads, so an

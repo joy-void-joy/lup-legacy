@@ -35,6 +35,13 @@ after whatever its own ``PreToolUse`` hook rewrote. The name is that path's
 last part. An opening naming another thread — the session's rollout, which
 ``SubagentStop`` hands as ``transcript_path`` — names nobody.
 
+A `multi_agent_v1` spawn takes no name, so its opening has no path to read
+one from: measured on 0.159.2, it carries ``agent_path`` null and the
+``agent_nickname`` Codex generated (`Nietzsche`), while a `multi_agent_v2`
+spawn's carries both (`/root/probe_child`, `Parfit`). The path is the
+caller's choice and wins; the nickname is what a v1 subagent answers to
+otherwise, and the roster keeps it.
+
 The same opening says which thread spawned this one, under
 ``source.subagent.thread_spawn.parent_thread_id``: the session's own thread
 where the session spawned it, which the event carries as ``session_id``, or
@@ -82,6 +89,7 @@ class Thread(TypedDict, total=False):
 
     id: str
     agent_path: str
+    agent_nickname: str
     source: Source
 
 
@@ -183,7 +191,8 @@ def caller_of(payload: Payload) -> Caller:
         agent_id=agent,
         agent_type=text(payload.get("agent_type")),
         cwd=text(payload.get("cwd")),
-        name=PurePosixPath(text(thread.get("agent_path"))).name,
+        name=PurePosixPath(text(thread.get("agent_path"))).name
+        or text(thread.get("agent_nickname")),
         spawned_by=spawning_thread(thread, text(payload.get("session_id"))),
     )
 

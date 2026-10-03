@@ -124,13 +124,14 @@ def repository(tmp_path: Path) -> tuple[Path, RepositoryPeers]:
     return work, peers
 
 
-def rollout_head(thread: str, agent_path: str, parent: str = "01a0e915") -> str:
+def rollout_head(thread: str, agent_path: str | None, parent: str = "01a0e915") -> str:
     """The first line of a Codex rollout, as far as a spawn is read from it.
 
     Measured on 0.158.0: a subagent's rollout opens with its ``session_meta``,
     whose ``id`` is the ``agent_id`` its events carry and whose ``agent_path``
     is ``/root/<task_name>`` under the name the spawn went out with. *parent*
-    is the thread that spawned it.
+    is the thread that spawned it. ``None`` is a spawn that took no name,
+    whose path 0.159.2 writes as null beside the generated nickname.
     """
     spawn = {"parent_thread_id": parent, "depth": 1, "agent_path": agent_path}
     meta = {"id": thread, "agent_path": agent_path, "agent_nickname": "Popper"}
@@ -223,6 +224,9 @@ def test_the_rendered_caller_hook_stamps_the_calling_subagent(
         pytest.param(
             rollout_head("a0cacac5", "/root/lead/builder"), "builder", id="nested"
         ),
+        # A `multi_agent_v1` spawn takes no name: its rollout opens with no
+        # path and the nickname Codex generated, measured on 0.159.2.
+        pytest.param(rollout_head("a0cacac5", None), "Popper", id="unnamed"),
         # The session's rollout, as SubagentStop's transcript_path names it.
         pytest.param(rollout_head("01a0e915", "/root/builder"), "", id="another"),
         pytest.param("", "", id="empty"),

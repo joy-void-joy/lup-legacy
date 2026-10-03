@@ -26,6 +26,19 @@ from lup.policy.models import (
 from lup.policy.native import NativeEventDecoder
 from lup.types import JsonObject
 
+# lup: ignore[constant-declaration] — Codex's own names for its spawn, as its
+# hooks report them; the runtime spells these, and no project could choose others
+CODEX_SPAWN_TOOLS = ["collaborationspawn_agent", "spawn_agent"]
+"""Codex's two spellings of a spawn, as a hook is handed them.
+
+Measured on 0.159.2 against a local Responses fixture: `multi_agent_v2`'s
+spawn reaches a hook as its namespace and name run together, and
+`multi_agent_v1`'s as the bare name, where every other tool of that
+namespace carries the prefix. Which one a session is offered is the model
+catalog's `multi_agent_version` and the two agent features together, not
+the session's choice, so both are named wherever one is.
+"""
+
 
 class CodexFileChange(BaseModel, frozen=True):
     path: Path

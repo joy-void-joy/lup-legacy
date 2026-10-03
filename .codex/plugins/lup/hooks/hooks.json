@@ -10,7 +10,7 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|web_fetch|apply_patch|collaborationspawn_agent|Artifact|Skill|EnterWorktree"
+        "matcher": "Bash|web_fetch|apply_patch|collaborationspawn_agent|spawn_agent|Artifact|Skill|EnterWorktree"
       }
     ],
     "PostToolUse": [
@@ -36,7 +36,7 @@
             "type": "command"
           }
         ],
-        "matcher": "Bash|web_fetch|apply_patch|collaborationspawn_agent|Artifact|Skill|EnterWorktree"
+        "matcher": "Bash|web_fetch|apply_patch|collaborationspawn_agent|spawn_agent|Artifact|Skill|EnterWorktree"
       },
       {
         "hooks": [

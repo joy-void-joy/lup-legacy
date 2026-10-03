@@ -10,6 +10,7 @@ import tomlkit
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.providers.codex.builtins import CodexBuiltins
 from lup.providers.codex.model_choice import codex_model_arguments, codex_model_id
+from lup.providers.codex.native import CODEX_SPAWN_TOOLS
 from lup.providers.codex.subagents import CodexModelTiers
 from lup.providers.drift_prompt import drift_hook
 from lup.providers.hold_guard import hold_artifacts, hold_command
@@ -573,12 +574,14 @@ CODEX_DISPATCHER = DispatcherDeclaration(
     runtime_name="Codex",
     package="lup.providers.codex",
     managed_root_env=CODEX_LOGIN.config_home_env,
-    routed_tools=["Bash", "web_fetch", "apply_patch", "collaborationspawn_agent"],
+    routed_tools=["Bash", "web_fetch", "apply_patch", *CODEX_SPAWN_TOOLS],
+    spawn_tools=CODEX_SPAWN_TOOLS,
     hook_events=["PermissionRequest", "PreToolUse", "PostToolUse"],
     observation_event="PostToolUse",
     # No spawn, unlike Claude Code's: 0.159.2 lists `task_name` as required
-    # and refuses a spawn without one before any hook runs, so no spawn here
-    # goes out under a name its caller did not choose, and none needs telling.
+    # for the v2 spawn and refuses one without it before any hook runs, and
+    # the v1 spawn takes no name at all, so no spawn here goes out under a
+    # name read for its caller, and none needs telling to choose one.
     observed_tools=["apply_patch", "Bash"],
     failure="stderr_exit",
     runtime_modules=["caller_payload", "codex_patch", "policy_data"],
@@ -849,7 +852,11 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
         decided: list[JsonValue] = [
             {
                 "matcher": "|".join(
-                    routed_for(CODEX_DISPATCHER.routed_tools, source.refused_tools)
+                    routed_for(
+                        CODEX_DISPATCHER.routed_tools,
+                        source.refused_tools,
+                        CODEX_DISPATCHER.spawn_tools,
+                    )
                 ),
                 "hooks": [policy_hook],
             }
@@ -857,7 +864,11 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
         held: list[JsonValue] = [
             {
                 "matcher": "|".join(
-                    routed_for(CODEX_DISPATCHER.routed_tools, source.refused_tools)
+                    routed_for(
+                        CODEX_DISPATCHER.routed_tools,
+                        source.refused_tools,
+                        CODEX_DISPATCHER.spawn_tools,
+                    )
                 ),
                 "hooks": [
                     {

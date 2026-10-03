@@ -1913,6 +1913,47 @@ investigation belongs at its trust, hook-definition, or process-launch
 boundary rather than in policy logic. An unwritable journal reports its own
 diagnostic but does not change the decision the hook reached.
 
+## What a Codex session can call that no rule judges
+
+The dispatcher judges what it is registered for, and Codex fires a
+`PreToolUse` for most of what a model can call, under a name of its own.
+Every tool the app-server offered across the configurations measured on
+0.159.2 — models in and out of the bundled catalog, direct and code mode,
+each agent feature on and off, and every tool-adding feature that needs no
+account switched on — was called once against a local Responses fixture
+with a hook logging every event. The features behind an account or a plugin
+(`apps`, `browser_use`, `computer_use`) offered nothing without one and are
+not in the table:
+
+| What the model calls | What the hook is handed | Judged here |
+| --- | --- | --- |
+| `exec_command` | `Bash` | yes, the shell lattice |
+| `apply_patch` | `apply_patch` | yes, the edit gates |
+| `exec`, code mode's script runner | nothing; each tool its script calls arrives as its own event | through what it calls |
+| `wait`, code mode's | nothing | nothing to judge: it waits on a script |
+| `write_stdin` | **nothing at all** | no — see below |
+| `collaboration.spawn_agent`, `multi_agent_v1.spawn_agent` | `collaborationspawn_agent`, `spawn_agent` | yes, refusals then the name |
+| `collaboration`'s `send_message`, `followup_task`, `list_agents`, `interrupt_agent`, `wait_agent`, and the message board's channel and post tools | `collaboration` and the tool's name run together | no: each reaches agents of this session alone |
+| `multi_agent_v1`'s `send_input`, `wait_agent`, `close_agent`, `resume_agent` | `multi_agent_v1` and the tool's name run together | no, for the same reason |
+| `view_image`, `get_goal`, `create_goal`, `update_goal`, `request_user_input`, `send_message_to_user_async` | its own name | no |
+| `request_permissions`, behind `request_permissions_tool` (off by default) | `request_permissions` | no |
+| `web_search` | nothing: it runs at the model provider | no; switched by configuration |
+| an MCP tool | `mcp__<server>__<tool>` | a coordination tool through the caller hook alone, as on Claude Code |
+
+Two rows are gaps rather than choices. `write_stdin` writes into a process
+an earlier, judged `exec_command` started and fires no hook, so a long-lived
+program reading its input is fed whatever the model writes, judged by
+nothing past the command that started it — measured with `cat` under a PTY
+echoing the written text back. The shell lattice refusing a bare interpreter
+and a bare shell is what keeps that program from being a REPL. And
+`request_permissions` asks the runtime to widen the session's own sandbox;
+nothing here judges the request, which is why the feature stays off where a
+session is composed and a launched session runs with it at Codex's default,
+off. The collaboration rows carry one more fact a future route would meet:
+sent by the session to its subagent, `send_message` and `followup_task`
+arrived carrying that subagent's `agent_id`, so a judgement reading the
+caller off them would act for the wrong row.
+
 ## How one decision reaches two runtimes
 
 The generated plugins enforce permissions without importing lup, yet decide
