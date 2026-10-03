@@ -2,6 +2,38 @@
 
 ## Unreleased
 
+### Two changelog entries added at one place merge whole and set off
+
+`.gitattributes` put the changelog on git's `union` driver, so two branches
+that each added an entry at the top of `## Unreleased` merged without a
+conflict. But union lines the two entries' text up: on most landings the
+first entry's last line ran into the second's heading, and a line both
+entries shared, such as a closing "What changes for a session" sentence,
+was kept once, under the second, and dropped from the first.
+
+- `lup.devtools.changelog.merged_changelog` merges two sides' changelogs as
+  units: each `###` entry under `## Unreleased`, and each release, is a block
+  under its heading, merged three-way against the common ancestor. What one
+  side added, changed or removed is taken from that side, an entry only
+  theirs added goes above ours, and only a block both sides changed
+  differently is a conflict, marked where it stands. Every block is followed
+  by one blank line, so no merge leaves a heading joined to the text above.
+- `lup-devtools git merge-changelog BASE OURS THEIRS` runs it as git's
+  `lup-changelog` merge driver, through a route that loads nothing of the
+  project mid-merge.
+- `git merge-driver` registers it beside `lup-ownership` and hands
+  `CHANGELOG.md` to it in the clone's own `info/attributes`, which git reads
+  before `.gitattributes`. `.gitattributes` keeps `merge=union`, so a clone
+  or forge that never registered still merges the changelog without a
+  conflict, as before. `dev check`'s merge-driver row names each driver still
+  unregistered, and `git worktree create` registers both where the shared
+  config is writable.
+- The headings union had joined on dev are set off again.
+
+What changes for a clone: run `uv run lup-devtools git merge-driver` once
+from a host terminal. Until then `dev check` fails its merge-driver row, and
+the changelog merges by union.
+
 ### A runtime's tree is spelled by its adapter, and read off it everywhere else
 
 `.claude` and `.codex` were spelled by hand outside their adapters: in the

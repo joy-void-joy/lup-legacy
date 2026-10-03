@@ -362,6 +362,21 @@ session. The driver is per-clone git config, so it covers a merge performed in
 a clone that registered it and nothing else: a merge run on the forge's own
 server reads no config and lands the conflict anyway.
 
+The changelog is the other file every two branches meet in, each adding its
+entry at the top of `## Unreleased`. `.gitattributes` puts it on git's own
+`union` driver, which needs no registration, so any clone or forge merges it
+without a conflict — but union lines the two entries' text up: a line both
+share is kept once, under the second, and the first entry's last line runs
+into the second's heading. A clone that ran `git merge-driver` hands the
+changelog to `lup-changelog` instead, through its own `info/attributes`,
+which git reads before `.gitattributes`. That driver (`git merge-changelog`)
+merges entry by entry against the common ancestor: each side's entry stays
+whole, every block is followed by one blank line, and only an entry both
+sides changed differently stops the merge, marked where it stands. `dev
+check` fails its merge-driver row until both drivers are registered, and the
+registration is a host's act, since a session holds the shared git config
+read-only.
+
 Before publishing a PR, fetch its target and run `uv run lup-devtools git pr
 prepare --base origin/<target> --json` in the clean feature checkout. This
 merges the exact target commit using the generated-tree driver, regenerates
