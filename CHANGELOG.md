@@ -191,6 +191,21 @@ two paths it named, so both trees stay protected whichever runtime a session
 runs. An adopter's own `NativeSpellings` implements `protected_tree`, and a
 hook set that listed `.claude` and `.codex` by hand can spread
 `runtime_trees()` instead.
+### A script `uv run` is handed beside an unread word is no longer refused as a bare interpreter
+
+`cd tmp && T=/a; uv run python s.py $T` was refused as a bare interpreter,
+on every placement, while the same line with `T` never assigned was allowed.
+The same refusal met `read T; uv run python s.py $T`,
+`uv run python s.py $(date)` and `uv run perl s.pl $T`. Any command that
+references an unreadable value is checked for a refusal the value could
+never lift. That check judged the program `uv run` runs as if it were run
+directly, and Python run directly is refused over any file, because
+`uv run python` is how it is meant to run. The check now reads the program as
+`uv run` reads it. A script with an unread argument after it gets the floor
+`uv run bash s.sh $T` always got: allowed inside a boundary, refused outside
+one. Inline code (`uv run python -c … $T`) and an unread program
+(`uv run python $T`) stay refused, now with `uv run`'s own reason, and
+`python s.py $T` run directly stays refused.
 
 ### A sibling worktree's scratch is scratch for every question, and a stream is no file
 
