@@ -15,8 +15,10 @@ from lup.execution.git import GitError, Repository
 from lup.harness.proposals import ReconciliationMetadata, ReconciliationProposalWriter
 from lup.workspace.checkout_state import CheckoutState
 from lup.harness.reconciliation import source_patch_base_digest
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.workspace.paths import project_root
 from lup.devtools.harness.drift import generate_with_report, report_drift
+from lup.diagnostics import refuse
 from lup.harness.generate import NativeHarnessComposition, inspect_generation
 
 
@@ -28,12 +30,17 @@ def classify_targets(compositions: list[NativeHarnessComposition]) -> None:
         report_drift(report)
         unresolved = unresolved or bool(report.proposal.conflicts)
     if unresolved:
-        typer.echo(
-            "Unrecognized changes were preserved as conflicts; no arbitrary prompt "
-            "or script content was reverse-engineered.",
-            err=True,
+        refuse(
+            "unrecognized changes were preserved as conflicts, and no prompt or"
+            " script content was reverse-engineered from them",
+            steps=[
+                step(
+                    "write the change as a patch to the canonical Python source,"
+                    " and put it up for review",
+                    devtools("harness", "propose-reconciliation", "<patch>"),
+                )
+            ],
         )
-        raise typer.Exit(1)
 
 
 def apply_proposal(
@@ -44,25 +51,39 @@ def apply_proposal(
     metadata = directory / "metadata.json"
     patch = directory / "source.patch"
     if not metadata.is_file() or not patch.is_file():
-        raise typer.BadParameter(f"unknown reconciliation proposal {proposal_id!r}")
+        refuse("is no reconciliation proposal on record", what=proposal_id, code=2)
     try:
         record = ReconciliationMetadata.model_validate_json(
             metadata.read_text(encoding="utf-8")
         )
-    except ValueError as error:
-        raise typer.BadParameter("reconciliation metadata is malformed") from error
+    except ValueError:
+        refuse("its recorded metadata is malformed", what=proposal_id, code=2)
     if record.proposal_id != proposal_id:
-        raise typer.BadParameter("reconciliation proposal identity does not match")
+        refuse("its recorded metadata names another proposal", what=proposal_id, code=2)
     actual = hashlib.sha256(patch.read_bytes()).hexdigest()
     if record.source_patch_sha256 != actual:
-        raise typer.BadParameter("reconciliation patch digest is stale or malformed")
+        refuse(
+            "its patch no longer matches the digest recorded for it",
+            what=proposal_id,
+            code=2,
+        )
     content = patch.read_text(encoding="utf-8")
     try:
         base_digest = source_patch_base_digest(project_root(), content)
     except (OSError, ValueError) as error:
-        raise typer.BadParameter("reconciliation source patch is malformed") from error
+        refuse(f"its source patch is malformed: {error}", what=proposal_id, code=2)
     if record.base_digest != base_digest:
-        raise typer.BadParameter("reconciliation source base is stale")
+        refuse(
+            "was made against a source base that has since moved",
+            what=proposal_id,
+            steps=[
+                step(
+                    "propose the patch again over the source as it stands",
+                    devtools("harness", "propose-reconciliation", "<patch>"),
+                )
+            ],
+            code=2,
+        )
     typer.echo(content)
     if not typer.confirm("Apply this canonical source patch and regenerate?"):
         raise typer.Abort()
@@ -70,8 +91,18 @@ def apply_proposal(
     try:
         repository.answer("apply", "--check", str(patch))
         repository.answer("apply", str(patch))
-    except GitError as error:
-        raise typer.BadParameter("reconciliation patch no longer applies") from error
+    except GitError:
+        refuse(
+            "its patch no longer applies",
+            what=proposal_id,
+            steps=[
+                step(
+                    "propose the patch again over the source as it stands",
+                    devtools("harness", "propose-reconciliation", "<patch>"),
+                )
+            ],
+            code=2,
+        )
     for composition in compositions:
         generate_with_report(composition)
     metadata.unlink()
@@ -82,13 +113,19 @@ def apply_proposal(
 def propose_patch(patch: Path) -> None:
     """Persist a source patch for separate review and stale-base-checked apply."""
     if not patch.is_file():
-        raise typer.BadParameter(f"source patch does not exist: {patch}")
+        refuse(
+            "does not exist, so there is no patch to propose", what=str(patch), code=2
+        )
     try:
         record = ReconciliationProposalWriter().write(
             project_root(), patch.read_text(encoding="utf-8")
         )
     except (OSError, UnicodeDecodeError, ValueError) as error:
-        raise typer.BadParameter("reconciliation source patch is invalid") from error
+        refuse(
+            f"is not a patch this repository's canonical source can take: {error}",
+            what=str(patch),
+            code=2,
+        )
     typer.echo(
         f"Reconciliation proposal {record.proposal_id} persisted; review it, then run "
         f"`uv run lup-devtools harness apply-reconciliation {record.proposal_id}`"

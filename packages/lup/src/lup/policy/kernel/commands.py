@@ -11,6 +11,7 @@ from .decision import (
     CheckpointRequirement,
     DecisionEffect,
     KernelDecision,
+    SCRIPT_RECOVERY,
     SUBSTITUTION_SENTINEL,
     SandboxPlacement,
     carrying_readings,
@@ -83,22 +84,26 @@ from .roles import path_role, writes_to_a_stream
 from .syntax import expands, verbatim_piece
 from .programs import program_verdict, read_program
 from .semantics import UnjudgedAmbient
+from .diagnostic import step
 
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
 IN_PLACE_SED_REFUSAL = (
     "in-place sed names no file, so what it rewrites cannot be checked"
 )
-# lup: ignore[constant-declaration] — refusal wording, declared with its verdict
+# lup: ignore[library-default] — refusal wording, declared with its verdict
 IN_PLACE_SED_RECOVERY = (
-    "For a rename across many sites, `rename_symbol` resolves scopes an"
-    " exact-string substitution cannot tell apart; otherwise make the change"
-    " with a file edit, which the edit gates read."
+    step(
+        "for a rename across many sites, use `rename_symbol`, which tells apart"
+        " scopes an exact-string substitution cannot"
+    ),
+    step("otherwise make the change with a file edit, which the edit gates read"),
 )
 # lup: ignore[constant-declaration] — refusal wording, declared with its verdict
 UNPRODUCED_SED_RECOVERY = (
-    "The edit gates judge the file a rewrite would produce, and it could not be"
-    " produced here. Make the change with a file edit, which carries its own"
-    " content."
+    step(
+        "make the change with a file edit, which carries its own content: the"
+        " file this rewrite would produce could not be produced here to judge"
+    ),
 )
 
 
@@ -108,19 +113,20 @@ def row_verdict(
     reason: str,
     checkpoint: CheckpointRequirement | None = None,
     effects: list[EffectRow] | None = None,
-    arguments: list[str] | None = None,
+    operative: Sequence[str] = (),
     asked: KernelDecision | None = None,
     reached: list[EffectRow] | None = None,
 ) -> KernelDecision:
     """One row's verdict, carrying every fact the row states about itself.
 
-    ``arguments`` are the operand words the row was matched against, and an
-    ask or a deny appends the invocation they spell to the reason. A row's
-    sentence states the category — "deleting files requires approval" — and
-    the reviewer reads the reason and nothing else, so the words that tripped
-    the row travel with it: in a compound command they are what says *which*
-    segment the question is about. Composed here once rather than templated
-    into each of the hundred-odd rows that ask.
+    ``operative`` are the words past the row's own command and subcommand that
+    decided it -- a guarded flag, a refspec -- or empty where the row's own
+    words did, and the verdict's subject is the row's words with them. A
+    row's sentence states the category — "deleting files requires approval" —
+    and the subject says which command of a compound line it is about,
+    without echoing the whole line back to a reviewer who already has it.
+    Composed here once rather than templated into each of the hundred-odd
+    rows that ask.
 
     The purpose comes from the effect that decided, because the effect is the
     thing being weighed. Inferred from two other columns -- an ask whose
@@ -165,13 +171,11 @@ def row_verdict(
             rule=row["rule"],
             evaluator="shell-vocabulary",
             recovery=row["recovery"],
+            subject=row_subject(row, []),
         )
     settled = row["checkpoint"] if checkpoint is None else checkpoint
     declared = row["effects"] if effects is None else effects
     purpose = purpose_of(declared, EffectEvidence()) if effect == "ask" else None
-    if arguments is not None and effect in ("ask", "deny"):
-        prefix = [row["command"]] + ([row["subcommand"]] if row["subcommand"] else [])
-        reason = f"{reason} — `{' '.join([*prefix, *arguments])}`"
     return KernelDecision(
         effect,
         reason,
@@ -186,14 +190,21 @@ def row_verdict(
             if asked is not None
             else row["recovery"]
             if effect in ("ask", "deny")
-            else ""
+            else ()
         ),
         reach=(
             asked.reach
             if asked is not None
             else question_reach(declared if reached is None else reached)
         ),
+        subject=row_subject(row, operative),
     )
+
+
+def row_subject(row: ShellRuleRow, operative: Sequence[str]) -> str:
+    """The words a row's verdict is about: its command, its subcommand, and what decided it."""
+    named = [row["command"], *([row["subcommand"]] if row["subcommand"] else [])]
+    return " ".join([*named, *operative])
 
 
 def settles_unguarded(word: str, following: list[str], row: ShellRuleRow) -> bool:
@@ -361,7 +372,6 @@ def flag_write_verdict(
             row,
             "ask",
             row["reason"] or "this flag writes a file",
-            arguments=arguments,
         )
     return targets_write_verdict(row, targets, arguments, facts)
 
@@ -443,7 +453,9 @@ def targets_write_verdict(
         max(answers, key=lambda answer: STRENGTH.index(answer["effect"])),
     )
     if answered["effect"] == "allow":
-        return row_verdict(row, "allow", "this write lands where nothing is reviewed")
+        return row_verdict(
+            row, "allow", "this write lands where nothing is reviewed", operative=landed
+        )
     if answered["unread"] or answered["scope"] == "unbounded":
         # Through the row rather than beside it, so an operator-only row still
         # denies and the sandbox, rule and reviewer the row states still
@@ -451,25 +463,25 @@ def targets_write_verdict(
         asked = (
             unread_question(answered["path"])
             if answered["unread"]
-            else unlocated_write(f"the write target {answered['path']}")
+            else unlocated_write("the write", answered["path"])
         )
         return row_verdict(
             row,
             "ask",
             asked.reason,
             write_checkpoint(answered["scope"]),
-            arguments=arguments,
             asked=asked,
+            operative=landed,
         )
     return row_verdict(
         row,
         answered["effect"],
         row["reason"] or "this flag writes a file",
         write_checkpoint(answered["scope"]),
-        arguments=arguments,
         # Where the file lands, rather than what the plain command does: `sort`
         # reads, and `sort -o` over somebody's file is a write to it.
         reached=[declare("writes_path", scope=answered["scope"])],
+        operative=landed,
     )
 
 
@@ -576,8 +588,8 @@ def frozen_restore(
     )
 
 
-def forced_update(row: ShellRuleRow, arguments: list[str]) -> str:
-    """Why a forced update this row judges asks, or ``""`` where it does not.
+def forced_update(row: ShellRuleRow, arguments: list[str]) -> KernelDecision | None:
+    """The question a forced update this row judges puts, or ``None`` where it puts none.
 
     What a force can discard is the whole question. An unconditional force --
     a force flag, or a refspec's leading plus, which git lets override a lease
@@ -593,7 +605,7 @@ def forced_update(row: ShellRuleRow, arguments: list[str]) -> str:
     them in order rather than asking whether one appears.
     """
     if not (row["force_flags"] or row["lease_flags"]):
-        return ""
+        return None
     lease = next(iter(row["lease_flags"]), "")
     cancels = [f"--no-{flag.removeprefix('--')}" for flag in row["lease_flags"]]
     unconditional = next(
@@ -606,10 +618,34 @@ def forced_update(row: ShellRuleRow, arguments: list[str]) -> str:
         None,
     )
     if unconditional is not None:
-        refusal = f"; {lease} would refuse that" if lease else ""
-        return (
-            f"{unconditional} overwrites the remote branch whatever it holds,"
-            f" discarding commits someone else pushed{refusal}"
+        asked = row_verdict(
+            row,
+            "ask",
+            "overwrites the remote branch whatever it holds, discarding commits"
+            " someone else pushed",
+            operative=[unconditional],
+        )
+        if not lease:
+            return asked
+        if not flag_matches(unconditional, row["force_flags"]):
+            return asked.advising(
+                (
+                    step(
+                        f"drop the leading `+` and push with `{lease}`, which"
+                        " refuses when the remote holds commits this checkout has"
+                        " not seen"
+                    ),
+                )
+            )
+        leased = [lease if word == unconditional else word for word in arguments]
+        return asked.advising(
+            (
+                step(
+                    "push with a lease instead, which refuses when the remote holds"
+                    " commits this checkout has not seen",
+                    [row["command"], row["subcommand"], *leased],
+                ),
+            )
         )
     toggles = [
         word
@@ -617,7 +653,7 @@ def forced_update(row: ShellRuleRow, arguments: list[str]) -> str:
         if flag_matches(word, row["lease_flags"]) or word in cancels
     ]
     if not toggles or toggles[-1] in cancels:
-        return ""
+        return None
     refspecs = [
         word
         for word in operand_words(arguments, row["value_flags"])[1:]
@@ -625,14 +661,21 @@ def forced_update(row: ShellRuleRow, arguments: list[str]) -> str:
     ]
     named = [refspec_destination(word) for word in refspecs]
     if not named or "" in named:
-        return (
-            "this forced push names no branch, so it rewrites whichever one the"
-            " checkout is on; name the branch so a shared one is not rewritten"
-        )
+        return row_verdict(
+            row,
+            "ask",
+            "names no branch, so it rewrites whichever one the checkout is on",
+            operative=[toggles[-1]],
+        ).advising((step("name the branch, so a shared one is not rewritten"),))
     shared = next((ref for ref in named if ref in row["protected_refs"]), None)
     if shared is not None:
-        return f"forcing {shared} rewrites a branch other people build on"
-    return ""
+        return row_verdict(
+            row,
+            "ask",
+            f"forcing {shared} rewrites a branch other people build on",
+            operative=[toggles[-1]],
+        )
+    return None
 
 
 def unread_argument_readings(
@@ -863,7 +906,7 @@ def apply_command_row(
                 row["reason"] or f"{guarded} requires approval",
                 checkpoint=flagged_checkpoint(row),
                 effects=[*row["effects"], *row["flag_effects"]],
-                arguments=arguments,
+                operative=[guarded],
                 # What the flag adds is what the flag's effects say, and a flag
                 # that declared none was placed by nobody.
                 reached=(
@@ -914,20 +957,21 @@ def apply_command_row(
             return row_verdict(
                 row,
                 "ask",
-                row["reason"] or f"{carried[0]} would {carried[1]} a ref",
-                arguments=arguments,
+                row["reason"] or f"would {carried[1]} a ref",
+                operative=[carried[0]],
             )
     if stated == "allow" and not probing:
         # No opacity test of its own either: the force spellings joined the
         # guarded list above, so an unreadable word has already been bounced.
         forced = forced_update(row, arguments)
-        if forced:
-            return row_verdict(row, "ask", forced, arguments=arguments)
+        if forced is not None:
+            return forced
     # Read after every de-escalation above and before the row's own answer,
     # because it changes what the loss *is* rather than whether the row asks:
     # a scratch grant is still a scratch grant, and a delete reaching outside
     # the checkout is a loss no capture of this session holds.
     loss = verb_loss_scope([row["command"], *arguments], measured, row["write_flags"])
+    touched = touched_paths(row, arguments)
     if loss is not None:
         return row_verdict(
             row,
@@ -935,9 +979,31 @@ def apply_command_row(
             row["reason"],
             checkpoint=loss,
             effects=[declare("destroys_uncaptured", scope=loss)],
-            arguments=arguments,
+            operative=touched,
         )
-    return row_verdict(row, stated, row["reason"], arguments=arguments)
+    return row_verdict(row, stated, row["reason"], operative=touched)
+
+
+def touched_paths(row: ShellRuleRow, arguments: list[str]) -> list[str]:
+    """The paths a row's command writes or deletes, as its words were placed.
+
+    The verdict's subject, because the path is what an approver weighs: `rm`
+    over a scratch file and over somebody's is one rule and two questions,
+    and a path a `cd` left unknown reads `$PWD/...`, which is the reason it
+    asks. A path verb, an archive and a write flag name their targets as
+    :func:`written_targets` reads them; any other row whose effects destroy
+    or write names its operands -- `git rm`, `git restore`. A row that
+    touches no path names none.
+    """
+    written = written_targets([row["command"], *arguments], row["write_flags"])
+    if written is not None:
+        return written
+    if any(
+        effect["kind"] in ("destroys_uncaptured", "writes_path")
+        for effect in row["effects"]
+    ):
+        return operand_words(arguments, row["value_flags"])
+    return []
 
 
 class Subcommand(TypedDict):
@@ -1359,8 +1425,12 @@ def strictest_reading(
             unread=True,
         )
         .advising(
-            "Spell that word out, and the command is judged as the one it is"
-            " rather than as the strictest one it could be."
+            (
+                step(
+                    "spell that word out, and the command is judged as the one it"
+                    " is rather than as the strictest one it could be"
+                ),
+            )
         )
     )
 
@@ -1660,9 +1730,11 @@ def unproduced_verdict(target: str, cause: UnproducedCause | None) -> KernelDeci
                 f"sed would rewrite {target} in place, and no file stands there",
                 purpose="quality_review",
                 recovery=(
-                    "Check the path, and the directory the command runs in: a"
-                    " relative operand after a `cd` resolves from where the"
-                    " `cd` left the shell."
+                    step(
+                        "check the path, and the directory the command runs in: a"
+                        " relative operand after a `cd` resolves from where the"
+                        " `cd` left the shell"
+                    ),
                 ),
             )
         case "irregular":
@@ -1671,9 +1743,11 @@ def unproduced_verdict(target: str, cause: UnproducedCause | None) -> KernelDeci
                 f"sed would rewrite {target} in place, and that is not a regular file",
                 purpose="quality_review",
                 recovery=(
-                    "`-i` replaces the file with the script's output, so a"
-                    " directory or a device is not something it can rewrite."
-                    " Name the file itself, or drop `-i` to print instead."
+                    step(
+                        "name the file itself: `-i` replaces a file with the"
+                        " script's output, which a directory or a device is not"
+                    ),
+                    step("or drop `-i` to print the result instead"),
                 ),
             )
         case "refused":
@@ -1683,8 +1757,10 @@ def unproduced_verdict(target: str, cause: UnproducedCause | None) -> KernelDeci
                 " run the script over it",
                 purpose="quality_review",
                 recovery=(
-                    "Run the same script without `-i` to see what sed says"
-                    " about it; nothing is judged until it runs."
+                    step(
+                        "run the same script without `-i` to see what sed says"
+                        " about it; nothing is judged until it runs"
+                    ),
                 ),
             )
         case "unreadable":
@@ -1702,8 +1778,10 @@ def unproduced_verdict(target: str, cause: UnproducedCause | None) -> KernelDeci
                 " of the same line writes there by running, which nothing read",
                 purpose="quality_review",
                 recovery=(
-                    "Run the step that writes the file first, then rewrite it"
-                    " in a command of its own, where what it holds can be read."
+                    step(
+                        "run the step that writes the file first, then rewrite it"
+                        " in a command of its own, where what it holds can be read"
+                    ),
                 ),
             )
     return KernelDecision(
@@ -2258,8 +2336,13 @@ def decide_gh_words(
             f"gh hands `{leading}`, written before its subcommand, to whichever"
             " subcommand it reaches, and a flag there without `=` takes the next"
             " word as its value, so which subcommand runs is not read here",
-            recovery="Write gh's flags after its subcommand and operation:"
-            " `gh pr merge 1 --repo owner/repo`, `gh api -X GET <endpoint>`.",
+            recovery=(
+                step(
+                    "write gh's flags after its subcommand and operation",
+                    ["gh", "pr", "merge", "1", "--repo", "owner/repo"],
+                ),
+                step(run=["gh", "api", "-X", "GET", "<endpoint>"]),
+            ),
         )
     if subcommand == ["api"]:
         return decide_gh_api_words(words, gh_api_routes(rows))
@@ -2369,7 +2452,6 @@ def decide_download_words(
                 "ask",
                 asked,
                 effects=[declare("external_mutation", scope="upload")],
-                arguments=words[1:],
             )
         )
     placed = [placed_path(target, directory) for target in reading["targets"]]
@@ -2536,7 +2618,7 @@ def declared_target_decision(
             if stated == "ask"
             else None
         ),
-        recovery=declared["recovery"] if stated in ("ask", "deny") else "",
+        recovery=declared["recovery"] if stated in ("ask", "deny") else (),
     )
 
 
@@ -2565,18 +2647,22 @@ def decide_tool_run(spelled: str, arguments: list[str]) -> KernelDecision | None
         )
         return KernelDecision(
             "deny",
-            f"{spelled} {subject}: {unread}, so the tool it runs is unread",
-            recovery="Name the tool literally, and spell an option's value with"
-            " `=` or run the tool without it.",
+            f"{unread}, so the tool it runs is unread",
+            recovery=(
+                step(
+                    "name the tool literally, and spell an option's value with `=`"
+                    " or run the tool without it"
+                ),
+            ),
+            subject=f"{spelled} {subject}",
         )
     tool = posixpath.basename(subject).partition("@")[0]
     if reading["kind"] == "script" and tool in INTERPRETERS:
         return KernelDecision(
             "deny",
-            f"{spelled} {subject}: inline code leaves nothing behind to review",
-            recovery="Write the code to a named script file and run it through"
-            " `uv run python <script>`; a bare interpreter is refused even"
-            " over a file.",
+            "inline code leaves nothing behind to review",
+            recovery=SCRIPT_RECOVERY,
+            subject=f"{spelled} {subject}",
         )
     return None
 
@@ -2664,19 +2750,20 @@ def decide_uv(
         )
         return KernelDecision(
             "ask",
-            f"uv add fetches and runs the build code of {', '.join(named)}"
-            if named
-            else f"uv add fetches and runs the build code of what it adds — `{' '.join(words)}`",
+            "fetches what it adds and runs its build code",
+            subject=" ".join(["uv", "add", *named]),
         )
     if subcommand == "sync":
         return KernelDecision(
             "ask",
-            "uv sync resolves every dependency anew and runs each package's build"
-            f" code — `{' '.join(words)}`",
+            "resolves every dependency anew and runs each package's build code",
             recovery=(
-                "`uv sync --frozen` or `--locked` installs what the lockfile already"
-                " pins by hash, and is allowed."
+                step(
+                    "install what the lockfile already pins by hash, which is allowed",
+                    ["uv", "sync", "--frozen"],
+                ),
             ),
+            subject="uv sync",
         )
     if subcommand in ("remove", "lock"):
         redirect = uv_package_source(words[2:])
@@ -2722,9 +2809,9 @@ def decide_uv(
         if run_command == "-c":
             return KernelDecision(
                 "deny",
-                "uv run -c: inline code leaves nothing behind to review",
-                recovery="Write it to a named script file, which can be reviewed"
-                " and run again.",
+                "inline code leaves nothing behind to review",
+                recovery=SCRIPT_RECOVERY,
+                subject="uv run -c",
             )
         refused = (
             None
@@ -2736,17 +2823,24 @@ def decide_uv(
         if module_root is not None and declared_root is None:
             return KernelDecision(
                 "deny",
-                f"uv run -m: `{module_root}` is not a module root this project"
-                " declares",
-                recovery="Name a script file instead, or declare the root as a"
-                " runner target.",
+                "is not a module root this project declares",
+                recovery=(
+                    step(
+                        "name a script file instead",
+                        ["uv", "run", "python", "<script>"],
+                    ),
+                    step("or declare the root as a runner target"),
+                ),
+                subject=f"uv run -m {module_root}",
             )
         if reading is not None and reading["kind"] == "subcommand":
             return KernelDecision(
                 "deny",
-                f"uv run {run_command} {reading['subject']}: only a script file"
-                " is read through `uv run`",
-                recovery="Run the command itself, where its own rules judge it.",
+                "only a script file is read through `uv run`",
+                recovery=(
+                    step("run the command itself, where its own rules judge it"),
+                ),
+                subject=f"uv run {run_command} {reading['subject']}",
             )
         # Transparent wrappers and nested runners cannot hide an operator-only
         # operation. Only its hard prohibition propagates: recognizing a target
@@ -2804,22 +2898,22 @@ def decide_uv(
             )["value"]
         ]
         asked = [
-            *(
-                [f"uv run fetches and runs external code: {' '.join(fetched)}"]
-                if fetched
-                else []
-            ),
-            *(
-                f"uv run --env-file {secrets} loads a secrets file into the process"
-                " environment"
-                for secrets in loaded
-            ),
+            *(["fetches what it names and runs its code"] if fetched else []),
+            *(["loads a secrets file into the process environment"] if loaded else []),
         ]
         if asked:
             return KernelDecision(
                 "ask",
                 "; ".join(asked),
                 purpose="sensitive_access" if loaded and not fetched else None,
+                subject=" ".join(
+                    [
+                        "uv",
+                        "run",
+                        *fetched,
+                        *(f"--env-file {secrets}" for secrets in loaded),
+                    ]
+                ),
             )
         redirect = uv_package_source(words[2 : len(words) - len(run_words)])
         if redirect is not None:
@@ -2907,8 +3001,12 @@ def git_checkout_pathspec(
     )
     if refusing is not None:
         return row_verdict(refusing, "deny", refusing["refuses"]).revised(
-            recovery=f"`git restore --source={ref} -- {' '.join(words[4:])}`"
-            " restores the same paths from the same ref."
+            recovery=(
+                step(
+                    "restore the same paths from the same ref",
+                    ["git", "restore", f"--source={ref}", "--", *words[4:]],
+                ),
+            )
         )
     return KernelDecision(
         "allow", "checkout from a named ref restores committed file state"

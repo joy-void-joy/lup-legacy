@@ -99,6 +99,8 @@ from lup.sessions.surface import Agent
 from lup.providers.profiles import SessionAccount
 from lup.types import EnvVars
 from lup.workspace.paths import project_root
+from lup.diagnostics import refuse
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.devtools.dev.branches import probe_base_freshness, require_fresh_base
 from lup.devtools.dev.comments import FoundComment, scan_tracked
 from lup.devtools.dev.issues import comment_on_issues, fetch_open_issues
@@ -351,12 +353,23 @@ def parse_answer_flags(
         if len(pair) != 2 or not pair[0]
     ]
     if malformed:
-        raise typer.BadParameter(
-            "--answer takes <question-id>=<value>; got: " + ", ".join(malformed)
+        refuse(
+            "an --answer is spelled <question-id>=<value>",
+            what=", ".join(malformed),
+            code=2,
         )
     identifiers = [pair[0] for pair in pairs]
-    if len(identifiers) != len(dict.fromkeys(identifiers)):
-        raise typer.BadParameter("--answer question ids must be unique")
+    repeated = [
+        identifier
+        for identifier in dict.fromkeys(identifiers)
+        if identifiers.count(identifier) > 1
+    ]
+    if repeated:
+        refuse(
+            "is answered by more than one --answer; give each question one",
+            what=", ".join(repeated),
+            code=2,
+        )
     return {pair[0]: pair[1] for pair in pairs}
 
 
@@ -379,8 +392,10 @@ def parse_note_targets(targets: list[str]) -> list[NoteTargetRef]:
         if not pair[0] or not pair[2].isdigit()
     ]
     if malformed:
-        raise typer.BadParameter(
-            "--admit-note takes <file>:<line>; got: " + ", ".join(malformed)
+        refuse(
+            "an --admit-note is spelled <file>:<line>",
+            what=", ".join(malformed),
+            code=2,
         )
     return [NoteTargetRef(file=Path(pair[0]), line=int(pair[2])) for pair in parsed]
 
@@ -404,8 +419,15 @@ def admission_notes(
         if f"{target.file}:{target.line}" not in located
     ]
     if missing:
-        raise typer.BadParameter(
-            "no actionable `# lup:` note at: " + ", ".join(missing)
+        refuse(
+            "no actionable lup note sits at that line",
+            what=", ".join(missing),
+            steps=[
+                step(
+                    "see the notes a run would plan from", devtools("resolve", "intake")
+                )
+            ],
+            code=2,
         )
     return [
         InventoryNote(
@@ -433,7 +455,7 @@ def offer_flag_answers(
     rerun is told about all of its stale corrections rather than finding the
     next one only after it has dropped the last.
     """
-    refused: list[str] = []
+    settled: list[str] = []
     for identifier, value in provided.items():
         try:
             mailbox.offer(
@@ -446,12 +468,20 @@ def offer_flag_answers(
                 )
             )
         except MailboxConflictError as error:
-            refused.append(str(error))
-    if refused:
-        raise typer.BadParameter(
-            "\n  ".join(["", *refused])
-            + "\nDrop those --answer flags to resume on the settled values, or "
-            "end this run with --abort and start one answerable afresh."
+            typer.echo(f"  {error}", err=True)
+            settled.append(identifier)
+    if settled:
+        refuse(
+            "is already settled, and a settled answer does not change",
+            what=", ".join(settled),
+            steps=[
+                step("drop those --answer flags to resume on the settled values"),
+                step(
+                    "or end this run, then start a fresh one that can take them",
+                    devtools("resolve", "--run-id", run_id, "--abort", "<reason>"),
+                ),
+            ],
+            code=2,
         )
 
 
@@ -499,8 +529,10 @@ def run_resolver_tool_server() -> None:
     """
     context = read_resolver_tool_context()
     if context is None:
-        raise typer.BadParameter(
-            f"{RESOLVER_RUN_DIR_ENV} and {RESOLVER_CONCERN_ENV} must both be set"
+        refuse(
+            "must both be set, naming the run and the concern these tools serve",
+            what=f"{RESOLVER_RUN_DIR_ENV}, {RESOLVER_CONCERN_ENV}",
+            code=2,
         )
     serve_stdio(
         create_mcp_server(
@@ -918,7 +950,7 @@ def refresh_run(
     state_root = CheckoutState(root=root).resolve()
     repository = ResolverStateRepository(state_root, run_id)
     if not repository.exists():
-        raise typer.BadParameter(f"no resolver run {run_id!r} under {state_root}")
+        refuse(f"names no resolver run under {state_root}", what=run_id, code=2)
     launcher = PointerCheckedLauncher(LocalProcessLauncher(), root)
     journal = Journal(repository.root)
     run = ResolveRun(repository, journal)
@@ -1105,7 +1137,17 @@ def detach_resolve(detached: DetachedRun) -> None:
     admission_request(detached.admitted)
     repository = ResolverStateRepository(CheckoutState(root=root).resolve(), resolved)
     if repository.held():
-        raise typer.BadParameter(f"resolver run {resolved!r} is already active")
+        refuse(
+            "is already active, and a run is driven by one process at a time",
+            what=resolved,
+            steps=[
+                step(
+                    "follow the one running",
+                    devtools("resolve", "status", "--run-id", resolved, "--watch"),
+                )
+            ],
+            code=2,
+        )
     log = detached_log(root, resolved)
     arguments = detached.arguments()
     # One stream, not one path opened twice: sh opens `_out` and `_err`
@@ -1181,8 +1223,7 @@ def queue_existing_admission(
     )
     repository = ResolverStateRepository(state_root, selected)
     if not repository.exists():
-        if (refusal := missing_run_refusal(run_id, selected)) is not None:
-            raise typer.BadParameter(refusal)
+        refuse_a_missing_run(run_id, selected)
         return False
     request = admission_request(flags)
     if request is None:
@@ -1193,7 +1234,7 @@ def queue_existing_admission(
     try:
         receipt = repository.queue_admission(request)
     except StateTransitionError as error:
-        raise typer.BadParameter(str(error)) from error
+        refuse(str(error), what=selected, code=2)
     typer.echo(f"Admission {receipt.id} queued for run {selected}.")
     typer.echo(
         "Evidence is durable; the run plans it at its next scheduling boundary. Resume the run if it is idle."
@@ -1215,7 +1256,7 @@ def list_admissions(
         CheckoutState(root=project_root()).resolve(), run_id
     )
     if not repository.exists():
-        raise typer.BadParameter(f"no resolver run {run_id!r}")
+        refuse("names no resolver run", what=run_id, code=2)
     receipts = AdmissionMailbox(repository.root).receipts()
     if not receipts:
         typer.echo("No admission requests.")
@@ -1233,8 +1274,8 @@ def list_admissions(
                 )
 
 
-def missing_run_refusal(run_id: str | None, resolved_run_id: str) -> str | None:
-    """Why admitting into a run that does not exist is refused, where it is.
+def refuse_a_missing_run(run_id: str | None, resolved_run_id: str) -> None:
+    """Refuse admitting into a run that does not exist, where somebody named it.
 
     Naming a run is a claim that it exists, so a typo seeds a second run under
     the misspelling and leases a worktree per concern before anyone reads the
@@ -1244,11 +1285,15 @@ def missing_run_refusal(run_id: str | None, resolved_run_id: str) -> str | None:
     do not need a run to exist rather than leaving that to be inferred.
     """
     if run_id is None:
-        return None
-    return (
-        f"no resolver run {resolved_run_id!r} to admit into. Statements seed a "
-        "run of their own: drop --run-id to start one from them, or name a run "
-        "that exists."
+        return
+    refuse(
+        "names no resolver run to admit into, and statements seed a run of their own",
+        what=resolved_run_id,
+        steps=[
+            step("drop --run-id to start a run from them"),
+            step("or name a run that exists"),
+        ],
+        code=2,
     )
 
 
@@ -1414,7 +1459,12 @@ def admitted_issues(numbers: list[int]) -> list[IssueEvidence]:
     open_issues = {issue.number: issue for issue in fetch_open_issues()}
     missing = [str(number) for number in numbers if number not in open_issues]
     if missing:
-        raise typer.BadParameter("no open issue numbered: " + ", ".join(missing))
+        refuse(
+            "names no open issue",
+            what=", ".join(missing),
+            steps=[step("see the open issues", devtools("dev", "issues"))],
+            code=2,
+        )
     return [open_issues[number] for number in numbers]
 
 
@@ -1442,11 +1492,21 @@ def chosen_run(state_root: Path, fresh: str, *, start_new: bool, ending: bool) -
     for summary in unfinished:
         typer.echo(f"  {summary.line()}", err=True)
     if not sys.stdin.isatty():
-        raise typer.BadParameter(
-            f"this project has an unfinished run. Resume it with --run-id "
-            f"{newest.run_id}, or start a fresh one with --new. Resuming keeps "
-            "every answer already collected; starting fresh re-derives the "
-            "inventory and discards them"
+        refuse(
+            "is an unfinished run here; say whether to resume it or start afresh",
+            what=newest.run_id,
+            steps=[
+                step(
+                    "resume it, keeping every answer already collected",
+                    devtools("resolve", "--run-id", newest.run_id),
+                ),
+                step(
+                    "or start a fresh run, which re-derives the inventory and"
+                    " discards them",
+                    devtools("resolve", "--new"),
+                ),
+            ],
+            code=2,
         )
     if typer.confirm(f"Resume {newest.run_id}?", default=True):
         return newest.run_id
@@ -1475,7 +1535,12 @@ def run_resolve(
     """Drive the shared persisted resolver through one explicit native adapter."""
     provided = parse_answer_flags(answers)
     if abort_reason is not None and admission is not None:
-        raise typer.BadParameter("a run cannot be widened and ended in one command")
+        refuse(
+            "one command cannot both admit work into a run and end it",
+            what="--abort",
+            steps=[step("admit the work and end the run in two commands")],
+            code=2,
+        )
     # The recipe already names the target it compiles for and carries the
     # declaration it compiles, so the adapter a rerun recipe prints, the
     # plugin a lease deploys, and the hooks a session judges by all come from
@@ -1483,9 +1548,16 @@ def run_resolve(
     adapter = composition.recipe.label
     harness = composition.recipe.source
     if harness.resolver is None:
-        raise typer.BadParameter(
-            "this project declined the resolver module, so it declares no "
-            "resolver to run: take the module back in `DECLINED` and regenerate"
+        refuse(
+            "this project declined the resolver module, so it declares no"
+            " resolver to run",
+            steps=[
+                step(
+                    "take the module back out of DECLINED, then regenerate",
+                    devtools("harness", "generate", "all"),
+                )
+            ],
+            code=2,
         )
     resolver_spec = harness.resolver
     plugin = harness.plugins[0]
@@ -1517,7 +1589,7 @@ def run_resolve(
         # refused here rather than after a config home, a plugin install and a
         # remote probe have been built to end something that is not there.
         if not recorded:
-            raise typer.BadParameter(f"no resolver run {resolved_run_id!r} to abort")
+            refuse("names no resolver run to abort", what=resolved_run_id, code=2)
     else:
         if not check_remote_auth():
             typer.echo(
@@ -1670,10 +1742,11 @@ def run_resolve(
                 workspace, selected_config_home(session).document
             )
             if degradation is not None:
-                raise typer.BadParameter(
-                    f"{degradation} This run extends trust to the repository it "
-                    "was invoked against and to the checkouts it made of that "
-                    f"repository under {worktree_root}, and to nothing else."
+                refuse(
+                    f"{degradation} This run extends trust to the repository it"
+                    " was invoked against and to the checkouts it made of that"
+                    f" repository under {worktree_root}, and to nothing else",
+                    code=2,
                 )
             return session
 
@@ -1705,7 +1778,7 @@ def run_resolve(
             None,
         )
         if fault is not None:
-            raise typer.BadParameter(fault)
+            refuse(fault, code=2)
 
         # Once, before anything is leased, and for the same reason the config
         # home is read here: a host that cannot give its actors a boundary is a
@@ -1716,7 +1789,7 @@ def run_resolve(
         if contained_actors:
             absence = engine_absence()
             if absence is not None:
-                raise typer.BadParameter(absence)
+                refuse(absence, code=2)
 
         # The program this run's actors are started as, named here because
         # this is where the adapter is already chosen. A CLI's own name is its
@@ -2123,9 +2196,7 @@ def run_resolve(
                         await core.admit(admission), adapter, resolved_run_id
                     )
                     return
-                refusal = missing_run_refusal(run_id, resolved_run_id)
-                if refusal is not None:
-                    raise typer.BadParameter(refusal)
+                refuse_a_missing_run(run_id, resolved_run_id)
                 typer.echo(
                     f"No resolver run {resolved_run_id!r} yet; seeding one with "
                     "what was admitted, beside whatever notes the tree holds."

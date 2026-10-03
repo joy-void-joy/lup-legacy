@@ -73,8 +73,9 @@ def decide_peer_send(
         )
     return KernelDecision(
         "deny",
-        f"{named}: {row['send_reason']}",
-        recovery=f"{row['send_recovery']} {TOOL_ESCALATE_HINT}",
+        row["send_reason"],
+        recovery=(*row["send_recovery"], *TOOL_ESCALATE_HINT),
+        subject=named,
     )
 
 
@@ -135,8 +136,9 @@ def decide_foreign_claim(
     ]
     return KernelDecision(
         "ask",
-        f"{path} is held by {', '.join(holders)} — {'; '.join(reasons)}",
+        f"is held by {', '.join(holders)}: {'; '.join(reasons)}",
         recovery=row["claim_recovery"],
+        subject=path,
     )
 
 

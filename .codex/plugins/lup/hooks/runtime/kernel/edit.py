@@ -13,11 +13,14 @@ from collections.abc import Callable, Iterator, Set as AbstractSet
 from functools import cache
 from typing import NotRequired, TypedDict
 
+from .diagnostic import devtools, stated, step
 from .decision import KernelDecision, ProtectedRow, handed_over
 from .imports import ResolvedImportRule, resolved_import_rules
 from .roles import (
     FOREIGN_REPOSITORY_RECOVERY,
     FOREIGN_REPOSITORY_REFERRAL,
+    GENERATED_ARTIFACT_RECOVERY,
+    GENERATED_ARTIFACT_REFUSAL,
     GENERATED_PLUGIN_RECOVERY,
     GENERATED_PLUGIN_REFUSAL,
     GIT_STATE_RECOVERY,
@@ -1091,11 +1094,25 @@ def marker_decision(
             decision=KernelDecision(
                 "deny",
                 f"{removes} — {spelled}",
-                recovery="Resolving a note means replacing `# lup:` with"
-                " `# lup: solved:` and keeping its text, so the claim can be"
-                " checked against what was asked; deleting it leaves nothing to"
-                " check. Where the note was mistaken rather than answered,"
-                " withdraw it with `dev comments --withdraw file:line --reason`.",
+                recovery=(
+                    step(
+                        "resolve it by rewriting `# lup:` as `# lup: solved:` and"
+                        " keeping its text, so the claim can be checked against"
+                        " what was asked; deleting it leaves nothing to check"
+                    ),
+                    step(
+                        "or, where the note was mistaken rather than answered,"
+                        " withdraw it",
+                        devtools(
+                            "dev",
+                            "comments",
+                            "--withdraw",
+                            "<file:line>",
+                            "--reason",
+                            "<why>",
+                        ),
+                    ),
+                ),
             ),
         )
     # Asked of the words, as survival is for open notes: a claim is lost when
@@ -1123,10 +1140,17 @@ def marker_decision(
             decision=KernelDecision(
                 "deny",
                 f"this edit removes {claims} — {spelled}",
-                recovery="Only the review pass retires one: it either confirms"
-                " the claim and removes the note (`dev comments --retire"
-                " file:line`), or restores it to open feedback (`dev comments"
-                " --restore file:line`).",
+                recovery=(
+                    step(
+                        "leave it to the review pass, which either confirms the"
+                        " claim and removes the note",
+                        devtools("dev", "comments", "--retire", "<file:line>"),
+                    ),
+                    step(
+                        "or restores it to open feedback",
+                        devtools("dev", "comments", "--restore", "<file:line>"),
+                    ),
+                ),
             ),
         )
     added_bodies = note_bodies(is_open) - note_bodies(was_open)
@@ -3219,14 +3243,19 @@ def anti_pattern_hits(
 def anti_pattern_denial(number: int, row: AntiPatternRow) -> KernelDecision:
     """Deny one matched line, saying whether a directive could have helped."""
     placement = (
-        "No suppression is accepted: write the replacement."
+        step("no suppression is accepted: write the replacement")
         if row["strength"] == "strong"
-        else f"Suppress on {suppression_placement(number)}."
+        else step(
+            f"to keep it, suppress it on {suppression_placement(number)}, with"
+            f" `# lup: ignore[{row['id']}] — <why>`"
+        )
     )
     return KernelDecision(
         "deny",
-        f"line {number}: {row['message']} (rule {row['id']})",
-        recovery=f"{placement} See docs/rules.md.",
+        f"{row['remedy'] or row['message']} (rule {row['id']})",
+        recovery=(placement,),
+        subject=f"line {number}",
+        see="docs/rules.md",
     )
 
 
@@ -3241,11 +3270,12 @@ def withdrawn_suppression_denial(number: int, row: AntiPatternRow) -> KernelDeci
     """
     return KernelDecision(
         "deny",
-        f"line {number}: this edit removes the `# lup: ignore[{row['id']}]` "
-        f"covering it, and the line still trips the rule: {row['message']} "
-        f"(rule {row['id']})",
-        recovery="Restore the directive or clear what it was silencing. See"
-        " docs/rules.md.",
+        f"this edit removes the `# lup: ignore[{row['id']}]` covering it, and the"
+        f" line still trips the rule: {row['remedy'] or row['message']}"
+        f" (rule {row['id']})",
+        recovery=(step("restore the directive, or clear what it was silencing"),),
+        subject=f"line {number}",
+        see="docs/rules.md",
     )
 
 
@@ -3311,11 +3341,17 @@ def unresolved_anti_pattern_ask(number: int, row: AntiPatternRow) -> KernelDecis
     """
     return KernelDecision(
         "ask",
-        f"line {number} may break rule {row['id']}; approve if its receiver is"
-        " typed and not a mapping, and `dev check` will confirm it",
-        recovery=f"{row['message']} The gate could not resolve what the receiver"
-        " is declared on, so it cannot tell the defect from the shape the rule"
-        " permits.",
+        f"may break rule {row['id']}: approve it if its receiver is typed and is"
+        " not a mapping",
+        recovery=(
+            step(
+                "the gate could not resolve what the receiver is declared on; the"
+                " anti-pattern audit can, and confirms it either way",
+                devtools("dev", "check", "--antipatterns", "--path", "<file>"),
+            ),
+        ),
+        subject=f"line {number}",
+        see="docs/rules.md",
     )
 
 
@@ -3334,15 +3370,22 @@ def spurious_refusal(number: int, dead: list[str], live: list[str]) -> KernelDec
     that is the directive the site actually wanted.
     """
     named = ", ".join(dead)
-    instead = f" — the line trips {', '.join(live)} instead" if live else ""
+    instead = f"; the line trips {', '.join(live)} instead" if live else ""
     return KernelDecision(
         "deny",
-        f"line {number}: this suppression names {named}, which nothing it guards "
-        f"trips{instead}",
-        recovery=f"Drop {named} from it: a rule that does not fire is silenced by"
-        f" nothing, and the audit reports the directive spurious. One written on"
-        f" line {number} reaches that line, and where it stands alone the line"
-        " beneath its comment block. See docs/rules.md.",
+        f"this suppression names {named}, which nothing it guards trips{instead}",
+        recovery=(
+            step(
+                f"drop {named} from it: a rule that does not fire is silenced by"
+                " nothing, and the audit reports the directive as dead"
+            ),
+            step(
+                f"a directive written on line {number} reaches that line; one"
+                " standing alone reaches the line beneath its comment block"
+            ),
+        ),
+        subject=f"line {number}",
+        see="docs/rules.md",
     )
 
 
@@ -3369,10 +3412,25 @@ def every_verdict(found: list[LineVerdict]) -> KernelDecision:
     return KernelDecision(
         ordered[0]["decision"].effect,
         f"{len(ordered)} findings in this edit, every one named here:\n"
-        + "\n".join(verdict["decision"].reason for verdict in ordered),
-        recovery="\n".join(
-            f"line {verdict['line']}: {verdict['decision'].recovery}"
+        + "\n".join(
+            stated(verdict["decision"].subject, verdict["decision"].reason)
             for verdict in ordered
+        ),
+        recovery=[
+            step(
+                ": ".join(
+                    part
+                    for part in (f"line {verdict['line']}", through["says"])
+                    if part
+                ),
+                through["run"],
+            )
+            for verdict in ordered
+            for through in verdict["decision"].recovery
+        ],
+        see=next(
+            (verdict["decision"].see for verdict in ordered if verdict["decision"].see),
+            "",
         ),
     )
 
@@ -3826,12 +3884,12 @@ def protected_path_reason(path: str, matched: PathRuleRow) -> str:
     reason = matched["reason"]
     value = matched["value"]
     if path == value:
-        return reason if path in reason else f"{path}: {reason}"
+        return reason
     if matched["kind"] == "contains_part" and not root_matches(
         posixpath.dirname(normalized_path(path)), value, "contains_part"
     ):
-        return f"{path} matches **/{value}: {reason}"
-    return f"{path} is under {value}: {reason}"
+        return f"{reason}, as it matches `**/{value}`"
+    return f"{reason}, as it is under `{value}`"
 
 
 PACKAGE_MARKER_FILES = ("__init__.py",)
@@ -4098,6 +4156,20 @@ def decide_edit(
             rule="edit:generated-plugin",
             evaluator="edit-gate",
             recovery=GENERATED_PLUGIN_RECOVERY,
+            subject=path,
+        )
+    # A generated repository artifact -- a page under docs/, a guidance file --
+    # is the same build product outside a plugin tree, and the shell path
+    # refuses a write to one in the same words, so `Edit` and `>` agree.
+    if role == "generated":
+        return KernelDecision(
+            "deny",
+            GENERATED_ARTIFACT_REFUSAL,
+            cause="deliberate",
+            rule="edit:generated-artifact",
+            evaluator="edit-gate",
+            recovery=GENERATED_ARTIFACT_RECOVERY,
+            subject=path,
         )
     # Git's own pointers and refs, on the same footing: every verdict the
     # lattice can reach is wrong for them. An allow lets a session choose what
@@ -4113,6 +4185,7 @@ def decide_edit(
             rule="edit:git-state",
             evaluator="edit-gate",
             recovery=GIT_STATE_RECOVERY,
+            subject=path,
         )
 
     # Whether this path is the file it names is prior to every gate below,
@@ -4150,6 +4223,7 @@ def decide_edit(
                 FOREIGN_REPOSITORY_REFERRAL,
                 purpose="policy_override",
                 recovery=FOREIGN_REPOSITORY_RECOVERY,
+                subject=path,
             ),
         )
 
@@ -4222,6 +4296,7 @@ def decide_edit(
                 protected_path_reason(path, protected),
                 purpose="quality_review",
                 recovery=protected["recovery"],
+                subject=path,
             ),
         ).revised(
             protected=ProtectedRow(
@@ -4278,9 +4353,10 @@ def decide_edit(
             "full-write",
             KernelDecision(
                 "ask",
-                f"{path} is written whole, {arriving} at once",
+                f"is written whole, {arriving} at once",
                 purpose="quality_review",
                 reviewer="supervisor_allowed",
+                subject=path,
             ),
         )
     if after is None or after == "":

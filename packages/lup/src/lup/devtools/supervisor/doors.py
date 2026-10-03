@@ -32,9 +32,11 @@ from lup.coordination.mailbox import (
     ParkRequest,
 )
 from lup.resolver.mailbox import QuestionMailbox, run_cohort
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.workspace.paths import project_root
 from lup.devtools.harness.resolve import parse_answer_flags
 from lup.devtools.supervisor.projection import PendingQuestionView
+from lup.diagnostics import refuse
 
 
 def resolve_state_root() -> Path:
@@ -45,7 +47,7 @@ def open_mailbox(run_id: str) -> QuestionMailbox:
     """The mailbox for one run, refusing a run that was never recorded."""
     root = resolve_state_root() / run_id
     if not root.is_dir():
-        raise typer.BadParameter(f"no resolver run {run_id!r} under {root.parent}")
+        refuse(f"names no resolver run under {root.parent}", what=run_id, code=2)
     return QuestionMailbox(root)
 
 
@@ -179,14 +181,23 @@ def answer_questions(
     known = {view.question.id: view for view in pending_views(mailbox)}
     for identifier, value in parse_answer_flags(pairs).items():
         if identifier not in known:
-            raise typer.BadParameter(
-                f"{identifier!r} names no question this run asked; "
-                f"run `resolve questions --run-id {run_id}`"
+            refuse(
+                "names no question this run asked",
+                what=identifier,
+                steps=[
+                    step(
+                        "see the questions it asked",
+                        devtools("resolve", "questions", "--run-id", run_id),
+                    )
+                ],
+                code=2,
             )
         question = known[identifier].question
         if question.closed_choices and value not in question.choices:
-            raise typer.BadParameter(
-                f"{identifier!r} accepts only: " + ", ".join(question.choices)
+            refuse(
+                "accepts only: " + ", ".join(question.choices),
+                what=identifier,
+                code=2,
             )
         try:
             mailbox.offer(
@@ -199,7 +210,7 @@ def answer_questions(
                 )
             )
         except MailboxConflictError as error:
-            raise typer.BadParameter(str(error)) from error
+            refuse(str(error), what=identifier, code=2)
         typer.echo(f"offered {identifier}={value}")
 
 
@@ -318,10 +329,7 @@ def retract_notice(
     saw it, which is the point — they were told while it held.
     """
     if not open_cohort(run_id).mail.retract(notice_id):
-        raise typer.BadParameter(
-            f"{notice_id!r} names nothing standing over {run_id}; "
-            f"run `resolve notices --run-id {run_id}`"
-        )
+        refuse(f"names nothing standing over {run_id}", what=notice_id, code=2)
     typer.echo(f"retracted {notice_id}")
 
 
@@ -346,7 +354,7 @@ def accept_verification(
     """
     root = resolve_state_root() / run_id
     if not root.is_dir():
-        raise typer.BadParameter(f"no resolver run {run_id!r} under {root.parent}")
+        refuse(f"names no resolver run under {root.parent}", what=run_id, code=2)
     ResolverStateRepository(resolve_state_root(), run_id).accept(
         VerificationAcceptance(
             concern_id=concern, verification=verification, reason=reason
@@ -478,7 +486,7 @@ def show_status(
     repository = ResolverStateRepository(root, run_id)
     status = run_status(repository, run_id)
     if not status.exists:
-        raise typer.BadParameter(f"no resolver run {run_id!r} under {root}")
+        refuse(f"names no resolver run under {root}", what=run_id, code=2)
     if line and not watch:
         typer.echo(status_header(status))
         return
@@ -670,11 +678,11 @@ def retire_concern(
     """
     root = resolve_state_root() / run_id
     if not root.is_dir():
-        raise typer.BadParameter(f"no resolver run {run_id!r} under {root.parent}")
+        refuse(f"names no resolver run under {root.parent}", what=run_id, code=2)
     try:
         ResolverStateRepository(resolve_state_root(), run_id).retire(
             ConcernRetirement(concern_id=concern, reason=reason)
         )
     except StateTransitionError as error:
-        raise typer.BadParameter(str(error)) from error
+        refuse(str(error), what=concern, code=2)
     typer.echo(f"retired {concern}: {reason}")

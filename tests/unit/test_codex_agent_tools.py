@@ -29,6 +29,7 @@ from pydantic import BaseModel
 
 from lup.harness.models import HookSet
 from lup.policy.refused_tools import RefusedTool
+from lup.policy.kernel.diagnostic import step
 from lup.providers.codex import Codex, CodexTools
 from lup.providers.codex.app_server import CodexAppServer
 from lup.providers.codex.home import seed_hook_trust
@@ -50,7 +51,7 @@ def declared_refusing(tool: str, specifier: str = "") -> HookSet:
         tool=tool,
         specifier=specifier,
         reason="this project runs no subagents",
-        recovery="Do the work in this conversation.",
+        recovery=[step("do the work in this conversation")],
     )
     return declared.model_copy(
         update={"refused_tools": [*declared.refused_tools, refusal]}

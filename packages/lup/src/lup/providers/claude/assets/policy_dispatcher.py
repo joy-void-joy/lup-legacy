@@ -71,12 +71,14 @@ from host import (
     record_hook_evidence,
     sandbox_active,
     unjudged_reason,
-    unjudged_recovery,
+    ran_out,
     words_before,
 )
 from kernel.rows import PostToolReport
 from kernel.review import Said
 from kernel.decision import KernelDecision, sandbox_escaped
+from kernel.decision import unjudged_recovery
+from kernel.diagnostic import Step, devtools, spelled, stated, step
 from caller_payload import caller_of, spoken, transcript_of
 from policy_data import (
     AGENT_IDENTITY_ENV,
@@ -274,23 +276,34 @@ def waiting(command, payload):
     """
     if "agent_id" in payload:
         return (
-            f"Carry on with other work, and hold `{command} --timeout 7140` in the "
-            "background (run_in_background, with the longest timeout the tool "
-            "takes, 7200000 ms): nothing else wakes a subagent, and it wakes you "
-            "with the result. If it ends with the review still waiting, start it "
-            "again quietly, reporting that to nobody."
+            step(
+                "carry on with other work, and hold this in the background"
+                " (run_in_background, with the longest timeout the tool takes,"
+                " 7200000 ms): nothing else wakes a subagent, and it wakes you"
+                " with the result",
+                [*command, "--timeout", "7140"],
+            ),
+            step(
+                "if it ends with the review still waiting, start it again"
+                " quietly, reporting that to nobody"
+            ),
         )
     if declared_identity("CLAUDE_CODE_ENTRYPOINT") == "cli":
         return (
-            "Carry on with other work, or end your turn: the operator's answer "
-            f"wakes this session, and `{command}` then carries the call out at "
-            "once. Don't start a waiter."
+            step(
+                "carry on with other work, or end your turn: the operator's answer"
+                " wakes this session, so don't start a waiter"
+            ),
+            step("once it wakes you, carry the call out at once", command),
         )
     return (
-        "Carry on with other work. This run ends with its last turn and nothing "
-        "wakes it after, so once nothing else is left, run "
-        f"`{command} --timeout 540` in the foreground (the longest timeout the "
-        "tool takes there, 600000 ms), again each time it ends still waiting."
+        step(
+            "carry on with other work; this run ends with its last turn and"
+            " nothing wakes it after, so once nothing else is left, run this in"
+            " the foreground (the longest timeout the tool takes there, 600000"
+            " ms), again each time it ends still waiting",
+            [*command, "--timeout", "540"],
+        ),
     )
 
 
@@ -573,7 +586,7 @@ def rendered(decision, payload, placed, attached):
     )
     # The prompt is the approver's, so a question's recovery rides beside it
     # as the agent's context; a refusal reaches only the agent and says both.
-    beside = settled.recovery if settled.effect == "ask" else ""
+    beside = settled.beside() if settled.effect == "ask" else ""
     context = "\n\n".join(text for text in (attached, beside) if text)
 
     def carried(result):
@@ -612,13 +625,13 @@ def rendered(decision, payload, placed, attached):
         "hookEventName": "PreToolUse",
         "permissionDecision": settled.effect,
         "permissionDecisionReason": (
-            settled.addressed() if settled.effect == "deny" else settled.reason
+            settled.addressed() if settled.effect == "deny" else settled.headline()
         ),
     }
 
     def surfaced(result):
         """The same verdict, with what this runtime will not show it said."""
-        message = announced(settled.effect, payload["tool_name"], settled.reason)
+        message = announced(settled.effect, payload["tool_name"], settled.headline())
         return carried({**result, "systemMessage": message} if message else result)
 
     if placed is not None and settled.effect != "deny":
@@ -758,7 +771,7 @@ def unjudged_answer(event, error, read):
         failure = error if error is not None else "it did not finish in time"
         return {"decision": "block", "reason": f"Lup post-tool check failed: {failure}"}
     refusal = KernelDecision(
-        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(error)
+        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(ran_out(error))
     )
     return {
         "hookSpecificOutput": {

@@ -22,6 +22,8 @@ import typer
 from pydantic import BaseModel
 
 import lup.devtools.dev.monitor as monitor
+from lup.diagnostics import refuse
+from lup.policy.kernel.diagnostic import step
 from lup.runs.directory import WORKSPACE_ENV, RunDirectory
 from lup.runs.report import report_progress
 from lup.types import JsonValue
@@ -53,7 +55,7 @@ def parsed_pair(pair: str) -> DetailPair:
     """One ``key=value`` as this command's flag grammar spells it."""
     key, separator, value = pair.partition("=")  # lup: ignore[string-split] — a flag
     if not separator:
-        raise typer.BadParameter(f"--detail wants key=value, not {pair!r}")
+        refuse("--detail takes key=value", what=pair, code=2)
     return DetailPair(key=key, value=json_or_text(value))
 
 
@@ -68,9 +70,13 @@ def reporting_workspace(named: Path | None) -> Path:
         return named
     inherited = os.environ.get(WORKSPACE_ENV, "")  # lup: ignore[os-environ] — a unit's
     if not inherited:
-        raise typer.BadParameter(
-            f"no workspace: run this inside a step, where {WORKSPACE_ENV} is bound, "
-            "or name one with --workspace"
+        refuse(
+            "no workspace to write the report into",
+            steps=[
+                step(f"run this inside a step, where {WORKSPACE_ENV} is bound"),
+                step("or name one with `--workspace`"),
+            ],
+            code=2,
         )
     return Path(inherited)
 
@@ -120,6 +126,16 @@ def create_run_app() -> typer.Typer:
         Nothing about the run is touched either way.
         """
         directory = RunDirectory(root=run_directory)
+        # A path that is not there is a mistyped one, not a run yet to start,
+        # which would otherwise read as 0/0 units and wait forever. A directory
+        # that exists may be a run whose runner has not written its manifest
+        # yet, so it is followed.
+        if not run_directory.is_dir():
+            refuse(
+                "is not a directory, so it holds no run",
+                what=str(run_directory),
+                steps=[step("pass the run directory the launch printed")],
+            )
         if events:
             monitor.stream(directory, log, interval, quiet_limit)
             return

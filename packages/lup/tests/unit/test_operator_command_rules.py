@@ -3,6 +3,7 @@
 import pytest
 
 from lup.policy.kernel.commands import decide_command_rows
+from lup.policy.kernel.diagnostic import step
 from lup.policy.kernel.effects import declare
 from lup.policy.models import ShellCommand
 from lup.policy.rules import ShellPolicy
@@ -36,7 +37,7 @@ def test_nested_operator_access_uses_declarations(action: str, expected: str) ->
                                 parents=["pending"],
                                 operator_only=True,
                                 reason="Operator credentials are required",
-                                recovery="Use the operator console",
+                                recovery=[step("use the operator console")],
                             ),
                         ],
                     )
@@ -49,7 +50,7 @@ def test_nested_operator_access_uses_declarations(action: str, expected: str) ->
     if action == "answer":
         assert decision.hard
         assert decision.rule == "shell:example-admin.review.pending.answer"
-        assert decision.recovery == "Use the operator console"
+        assert decision.recovery == (step("use the operator console"),)
 
 
 def devtools_policy() -> ShellPolicy:
@@ -103,7 +104,7 @@ def test_operator_authority_cannot_be_reached_through_a_launcher_or_wrapper(
 
     assert decision.effect == "deny", decision.reason
     assert "a requesting agent cannot" in decision.reason
-    assert "outside the agent session" in decision.recovery
+    assert "outside the agent session" in decision.as_kernel().addressed()
 
 
 @pytest.mark.parametrize("runtime", ["claude", "codex"])

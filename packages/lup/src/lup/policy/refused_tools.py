@@ -11,6 +11,7 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel, Field
 
+from lup.policy.kernel.diagnostic import Step
 from lup.policy.kernel.rows import RefusedToolRow
 
 
@@ -33,7 +34,7 @@ class RefusedTool(BaseModel, frozen=True):
     tool: str
     specifier: str = ""
     reason: str = Field(min_length=1)
-    recovery: str = Field(min_length=1)
+    recovery: list[Step] = Field(min_length=1)
 
     def spelling(self) -> str:
         """``Tool`` or ``Tool(specifier)``, as a permission rule names it."""

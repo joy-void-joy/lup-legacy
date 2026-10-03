@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from typer.testing import CliRunner
 
 import lup.devtools.harness.launch as launch
+from lup.diagnostics import Refusal
 from lup.launch.declaration import LaunchSandbox
 import lup.providers.claude.usage.reader as claude_usage
 from lup.devtools.harness.composition import NativeTargets
@@ -329,13 +330,14 @@ def test_a_launch_refuses_a_stored_default_home_as_a_bad_parameter(
     root = checkout(tmp_path)
     caught = stub_host(monkeypatch, root)
 
-    with pytest.raises(typer.BadParameter, match="profile remove main"):
+    with pytest.raises(Refusal) as refused:
         launch.launch_claude(
             composition(root, "claude"),
             launch.LaunchArguments(sandbox=LaunchSandbox.INNER),
             registered,
             False,
         )
+    assert "profile remove main" in refused.value.said["why"]
     assert caught.events == []
 
 

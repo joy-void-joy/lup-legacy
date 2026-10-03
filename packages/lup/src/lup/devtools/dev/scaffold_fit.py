@@ -23,16 +23,18 @@ from collections.abc import Callable
 from fractions import Fraction
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import NoReturn
 
 import sh
-import typer
 from pydantic import BaseModel
 
 from lup.execution.git import Repository
 import lup.devtools.dev.library as library
 import lup.devtools.dev.scaffold as scaffold
 from lup.devtools.utils import format_table, short_sha
+from lup.diagnostics import refuse
 from lup.execution.shell import git
+from lup.policy.kernel.diagnostic import Step, devtools, spelled, step
 
 CANDIDATE_DEPTH = 40
 """How many commits one round of a search measures.
@@ -183,10 +185,17 @@ def resolved(repository: Path, revision: str) -> str:
     """
     found = Repository(repository).resolves(revision)
     if found is None:
-        raise typer.BadParameter(
-            f"{revision} names no commit in this project's upstream clone "
-            f"({repository}). `dev scaffold fit` prints the candidates it "
-            f"measured, newest first, with the commit each one names."
+        refuse(
+            f"names no commit in this project's upstream clone ({repository})",
+            what=revision,
+            steps=[
+                step(
+                    "see the candidates measured, newest first, with the commit"
+                    " each one names",
+                    devtools("dev", "scaffold", "fit"),
+                )
+            ],
+            code=2,
         )
     return found
 
@@ -392,65 +401,100 @@ def settled_report(named: ScaffoldFit, survey: FitSurvey, margin: Fraction) -> s
     )
 
 
-def restated(named: ScaffoldFit) -> str:
-    """What a caller types to root at a base the measurement argues against.
+def restated(named: ScaffoldFit) -> list[str]:
+    """The words a caller adds to root at a base the measurement argues against.
 
     The reading itself, so the escape cannot be supplied by habit: the count
     is a fact about this base against this checkout, and somebody who has it
     to hand has read what it says.
     """
-    return f"--accept-fit {named.identical}"
+    return ["--accept-fit", str(named.identical)]
 
 
-def pin_refusal(named: ScaffoldFit, better: ScaffoldFit | None) -> str:
-    """Why rooting at the commit the pin already resolves to carries nothing."""
-
-    def pointer() -> str:
-        """Where the measurement says this project's copy actually sits."""
-        if better:
-            return (
-                f"{short_sha(better.commit)} ({better.subject}) reads "
-                f"{better.spelled()} and is the likelier base."
-            )
-        if named.share() == 1:
-            return (
-                "Nothing contradicts it, though: this checkout holds that "
-                "scaffold byte for byte, so the copy really is at the pin "
-                "and an update carrying nothing would be the truth."
-            )
-        return (
-            "No commit measured reads better, though, so `dev scaffold fit` "
-            "is worth reading before deciding."
-        )
-
-    return (
-        f"--base {short_sha(named.commit)} is the commit the library pin "
-        f"already resolves to, so the merge base and the merge target would "
-        f"be one commit: the first `dev update` would merge nothing, report "
-        f"`0 fast-forwarded, 0 merged clean, 0 conflicted`, and say the "
-        f"copied half is already merged at that commit. That reads like "
-        f"success, and wherever the copy is behind the pin it is the "
-        f"opposite: every upstream change to the copied half nobody "
-        f"hand-ported stays untaken, permanently, with nothing to say so. "
-        f"Root the branch at the commit this "
-        f"project's copy was last carried up to whole, and let `dev update` "
-        f"carry the range from there to the pin. {pointer()} Root here anyway "
-        f"by restating that reading: `{restated(named)}`."
+def adopted_anyway(base: str, named: ScaffoldFit) -> Step:
+    """The way past every refusal here: the same adoption, restating the reading."""
+    return step(
+        "root here anyway by restating that reading",
+        devtools("dev", "scaffold", "adopt", "--base", base, *restated(named)),
     )
 
 
-def fit_refusal(named: ScaffoldFit, better: ScaffoldFit) -> str:
-    """Why a base the measurement reads poorly at is probably the wrong one."""
-    return (
-        f"--base {short_sha(named.commit)} fits this checkout poorly: "
-        f"{named.spelled()}, where {short_sha(better.commit)} "
-        f"({better.subject}) reads {better.spelled()}. A copy stamped from "
-        f"one commit and edited since reads highest at that commit, so the "
-        f"branch belongs at the peak rather than here — rooting behind it "
-        f"re-offers changes this project already applied by hand, and the "
-        f"first merge reports them as conflicts. `dev scaffold fit` prints "
-        f"every candidate measured. Root here anyway by restating this "
-        f"reading: `{restated(named)}`."
+def refuse_the_pin(
+    base: str, named: ScaffoldFit, better: ScaffoldFit | None
+) -> NoReturn:
+    """Stop rooting at the commit the pin already resolves to, which carries nothing.
+
+    The merge base and the merge target would be one commit, so the first
+    update merges nothing and says the copied half is already merged there.
+    That reads like success, and wherever the copy is behind the pin it is
+    the opposite: every upstream change to the copied half nobody hand-ported
+    stays untaken, permanently, with nothing to say so.
+    """
+
+    def pointer() -> Step:
+        """Where the measurement says this project's copy actually sits."""
+        if better:
+            return step(
+                f"{short_sha(better.commit)} ({better.subject}) reads"
+                f" {better.spelled()} and is the likelier base",
+                devtools(
+                    "dev", "scaffold", "adopt", "--base", short_sha(better.commit)
+                ),
+            )
+        if named.share() == 1:
+            return step(
+                "nothing contradicts it, though: this checkout holds that scaffold"
+                " byte for byte, so the copy really is at the pin and an update"
+                " carrying nothing would be the truth"
+            )
+        return step(
+            "no commit measured reads better, though, so read the candidates"
+            " before deciding",
+            devtools("dev", "scaffold", "fit"),
+        )
+
+    refuse(
+        "is the commit the library pin already resolves to, so the first update"
+        " would merge nothing and report 0 fast-forwarded, 0 merged clean,"
+        " 0 conflicted, while every upstream change to the copied half nobody"
+        " hand-ported stays untaken",
+        what=f"--base {short_sha(named.commit)}",
+        steps=[
+            step(
+                "root the branch where this project's copy was last carried up to"
+                " whole, and let the update carry the range from there to the pin"
+            ),
+            pointer(),
+            adopted_anyway(base, named),
+        ],
+        code=2,
+    )
+
+
+def refuse_a_poor_fit(base: str, named: ScaffoldFit, better: ScaffoldFit) -> NoReturn:
+    """Stop rooting at a base the measurement reads poorly at, probably the wrong one.
+
+    A copy stamped from one commit and edited since reads highest at that
+    commit, so the branch belongs at the peak rather than here: rooting behind
+    it re-offers changes this project already applied by hand, and the first
+    merge reports them as conflicts.
+    """
+    refuse(
+        f"fits this checkout poorly: {named.spelled()}, where"
+        f" {short_sha(better.commit)} ({better.subject}) reads {better.spelled()}",
+        what=f"--base {short_sha(named.commit)}",
+        steps=[
+            step(
+                "root at the peak, where a copy edited since it was stamped still"
+                " reads highest",
+                devtools(
+                    "dev", "scaffold", "adopt", "--base", short_sha(better.commit)
+                ),
+            ),
+            step("see every candidate measured", devtools("dev", "scaffold", "fit")),
+            adopted_anyway(base, named),
+        ],
+        code=2,
     )
 
 
@@ -479,12 +523,16 @@ def checked_base(
     report(named.reported())
     if accept_fit is not None:
         if accept_fit != named.identical:
-            raise typer.BadParameter(
-                f"--accept-fit {accept_fit} is not what this base reads: "
-                f"{named.spelled()}. The escape restates the measurement, so "
-                f"`{restated(named)}` is what roots the branch here."
+            refuse(
+                f"is not what this base reads: {named.spelled()}, and the escape"
+                " restates the measurement",
+                what=f"--accept-fit {accept_fit}",
+                steps=[adopted_anyway(base, named)],
+                code=2,
             )
-        report(f"Rooting there on that reading, restated as {restated(named)}.")
+        report(
+            f"Rooting there on that reading, restated as {spelled(restated(named))}."
+        )
         return commit
     pinned = scaffold.pinned_commit(root, distribution)
     # A base whose whole compiled half is already here byte for byte is one
@@ -505,9 +553,9 @@ def checked_base(
     )
     better = contradicting(named, survey, margin) if survey is not None else None
     if commit == pinned:
-        raise typer.BadParameter(pin_refusal(named, better))
+        refuse_the_pin(base, named, better)
     if better:
-        raise typer.BadParameter(fit_refusal(named, better))
+        refuse_a_poor_fit(base, named, better)
     if survey is not None:
         report(settled_report(named, survey, margin))
     return commit

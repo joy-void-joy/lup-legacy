@@ -155,7 +155,7 @@ def test_an_edit_under_the_operator_s_hold_asks_saying_it_is_theirs(
     assert isinstance(specific, dict)
     assert specific["permissionDecision"] == "ask"
     reason = str(specific["permissionDecisionReason"])
-    assert f"is held by user — {OPERATOR_HELD}" in reason
+    assert f"— is held by user: {OPERATOR_HELD}" in reason
     assert CLAIM_HELD not in reason
 
 
@@ -165,9 +165,10 @@ def test_a_path_the_operator_and_a_session_both_hold_says_both() -> None:
     both = decide_foreign_claim("/tmp/a.py", ["feat-rewriting", "user"], DECLARED)
 
     assert alone is not None and both is not None
-    assert alone.reason == f"/tmp/a.py is held by user — {OPERATOR_HELD}"
-    assert both.reason == (
-        f"/tmp/a.py is held by feat-rewriting, user — {OPERATOR_HELD}; {CLAIM_HELD}"
+    assert alone.headline() == f"asks: `/tmp/a.py` — is held by user: {OPERATOR_HELD}"
+    assert both.headline() == (
+        f"asks: `/tmp/a.py` — is held by feat-rewriting, user: {OPERATOR_HELD};"
+        f" {CLAIM_HELD}"
     )
 
 

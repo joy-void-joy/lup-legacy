@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from lup.harness.enforcement import semantic_policy_for
 from lup.harness.models import HookSet
 from lup.policy.everyday import SESSION_SHAPES, SessionShape
+from lup.policy.kernel.diagnostic import stated
 from lup.policy.models import Decision, ShellCommand
 from lup.workspace.paths import project_root
 
@@ -102,7 +103,7 @@ def stopped_everyday(
             shape=shape.what,
             command=command,
             effect=decision.effect,
-            reason=decision.reason,
+            reason=stated(decision.subject, decision.reason),
         )
         for shape in shapes
         for family in hooks.everyday_commands

@@ -11,6 +11,7 @@ owns it, instead of once there and once in a compiled hook.
 
 from pydantic import BaseModel, Field
 
+from lup.policy.kernel.diagnostic import Step
 from lup.policy.kernel.rows import PeerPolicyRow
 
 
@@ -45,10 +46,10 @@ class PeerPolicy(BaseModel, frozen=True):
     windows_dir: str = Field(min_length=1)
     member_env: str = Field(min_length=1)
     send_reason: str = Field(min_length=1)
-    send_recovery: str = Field(min_length=1)
+    send_recovery: list[Step] = Field(min_length=1)
     listing_note: str = Field(min_length=1)
     claim_reason: str = Field(min_length=1)
-    claim_recovery: str = Field(min_length=1)
+    claim_recovery: list[Step] = Field(min_length=1)
     operator: str = Field(min_length=1)
     """The holder name the person watching holds a path under."""
 

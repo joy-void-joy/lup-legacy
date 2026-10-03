@@ -8,8 +8,10 @@ from pydantic import BaseModel
 
 from lup.execution.git import Repository
 from lup.devtools.dev.worktree import OWNERSHIP_MERGE_DRIVER
+from lup.devtools.launcher import launcher_invocation
 from lup.devtools.utils import decode_stderr
 from lup.execution.shell import git
+from lup.policy.kernel.diagnostic import devtools, spelled
 
 
 class PreparedBranch(BaseModel, frozen=True):
@@ -56,10 +58,12 @@ def prepare(base: str, root: Path, regenerate: Callable[[], None]) -> PreparedBr
         # merge did not leave. What git printed is the half that tells them
         # apart, and without it the failure reads as an empty working tree.
         spoken = decode_stderr(error).strip()
+        status = devtools(
+            "git", "conflict", "status", "--json", program=[launcher_invocation(root)]
+        )
         raise RuntimeError(
-            "Base merge needs repair. Run `git conflict status --json` through "
-            "the installed lup-devtools launcher, resolve sources, regenerate "
-            "all harnesses, and complete the merge. No branch was pushed."
+            f"Base merge needs repair. Run `{spelled(status)}`, resolve sources, "
+            "regenerate all harnesses, and complete the merge. No branch was pushed."
             + (f"\ngit said: {spoken}" if spoken else "")
         ) from error
     regenerate()

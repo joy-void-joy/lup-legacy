@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from lup.execution.git import GitError, Repository
 from lup.execution.shell import LazyCommand
 from lup.execution.writability import diagnose_git_admin, inspect_git_admin
+from lup.diagnostics import refuse
 from lup.sandbox.attribution import attribute_filesystem
 from lup.sandbox.observed import observed_topology
 from lup.sandbox.translation import MountTopology
@@ -262,8 +263,7 @@ def refuse_blocked_config_writes(cwd: Path | None = None) -> None:
         typer.echo(cleared)
     diagnosis = config_lock_diagnosis(cwd)
     if diagnosis:
-        typer.echo(diagnosis, err=True)
-        raise typer.Exit(1)
+        refuse(diagnosis)
 
 
 def output_json(

@@ -97,7 +97,10 @@ def test_a_cd_nothing_here_can_read_leaves_the_words_after_it_unjudged() -> None
                 sandboxed=sandboxed,
             )
             assert verdict.effect == "ask", (move, sandboxed)
-            assert "$PWD/tmp/x" in verdict.reason, move
+            assert (
+                verdict.headline()
+                == "asks: `rm $PWD/tmp/x` — deleting files requires approval"
+            ), move
 
 
 def test_a_subshell_move_reaches_nothing_after_it() -> None:
@@ -118,7 +121,9 @@ def test_a_move_that_may_not_have_run_leaves_the_directory_unknown() -> None:
         sandboxed=True,
     )
     assert verdict.effect == "ask"
-    assert "$PWD/tmp/x" in verdict.reason
+    assert (
+        verdict.headline() == "asks: `rm $PWD/tmp/x` — deleting files requires approval"
+    )
 
 
 def test_a_cd_that_failed_left_the_shell_where_it_stood() -> None:

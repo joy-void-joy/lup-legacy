@@ -33,4 +33,4 @@ def main() -> None:
         allowances=[],
         resolve_external=False,
     )
-    print(json.dumps({"protocol": 1, "decision": decision_wire(decision)}))
+    print(json.dumps({"protocol": 2, "decision": decision_wire(decision)}))

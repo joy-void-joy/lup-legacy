@@ -24,9 +24,10 @@ import subprocess
 from collections.abc import Callable, Iterator
 from typing import BinaryIO, Literal
 from urllib.parse import urlsplit
-import shlex
 import policy_data as identity_policy
 from kernel.decision import KernelDecision
+from kernel.diagnostic import Step, devtools, spelled, stated, step
+from kernel.diagnostic import diagnostic, rendered as rendered_said
 from kernel.rows import PostToolReport
 from kernel.decision import FileReviewRow, captured_edit_decision
 from kernel.documents import (
@@ -197,7 +198,7 @@ def execution_write_refusal(path_text: str, root: Path | None) -> str:
     if not matches or not min(
         allowed for depth, allowed in matches if depth == max(row[0] for row in matches)
     ):
-        return f"{path} is outside this launch's writable boundary"
+        return "it is outside this launch's writable boundary"
     return ""
 
 
@@ -614,30 +615,23 @@ def unjudged_reason(error: BaseException | None, read: bool) -> str:
     has passed), a payload that is not one (``read`` false), and a failure
     judging a payload that was.
     """
-    if error is None or deadline_passed():
+    if ran_out(error):
         return "the policy could not judge this call in time, so it is refused unjudged"
     if not read:
         return f"the hook input is malformed, so the call is refused unjudged: {error}"
-    return f"Lup could not judge this call ({type(error).__name__}: {error})"
-
-
-def unjudged_recovery(error: BaseException | None) -> str:
-    """What the agent does about a call that went unjudged, given what failed.
-
-    Only time passes on its own, so only a judgement that ran out of it is
-    worth the same call again. Either way the refusal is the policy's defect
-    rather than the call's once it repeats, and this says where that goes.
-    """
-    report = (
-        "report it with `uv run lup-devtools dev report-friction --component"
-        " lup/policy`, naming the call and this refusal."
+    return (
+        "the policy failed on this call, so it is refused unjudged"
+        f" (`{type(error).__name__}: {error}`)"
     )
-    if error is None or deadline_passed():
-        return (
-            "Retry the same call once: a slow moment -- load on the machine, a lock"
-            " another session held -- passes.\nRefused again, " + report
-        )
-    return "If it repeats, " + report
+
+
+def ran_out(error: BaseException | None) -> bool:
+    """Whether a call went unjudged for want of time rather than for a failure.
+
+    ``error`` None is a judgement still running when the hook had to answer;
+    anything failing once the deadline has passed failed for the same reason.
+    """
+    return error is None or deadline_passed()
 
 
 def hook_seconds_left(ceiling: float) -> float:
@@ -737,7 +731,7 @@ def routed_edit_response(
         return None
     row = json.loads(binding)
     request = {
-        "protocol": 1,
+        "protocol": 2,
         "path": path,
         "before": before,
         "after": after,
@@ -5010,7 +5004,7 @@ def bash_decision(
         record_question(
             cwd,
             command,
-            verdict.reason,
+            stated(verdict.subject, verdict.reason),
             verdict.rule,
             verdict.purpose or "",
             verdict.reviewer,
@@ -5098,7 +5092,7 @@ def reviewed_decision(
     tool: str,
     arguments: dict,
     preconditions: dict[Path, str | None],
-    waiting: Callable[[str], str],
+    waiting: Callable[[list[str]], tuple[Step, ...]],
     execution_id: str = "",
     stage: str = "",
     predecessor: str = "",
@@ -5148,7 +5142,7 @@ def reviewed_decision(
             {str(path): before for path, before in bound.items()},
             sort_keys=True,
         ),
-        decision.reason,
+        stated(decision.subject, decision.reason),
         decision.rule,
         decision.purpose or "",
         decision.reviewer,
@@ -5182,18 +5176,23 @@ def reviewed_decision(
             "decision": decision.revised(
                 effect="deny",
                 recovery=(
-                    f"The operator declined review {identifier}{note}. Don't "
-                    "retry this call as it stands: change course, or ask the "
-                    "user."
+                    step(
+                        f"the operator declined review {identifier}{note}: don't"
+                        " retry this call as it stands"
+                    ),
+                    step("change course, or ask the user"),
                 ),
             ),
             "notice": f"Lup review {identifier} was declined; the agent is told.",
         }
     if not identifier:
-        unavailable = f"Review queue unavailable: {result['reason']}. Run this operation from an operator terminal."
+        unavailable = f"the review queue is unavailable: {result['reason']}"
         return {
-            "decision": decision.revised(effect="deny", recovery=unavailable),
-            "notice": unavailable,
+            "decision": decision.revised(
+                effect="deny",
+                recovery=(step(f"{unavailable}; run this from an operator terminal"),),
+            ),
+            "notice": f"Lup: {unavailable}. Run this operation from an operator terminal.",
         }
     project = declared_identity(POLICY_ROOT_ENV)
     prefix = [
@@ -5212,37 +5211,63 @@ def reviewed_decision(
         "lup-devtools",
         "review",
     ]
-    approve = shlex.join([*prefix, "approve", identifier, "--as", "operator"])
-    decline = shlex.join([*prefix, "decline", identifier, "--as", "operator"])
     dashboard = declared_identity(DASHBOARD_URL_ENV)
-    where = (
-        f"on the dashboard, {dashboard}"
+    answers = (
+        (step(f"the operator answers it on the dashboard, {dashboard}"),)
         if dashboard
-        else f"from a terminal outside the session: `{approve}` or `{decline}`"
+        else (
+            step(
+                "the operator answers it from a terminal outside the session",
+                [*prefix, "approve", identifier, "--as", "operator"],
+            ),
+            step(
+                "or declines it", [*prefix, "decline", identifier, "--as", "operator"]
+            ),
+        )
     )
     waiting_here = waiting_edits(cwd, session, agent)
     together = (
-        f" {waiting_here} of your edits now wait on the operator one review at "
-        "a time. Where changes belong together, write each file as it should "
-        "end up under one directory in the tmp/ of the checkout they change, "
-        "mirroring that checkout, and run "
-        f"`{shlex.join([*prefix, 'propose'])} <that directory, absolute> --why "
-        "'<what they change and why>'`: the operator reads them as one review "
-        "and answers all of them at once. Write --why and each file's note in "
-        "plain words, as you would tell a colleague at their desk; `review "
-        "propose --help` shows how."
+        (
+            step(
+                f"{waiting_here} of your edits now wait on the operator one review"
+                " at a time. Where changes belong together, write each file as it"
+                " should end up under one directory in the tmp/ of the checkout"
+                " they change, mirroring that checkout, and propose them as one"
+                " review, which the operator answers all at once",
+                [
+                    *prefix,
+                    "propose",
+                    "<that directory, absolute>",
+                    "--why",
+                    "<what they change and why>",
+                ],
+            ),
+            step(
+                "write --why and each file's note in plain words, as you would"
+                " tell a colleague at their desk",
+                [*prefix, "propose", "--help"],
+            ),
+        )
         if waiting_here >= 2
-        else ""
+        else ()
+    )
+    where = (
+        f"on the dashboard, {dashboard}"
+        if dashboard
+        else "from a terminal outside the session"
     )
     return {
         "decision": decision.revised(
             effect="deny",
+            queued=identifier,
             recovery=(
-                f"Queued for the operator as review {identifier} — not refused. "
-                "Don't change the command. "
-                + waiting(shlex.join([*prefix, "wait", identifier]))
-                + f" The operator answers it {where}."
-                + together
+                step(
+                    f"it waits on the operator as review {identifier}, not"
+                    " refused: don't change the command"
+                ),
+                *waiting([*prefix, "wait", identifier]),
+                *answers,
+                *together,
             ),
         ),
         "notice": f"Lup review {identifier} is waiting for you {where}.",
@@ -5643,7 +5668,7 @@ def edit_decision(
                 after=after,
             )
     except (OSError, ValueError, KeyError, TypeError) as error:
-        return routing_failure(str(error))
+        return routing_failure(str(error), path)
     return captured_edit_decision(
         local_edit_decision(
             path, before, after, path_exists, autonomous, operation, cwd
@@ -6015,11 +6040,11 @@ def repair_report(path: str, file: dict, cwd: Path | None) -> PostToolReport:
     return PostToolReport(
         blocking=[],
         context=[
-            f"{shown}: left as written. The sweep called its directives dead by "
-            "this checkout's rules, and the policy this session loaded still "
-            "needs one of them; the two agree again once `uv run lup-devtools "
-            "harness generate all` runs and the session restarts. What the "
-            "loaded policy said about the repair:",
+            f"{shown}: left as written. The sweep called its directives dead by"
+            " this checkout's rules, and the policy this session loaded still"
+            " needs one of them; the two agree again once"
+            f" `{spelled(devtools('harness', 'generate', 'all'))}` runs and the"
+            " session restarts. What the loaded policy said about the repair:",
             verdict.reason,
         ],
     )
@@ -6041,7 +6066,7 @@ def referred_once(
         return verdict
     repository = worktree_root(str((cwd / path_text).resolve())) or path_text
     if noted_once(cwd, session, repository):
-        return verdict.revised(recovery="")
+        return verdict.revised(recovery=())
     return verdict
 
 
@@ -6157,7 +6182,18 @@ def family_hold_report(
     return PostToolReport(
         blocking=[],
         context=[
-            f"{worktree_path(str(Path(path).resolve()))}: {note}"
+            rendered_said(
+                diagnostic(
+                    "warning",
+                    note,
+                    what=worktree_path(str(Path(path).resolve())),
+                    steps=(
+                        step(
+                            "tell it what you wrote, before it writes over your change"
+                        ),
+                    ),
+                )
+            )
             for path in paths
             for note in store.family_holds(directory, path, mine)
         ],
@@ -6198,7 +6234,7 @@ def main() -> None:
         allowances=[],
         resolve_external=False,
     )
-    print(json.dumps({"protocol": 1, "decision": decision_wire(decision)}))
+    print(json.dumps({"protocol": 2, "decision": decision_wire(decision)}))
 
 
 if __name__ == "__main__":

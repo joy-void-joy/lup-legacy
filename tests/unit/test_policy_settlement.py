@@ -21,6 +21,7 @@ from lup.policy.kernel.decision import (
     SANDBOX_TRAPPED_REASON,
     KernelDecision,
 )
+from lup.policy.kernel.diagnostic import step
 from lup.policy.kernel.escalation import EscalationRequest
 from lup.policy.kernel.semantics import CheckpointEvidence, UnjudgedAmbient
 from lup.policy.kernel.settlement import (
@@ -31,7 +32,7 @@ from lup.policy.kernel.settlement import (
     settle,
 )
 
-HINT = " — reshape it"
+HINT = (step("reshape it"),)
 
 
 def facts(
@@ -119,8 +120,8 @@ def test_a_hard_prohibition_points_at_no_escalation_it_would_not_honour() -> Non
     )
 
     assert settled.effect == "deny"
-    assert "escalate[decision]" not in settled.recovery
-    assert RESHAPE_HINT in settled.recovery
+    assert "escalate[decision]" not in settled.addressed()
+    assert all(through in settled.recovery for through in RESHAPE_HINT)
 
 
 def test_a_hard_prohibition_is_not_moved_by_asking_about_it() -> None:
@@ -233,7 +234,9 @@ def test_a_decision_escalation_asks_and_names_no_spelling_to_fix() -> None:
     )
 
     assert settled.effect == "ask"
-    assert "escalate[decision]" not in settled.recovery
+    assert not any(
+        "escalate[decision]" in through["says"] for through in settled.recovery
+    )
 
 
 def test_sandbox_escalation_asks_before_an_allowed_operation_leaves() -> None:
@@ -423,7 +426,7 @@ def test_a_proven_capture_settles_a_recoverable_loss_to_a_permission() -> None:
     settled = settle(facts(local_loss(), checkpoint="complete"))
 
     assert settled.effect == "allow"
-    assert "captured and restorable" in settled.reason
+    assert "captured and can be restored" in settled.reason
 
 
 def test_a_capture_that_failed_keeps_the_question_and_says_which_it_was() -> None:

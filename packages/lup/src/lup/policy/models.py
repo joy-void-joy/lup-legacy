@@ -19,6 +19,7 @@ from pydantic import (
     field_validator,
 )
 
+from lup.policy.kernel.diagnostic import Step
 from lup.policy.kernel.rows import EditOperation
 from lup.policy.kernel.decision import (
     CheckpointRequirement,
@@ -332,9 +333,18 @@ class Decision(BaseModel, frozen=True):
     reason: str = ""
     """What stopped the call, as the approver reads it. See
     :attr:`~lup.policy.kernel.decision.KernelDecision.reason`."""
-    recovery: str = ""
-    """What the agent can do instead. See
+    recovery: tuple[Step, ...] = ()
+    """The ways through: what the agent can do instead. See
     :attr:`~lup.policy.kernel.decision.KernelDecision.recovery`."""
+    subject: str = ""
+    """The words of the call that decided this verdict. See
+    :attr:`~lup.policy.kernel.decision.KernelDecision.subject`."""
+    see: str = ""
+    """The page that explains the rest. See
+    :attr:`~lup.policy.kernel.decision.KernelDecision.see`."""
+    queued: str = ""
+    """The review a refused call waits on. See
+    :attr:`~lup.policy.kernel.decision.KernelDecision.queued`."""
     sandbox: SandboxPlacement = "ambient"
     checkpoint: CheckpointRequirement = "unrecoverable"
     """What capture would put back what this operation destroys locally."""
@@ -416,6 +426,7 @@ class Decision(BaseModel, frozen=True):
                 "effect": kernel.effect,
                 "reason": kernel.reason,
                 "recovery": kernel.recovery,
+                "subject": kernel.subject,
                 "sandbox": kernel.sandbox,
             }
         )
@@ -435,6 +446,9 @@ class Decision(BaseModel, frozen=True):
             effect=decision.effect,
             reason=decision.reason,
             recovery=decision.recovery,
+            subject=decision.subject,
+            see=decision.see,
+            queued=decision.queued,
             sandbox=decision.sandbox,
             checkpoint=decision.checkpoint,
             reviewer=decision.reviewer,
@@ -452,6 +466,11 @@ class Decision(BaseModel, frozen=True):
             unpreviewed=decision.unpreviewed,
             segments=decision.segments,
         )
+
+    def addressed(self) -> str:
+        """What an agent reads of this verdict. See
+        :meth:`~lup.policy.kernel.decision.KernelDecision.addressed`."""
+        return self.as_kernel().addressed()
 
     def as_kernel(self) -> KernelDecision:
         """This verdict as the hermetic kernel spells it.
@@ -479,6 +498,9 @@ class Decision(BaseModel, frozen=True):
             findings=tuple(finding.as_kernel() for finding in self.findings),
             recovery=self.recovery,
             file_reviews=self.file_reviews,
+            subject=self.subject,
+            see=self.see,
+            queued=self.queued,
             unpreviewed=self.unpreviewed,
             segments=self.segments,
         )

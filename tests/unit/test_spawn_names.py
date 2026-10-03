@@ -15,6 +15,7 @@ from pathlib import Path
 import sh
 
 from lup.policy.kernel.spawns import decide_spawn, spawn_name, spawn_notice
+from lup.policy.kernel.diagnostic import step
 from lup.policy.refused_tools import RefusedTool, erase_refused_tools
 from lup.policy.relay import QuestionRelay
 from lup.providers.harness import compile_claude, compile_codex
@@ -195,10 +196,12 @@ def test_a_spawn_named_from_its_description_tells_its_caller_once(
 
     notice = told(decide(finished(read, tmp_path)))
 
-    assert notice.startswith(declared.notice)
-    assert f"`{read}`" in notice
+    assert notice.startswith(
+        f"warning: `{read}` — went out under the name read from its description"
+    )
+    assert f"→ {declared.notice}" in notice
     assert "pass the name as `name`" in notice
-    assert declared.recovery in notice
+    assert all(through["says"] in notice for through in declared.recovery)
     assert told(decide(finished(read, tmp_path))) == ""
 
 
@@ -295,7 +298,7 @@ def test_a_description_with_nothing_to_read_is_refused_with_the_shape_of_a_name(
 
     assert declared.reason in reason
     assert "pass the name as `name`" in reason
-    assert declared.recovery in reason
+    assert all(through["says"] in reason for through in declared.recovery)
 
 
 def test_the_recovery_names_the_key_each_runtime_reads() -> None:
@@ -306,8 +309,8 @@ def test_the_recovery_names_the_key_each_runtime_reads() -> None:
     for field in ("name", "task_name"):
         refused = decide_spawn("", "", [], declared.erased(), field)
         assert refused.effect == "deny"
-        assert f"pass the name as `{field}`" in str(refused.recovery)
-        assert declared.recovery in str(refused.recovery)
+        assert f"pass the name as `{field}`" in refused.addressed()
+        assert all(through in refused.recovery for through in declared.recovery)
 
 
 def test_a_project_running_one_runtime_may_widen_what_a_name_carries() -> None:
@@ -417,7 +420,7 @@ SPAWN_REFUSALS = [
     RefusedTool(
         tool=tool,
         reason="this project runs no subagents",
-        recovery="Do the work in this conversation.",
+        recovery=[step("do the work in this conversation")],
     )
     for tool in ("Agent", "collaborationspawn_agent", "spawn_agent")
 ]
@@ -470,7 +473,7 @@ def test_a_refused_spawn_is_refused_on_both_runtimes(tmp_path: Path) -> None:
     for tool in ("collaborationspawn_agent", "spawn_agent"):
         reason = codex_denial(codex_spawn("probe_child", tool, codex))
         assert "this project runs no subagents" in reason
-        assert "Do the work in this conversation." in reason
+        assert "do the work in this conversation" in reason
 
 
 def test_a_refused_spawn_still_takes_the_question_it_asks_for(tmp_path: Path) -> None:
@@ -495,7 +498,7 @@ def test_refusing_one_kind_of_spawn_leaves_the_rest_to_their_names(
         tool="Agent",
         specifier="Explore",
         reason="exploring is this conversation's job",
-        recovery="Read the files yourself.",
+        recovery=[step("read the files yourself")],
     )
     claude, _ = refusing([explorer], tmp_path)
 

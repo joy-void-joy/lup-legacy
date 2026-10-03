@@ -47,6 +47,7 @@ from lup.coordination.repository import RepositoryPeers
 from lup.devtools.dev.policy_explain import session_placement
 from lup.harness.enforcement import semantic_policy_for
 from lup.harness.models import HookSet
+from lup.policy.kernel.diagnostic import stated
 from lup.policy.models import Decision, EditBatch, EditChange
 from lup.policy.operations import Operation
 from lup.policy.relay import (
@@ -321,7 +322,7 @@ def parked(
     """
     verdicts = judged(root, hooks, proposal)
     refused = [
-        f"{proposed.path}: {verdict.reason}"
+        f"{proposed.path}: {stated(verdict.subject, verdict.reason)}"
         for proposed, verdict in zip(proposal.files, verdicts, strict=True)
         if verdict.effect == "deny"
     ]

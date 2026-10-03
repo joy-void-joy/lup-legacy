@@ -94,7 +94,7 @@ def test_approved_it_writes_every_file_creates_one_and_deletes_one(root: Path) -
     (root / "gone.md").write_text("to delete\n")
     directory = staged(
         root,
-        {"kept.md": "new\n", "docs/fresh.md": "created\n"},
+        {"kept.md": "new\n", "notes/fresh.md": "created\n"},
         {"delete": ["gone.md"]},
     )
     RUNNER.invoke(app(root), ["propose", str(directory), "--why", WHY])
@@ -107,7 +107,7 @@ def test_approved_it_writes_every_file_creates_one_and_deletes_one(root: Path) -
     assert f"review {question.id} — applied:" in waited.output
     assert "operator note: all three" in waited.output
     assert (root / "kept.md").read_text() == "new\n"
-    assert (root / "docs/fresh.md").read_text() == "created\n"
+    assert (root / "notes/fresh.md").read_text() == "created\n"
     assert not (root / "gone.md").exists()
 
 

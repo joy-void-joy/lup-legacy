@@ -20,7 +20,8 @@ a value would come to be read as the script.
 import posixpath
 from typing import Literal, TypedDict
 
-from .decision import SUBSTITUTION_SENTINEL, KernelDecision
+from .decision import SCRIPT_RECOVERY, SUBSTITUTION_SENTINEL, KernelDecision
+from .diagnostic import step
 from .syntax import expands
 
 type ProgramKind = Literal[
@@ -584,18 +585,19 @@ def program_verdict(spelled: str, reading: ProgramReading) -> KernelDecision | N
         case "inline":
             return KernelDecision(
                 "deny",
-                f"{spelled} {subject}: inline code leaves nothing behind to review",
-                recovery="Write the code to a named script file, which can be"
-                " reviewed and run again.",
+                "inline code leaves nothing behind to review",
+                recovery=SCRIPT_RECOVERY,
                 rule=PROGRAM_RULE,
+                subject=f"{spelled} {subject}",
             )
         case "bare":
             return KernelDecision(
                 "deny",
-                f"{spelled} with no script file runs whatever it is fed, and"
-                " leaves nothing behind to review",
-                recovery="Name a script file.",
+                "with no script file runs whatever it is fed, and leaves nothing"
+                " behind to review",
+                recovery=SCRIPT_RECOVERY,
                 rule=PROGRAM_RULE,
+                subject=spelled,
             )
         case "unread" if expands(subject):
             named = (
@@ -605,27 +607,36 @@ def program_verdict(spelled: str, reading: ProgramReading) -> KernelDecision | N
             )
             return KernelDecision(
                 "deny",
-                f"{spelled} runs {named}, which only the run can read, and it"
-                " could as well be inline code or its input as a script file",
-                recovery="Name the script file the interpreter runs.",
+                f"runs {named}, which only the run can read, and it could as well"
+                " be inline code or its input as a script file",
+                recovery=(step("name the script file the interpreter runs"),),
                 rule=PROGRAM_RULE,
+                subject=spelled,
             )
         case "unread":
             return KernelDecision(
                 "deny",
-                f"{spelled} {subject}: an option this policy does not read, so"
-                " the script it would run is unread",
-                recovery="Spell the option's value with `=`, or run the script"
-                " without it.",
+                "is an option this policy does not read, so the script it would"
+                " run is unread",
+                recovery=(
+                    step(
+                        "spell the option's value with `=`, or run the script without it"
+                    ),
+                ),
                 rule=PROGRAM_RULE,
+                subject=f"{spelled} {subject}",
             )
         case "remote":
             return KernelDecision(
                 "deny",
-                f"{spelled} {subject}: a program fetched from elsewhere leaves"
-                " nothing here to review",
-                recovery="Save the script to a file in this checkout, read it,"
-                " and run that.",
+                "runs a program fetched from elsewhere, which leaves nothing here"
+                " to review",
+                recovery=(
+                    step(
+                        "save the script to a file in this checkout, read it, and run that"
+                    ),
+                ),
                 rule=PROGRAM_RULE,
+                subject=f"{spelled} {subject}",
             )
     return None

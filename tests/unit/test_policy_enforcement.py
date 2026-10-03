@@ -26,6 +26,7 @@ from lup.policy.enforcement import (
     policy_hook_output,
 )
 from lup.policy.kernel.decision import SANDBOX_TRAPPED_REASON, DecisionEffect
+from lup.policy.kernel.diagnostic import step
 from lup.policy.kernel.effects import declare
 from lup.policy.shell_rules import ShellCommandRule
 from lup.policy.vocabulary import runner_target_rules
@@ -67,10 +68,10 @@ def test_every_effect_maps_to_one_portable_decision() -> None:
     )
     assert policy_hook_output(
         Decision(effect="ask", reason="approval required")
-    ) == LupHookOutput(decision="ask", reason="approval required")
+    ) == LupHookOutput(decision="ask", reason="asks: approval required")
     assert policy_hook_output(
         Decision(effect="deny", reason="URL is denied")
-    ) == LupHookOutput(decision="deny", reason="URL is denied")
+    ) == LupHookOutput(decision="deny", reason="refused: URL is denied")
     # Defer carries no decision at all: the kernel declined to judge, so the
     # session's ambient permission flow decides instead of this hook granting
     # what nothing approved.
@@ -177,7 +178,7 @@ async def test_hook_refuses_a_denied_call_and_leaves_other_events_alone() -> Non
             tool_input={"url": str(DENIED_URL)},
         )
     )
-    assert refused == LupHookOutput(decision="deny", reason="URL is denied")
+    assert refused == LupHookOutput(decision="deny", reason="refused: URL is denied")
 
     after = await matcher.hook(
         LupHookInput(
@@ -305,7 +306,7 @@ async def test_an_operation_needing_a_channel_this_session_lacks_is_blocked() ->
     )
 
     assert stopped.decision == "deny"
-    assert stopped.reason == SANDBOX_TRAPPED_REASON
+    assert stopped.reason == f"refused: {SANDBOX_TRAPPED_REASON}"
     assert stopped.sandbox == "ambient"
 
 
@@ -500,7 +501,7 @@ def test_a_refusal_is_what_widens_the_routed_set() -> None:
     refusal = RefusedTool(
         tool="Artifact",
         reason="publishing leaves the repository",
-        recovery="Write the report under tmp/ instead.",
+        recovery=[step("write the report under tmp/ instead")],
     )
 
     assert "Artifact" not in CLAUDE_SEMANTICS.routed_tools
@@ -517,13 +518,13 @@ def test_a_refused_tool_is_routed_exactly_once() -> None:
             tool="Skill",
             specifier="artifact-design",
             reason="leaves it",
-            recovery="Stay in the repository.",
+            recovery=[step("stay in the repository")],
         ),
         RefusedTool(
             tool="Skill",
             specifier="page-design",
             reason="leaves it too",
-            recovery="Stay in the repository.",
+            recovery=[step("stay in the repository")],
         ),
     ]
 
@@ -544,7 +545,7 @@ def test_refusing_a_tool_the_runtime_decodes_is_refused_outright() -> None:
                 RefusedTool(
                     tool="Bash",
                     reason="shells leave the repository",
-                    recovery="Stay in the repository.",
+                    recovery=[step("stay in the repository")],
                 )
             ]
         )
@@ -559,7 +560,7 @@ def test_refusing_a_spawn_the_runtime_decodes_is_in_force() -> None:
     refusal = RefusedTool(
         tool="Agent",
         reason="this project runs no subagents",
-        recovery="Do the work in this conversation.",
+        recovery=[step("do the work in this conversation")],
     )
 
     routed = CLAUDE_SEMANTICS.also_refusing([refusal]).routed_tools
@@ -591,7 +592,7 @@ def test_each_seam_knows_when_its_runtime_s_spawning_is_refused(
                 tool=tool,
                 specifier=specifier,
                 reason="this project runs no subagents",
-                recovery="Do the work in this conversation.",
+                recovery=[step("do the work in this conversation")],
             )
         ]
 

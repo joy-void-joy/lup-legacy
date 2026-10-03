@@ -68,12 +68,14 @@ from host import (
     record_hook_evidence,
     sandbox_active,
     unjudged_reason,
-    unjudged_recovery,
+    ran_out,
     words_before,
 )
 from kernel.rows import PostToolReport
 from kernel.review import Said
 from kernel.decision import KernelDecision
+from kernel.decision import unjudged_recovery
+from kernel.diagnostic import Step, devtools, spelled, stated, step
 from kernel.review import literal_input
 from kernel.shell import auto_escape_matches
 from caller_payload import caller_of, spoken, transcript_of
@@ -324,16 +326,24 @@ def waiting(command, payload):
     """
     if "agent_id" in payload:
         return (
-            f"Carry on with other work, and hold `{command}` in your shell tool, "
-            "reading its output before you report: once a subagent reports, "
-            "nothing wakes it, and a command it left running wakes nobody. If it "
-            "ends with the review still waiting, start it again quietly, "
-            "reporting that to nobody."
+            step(
+                "carry on with other work, and hold this in your shell tool,"
+                " reading its output before you report: once a subagent reports,"
+                " nothing wakes it, and a command it left running wakes nobody",
+                command,
+            ),
+            step(
+                "if it ends with the review still waiting, start it again"
+                " quietly, reporting that to nobody"
+            ),
         )
     return (
-        "Carry on with other work, or end your turn: the operator's answer is "
-        f"queued into this thread, which starts a turn, and `{command}` then "
-        "carries the call out at once. Don't start a waiter."
+        step(
+            "carry on with other work, or end your turn: the operator's answer is"
+            " queued into this thread, which starts a turn, so don't start a"
+            " waiter"
+        ),
+        step("once it wakes you, carry the call out at once", command),
     )
 
 
@@ -581,7 +591,7 @@ def unjudged_detail(event, error, read):
         failure = error if error is not None else "it did not finish in time"
         return f"Lup post-tool check failed: {failure}"
     return KernelDecision(
-        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(error)
+        "deny", unjudged_reason(error, read), recovery=unjudged_recovery(ran_out(error))
     ).addressed()
 
 
@@ -694,7 +704,9 @@ def judged(given):
             f"{type(error).__name__}: {error}",
         )
         decision = KernelDecision(
-            "deny", unjudged_reason(error, read), recovery=unjudged_recovery(error)
+            "deny",
+            unjudged_reason(error, read),
+            recovery=unjudged_recovery(ran_out(error)),
         )
         if not permission_request:
             sys.stderr.write(unjudged_detail(event, error, read))
