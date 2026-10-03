@@ -31,7 +31,7 @@ from collections import deque
 from collections.abc import Collection, Iterator, Sequence
 from enum import StrEnum
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import get_args
 
 from pydantic import BaseModel
@@ -586,12 +586,35 @@ def unfolded_nodes(tree: ast.AST) -> Iterator[ast.AST]:
     while pending:
         node = pending.popleft()
         yield node
-        if not isinstance(node, ast.BinOp | ast.JoinedStr):
+        if not (
+            isinstance(node, ast.BinOp | ast.JoinedStr)
+            and literal_string(node) is not None
+        ):
             pending.extend(ast.iter_child_nodes(node))
 
 
-def native_spelling_violations(text: str) -> list[SourceViolation]:
-    """Find provider wire spellings in code strings outside native ownership."""
+def runtime_tree_named(value: str, trees: Collection[str]) -> str | None:
+    """The runtime tree a path-shaped string names, where it names one.
+
+    Only a string with no whitespace is read as a path. A sentence naming a
+    tree for its reader -- a message, a document's prose -- says where
+    something is rather than going there, and is the runtime's to describe
+    wherever it is read.
+    """
+    if not trees or any(character.isspace() for character in value):
+        return None
+    names = {PurePosixPath(tree).name for tree in trees}
+    return next((part for part in PurePosixPath(value).parts if part in names), None)
+
+
+def native_spelling_violations(
+    text: str, trees: Collection[str] = ()
+) -> list[SourceViolation]:
+    """Find provider wire spellings in code strings outside native ownership.
+
+    ``trees`` are the runtimes' own trees (:attr:`ApplicationRoots.runtime_trees`):
+    a path naming one is a spelling only that runtime's adapter states.
+    """
     tree = python_tree(text)
     if tree is None:
         return []
@@ -614,6 +637,19 @@ def native_spelling_violations(text: str) -> list[SourceViolation]:
                     subject=spelling,
                     message=(
                         f"neutral module contains {description} spelling {spelling!r}"
+                    ),
+                )
+            )
+        named = runtime_tree_named(value, trees)
+        if named is not None:
+            violations.append(
+                SourceViolation(
+                    line=line_number,
+                    text=line.strip(),
+                    subject=named,
+                    message=(
+                        f"neutral module spells {named!r}, a runtime's own tree, "
+                        "which only its adapter states"
                     ),
                 )
             )
@@ -1179,7 +1215,7 @@ def audit_path_boundaries(
             audit_rule(
                 text,
                 RuleId.NATIVE_SPELLING,
-                native_spelling_violations(text),
+                native_spelling_violations(text, application.runtime_trees),
             )
         )
     return findings
@@ -1293,7 +1329,9 @@ def native_spelling_findings(audited: AuditedProject) -> list[RuleFinding]:
         for source in audited.judged_sources()
         if not native_spelling_path_is_sanctioned(source.path, audited.application)
         for finding in audit_rule(
-            source.text, RuleId.NATIVE_SPELLING, native_spelling_violations(source.text)
+            source.text,
+            RuleId.NATIVE_SPELLING,
+            native_spelling_violations(source.text, audited.application.runtime_trees),
         )
     ]
 
@@ -1460,8 +1498,9 @@ NATIVE_SPELLING_RULE = ProjectRule(
         ),
     ],
     message=(
-        "Provider command, event, environment, and manifest spellings stay at "
-        "the native adapter boundary."
+        "Provider command, event, environment, and manifest spellings, and each "
+        "runtime's own tree, stay at the native adapter boundary: read a tree's "
+        "paths off its adapter's spellings."
     ),
     audit=native_spelling_findings,
 )

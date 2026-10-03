@@ -508,6 +508,7 @@ def application_roots(plugin_names: list[str] | None = None) -> ApplicationRoots
         ],
         portable_prose=[f"{harness}content/"],
         native_dependencies=["tests/", "packages/lup/tests/", "examples/"],
+        runtime_trees=[runtime.tree("tree_root") for runtime in NATIVE_RUNTIMES],
         source_roots=[f"{Path(package).parent.as_posix()}/"],
     )
 

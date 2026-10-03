@@ -7,6 +7,10 @@ subjects = [
     "is_generated_plugin_target",
     "NativeSpellings.plugins_directory",
     "SELF_PATH",
+    "wake",
+    "injected",
+    "queued",
+    "QUEUE_COMMAND",
 ]
 reason = """
 `.claude` and `.codex` were spelled by hand outside their adapters, so a \
@@ -45,3 +49,10 @@ under the former."""
 instruction = """
 Name `lup.devtools.harness.settings.MARKETPLACE_SOURCE` where you named \
 `lup.devtools.dev.plugin.SELF_PATH`."""
+
+[[steps]]
+instruction = """
+Import `wake` from `lup.providers.wake`, `injected` from \
+`lup.providers.claude.wake`, and `queued` and `QUEUE_COMMAND` from \
+`lup.providers.codex.wake`, in place of `lup.coordination.wake`; `WakePath`, \
+`Woken` and `declared_wake` stay where they were."""

@@ -27,6 +27,18 @@ adapter.
   refusing a hand edit in a generated plugin tree is handed them
   (`plugin_roots`). A hook set that declares none refuses nothing there,
   but the protected-tree rows still ask.
+- The native-spelling rule now also refuses a neutral module that spells a
+  runtime's own tree as a path. The tree names come from the runtimes through
+  `ApplicationRoots.runtime_trees`, so the rule names no runtime itself.
+  Prose naming a tree for a reader is not a path, and is left alone.
+- The rule now also reads inside a path joined with `/` and an f-string with
+  variables, which it used to skip. That turned up two older spellings. The
+  wake transports move into their adapters: Codex's queue wake, which spells
+  its home, to `lup.providers.codex.wake`, and Claude's socket wake to
+  `lup.providers.claude.wake`. `lup.providers.wake.wake` picks one by the wake
+  path's runtime, and `lup.coordination.wake` keeps the contract (`WakePath`,
+  `Woken`). The other spelling, a review page's heading, now reads
+  `lup:resolve` with no runtime's prefix.
 - `dev worktree create` copies every runtime's personal settings. The
   unlanded-lines count reads every runtime's tree, so `.codex/` now counts
   beside `.claude/`.

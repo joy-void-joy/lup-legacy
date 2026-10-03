@@ -6,11 +6,12 @@ from unittest.mock import Mock
 
 import pytest
 
-import lup.coordination.wake as routing
+import lup.providers.codex.wake as routing
 import lup.coordination.bare.scope as scopes
 from lup.coordination.identity import mint_member_id
 from lup.coordination.repository import RepositoryPeers
-from lup.coordination.wake import WakePath, wake
+from lup.coordination.wake import WakePath
+from lup.providers.wake import wake
 
 
 def test_roster_preserves_native_home_scope_and_session(tmp_path: Path) -> None:

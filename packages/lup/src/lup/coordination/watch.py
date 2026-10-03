@@ -34,7 +34,8 @@ from lup.channels.models import utc_now
 from lup.coordination.mail import ActorDelivery, ActorMessage
 from lup.coordination.repository import PeerView, RepositoryPeers
 from lup.coordination.roster import RosterMember
-from lup.coordination.wake import Woken, wake
+from lup.coordination.wake import Woken
+from lup.providers.wake import wake
 
 
 class WatchEvent(BaseModel, frozen=True):
