@@ -5,10 +5,10 @@ from unittest.mock import Mock
 
 import pytest
 import sh
-import typer
 
 import lup.devtools.harness.resolve as resolve
 from lup.devtools.harness.resolve import AdmissionFlags, DetachedRun, SupervisorSpawn
+from lup.diagnostics import Refusal
 from lup.resolver.state import ResolverStateRepository
 
 
@@ -43,9 +43,10 @@ def test_live_duplicate_is_refused_before_touching_the_log(
     log.write_bytes(b"the entire running history\n")
     with (
         repository.exclusive(),
-        pytest.raises(typer.BadParameter, match="already active"),
+        pytest.raises(Refusal) as refused,
     ):
         resolve.detach_resolve(invocation())
+    assert "already active" in refused.value.said["why"]
     launched.assert_not_called()
     assert log.read_bytes() == b"the entire running history\n"
 

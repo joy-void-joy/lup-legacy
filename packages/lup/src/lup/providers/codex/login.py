@@ -15,6 +15,11 @@ CODEX_HOME = "CODEX_HOME"
 CODEX_LOGIN = ProviderLogin(
     config_home_env=CODEX_HOME,
     credentials_file="auth.json",
+    # Codex 0.159.2 holds its login in memory and reloads auth.json only for
+    # the account it already runs as (codex-rs login/src/auth/manager.rs,
+    # `reload_if_account_id_matches`), so another account reaches a session
+    # only when it is opened again.
+    rereads_login=False,
     ambient_home=Path.home() / ".codex",
     canonical_home=True,
     home_subdir="codex-home",

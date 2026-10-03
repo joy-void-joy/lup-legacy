@@ -44,6 +44,7 @@ from lup.coordination.repository import (
     RepositoryPeers,
     nested,
 )
+from lup.coordination.bare import holds
 from lup.coordination.bare.scope import execution_scope
 from lup.coordination.bare.store import (
     CALLER_FIELD,
@@ -54,6 +55,7 @@ from lup.coordination.bare.store import (
     named_runtime,
     pulse_path,
     session_actor,
+    text,
 )
 from lup.coordination.roster import Delivery, RosterMember
 from lup.coordination.wake import WakePath
@@ -303,6 +305,14 @@ class PeerReached(BaseModel):
             "message included"
         )
     )
+    held: str = Field(
+        default="",
+        description=(
+            'What holds that peer, where something does -- "paused by the '
+            'operator" -- in which case nothing wakes it and it reads this '
+            "once it is let go"
+        ),
+    )
 
 
 class PeerSayOutput(BaseModel):
@@ -531,10 +541,12 @@ def create_peer_tools(
         spoken(acting)
 
         def reached(member: ActorRef) -> PeerReached:
+            holding = holds.covering(peers.root, member.id)
             return PeerReached(
                 address=member.label(),
                 delivery=peers.cohort.delivery(member),
                 outstanding=peers.cohort.outstanding(member),
+                held=text(holding[0].get("said")) if holding else "",
             )
 
         addressed = peers.address(params.address) if params.address else None

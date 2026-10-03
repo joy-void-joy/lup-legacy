@@ -48,12 +48,9 @@ from lup.execution.shell import git
 from lup.harness.environment import inherited
 from lup.types import EnvVars
 from lup.workspace.paths import find_nearest_pyproject
-from lup.devtools.utils import (
-    format_table,
-    decode_stderr,
-    output_json,
-    short_sha,
-)
+from lup.devtools.utils import format_table, decode_stderr, output_json, short_sha
+from lup.diagnostics import refuse
+from lup.policy.kernel.diagnostic import step
 
 logger = logging.getLogger(__name__)
 
@@ -175,8 +172,7 @@ def get_branch_files(state: str) -> BranchScope:
         case "merge":
             merge_head = repository.merging()
             if merge_head is None:
-                typer.echo("No merge is in progress", err=True)
-                raise typer.Exit(1)
+                refuse("no merge is in progress here")
             base = git.out("merge-base", "HEAD", merge_head)
             tip = "HEAD"
 
@@ -192,11 +188,13 @@ def get_branch_files(state: str) -> BranchScope:
                         onto = ref_file(rebase_apply / "onto")
                         orig_head = ref_file(rebase_apply / "orig-head")
                     case _:
-                        typer.echo("Cannot determine rebase state", err=True)
-                        raise typer.Exit(1)
+                        refuse(
+                            "neither rebase-merge/ nor rebase-apply/ is there to"
+                            " say where the rebase stands",
+                            what=str(git_dir),
+                        )
             except OSError as e:
-                typer.echo(f"Cannot read rebase state: {e}", err=True)
-                raise typer.Exit(1) from e
+                refuse(f"cannot read where the rebase stands: {e}")
             base = git.out("merge-base", orig_head, onto)
             tip = orig_head
 
@@ -206,8 +204,10 @@ def get_branch_files(state: str) -> BranchScope:
             tip = "HEAD"
 
         case _:
-            typer.echo(f"Unknown conflict state: {state}", err=True)
-            raise typer.Exit(1)
+            refuse(
+                "is not a state this reads: merge, rebase, or cherry-pick",
+                what=state,
+            )
 
     touched = git.lines("diff", "--name-only", f"{base}..{tip}", _ok_code=[0])
     return BranchScope(base=base, files=set(touched))  # lup: ignore[set-shape]
@@ -421,8 +421,10 @@ def conflict_audit(files: list[str], as_json: bool) -> None:
     """Post-resolution deletion audit: check for accidentally dropped code."""
     operation = detect_conflict_state()
     if operation is None:
-        typer.echo("No merge/rebase/cherry-pick in progress", err=True)
-        raise typer.Exit(1)
+        refuse(
+            "no merge, rebase, or cherry-pick is in progress, so there is nothing"
+            " to audit"
+        )
 
     theirs_ref = theirs_ref_for(operation)
 
@@ -484,10 +486,13 @@ def conflict_complete(dry_run: bool) -> None:
 
     remaining = list_conflicted_files()
     if remaining:
-        typer.echo(f"Error: {len(remaining)} conflicted file(s) remain:", err=True)
         for f in remaining:
-            typer.echo(f"  {f}", err=True)
-        raise typer.Exit(1)
+            typer.echo(f"conflicted: {f}", err=True)
+        refuse(
+            f"{len(remaining)} file(s) are still in conflict",
+            what=operation,
+            steps=[step("resolve them first")],
+        )
 
     match operation:
         case "merge":
@@ -497,8 +502,7 @@ def conflict_complete(dry_run: bool) -> None:
         case "cherry-pick":
             cmd_desc = "git cherry-pick --continue"
         case _:
-            typer.echo(f"Error: unknown operation {operation!r}", err=True)
-            raise typer.Exit(1)
+            refuse("is not an operation this completes", what=operation)
 
     if dry_run:
         typer.echo(f"Would run: {cmd_desc}")
@@ -514,8 +518,7 @@ def conflict_complete(dry_run: bool) -> None:
                 git("cherry-pick", "--continue")
         typer.echo(f"Completed {operation}")
     except sh.ErrorReturnCode as e:
-        typer.echo(f"Failed to complete {operation}: {decode_stderr(e)}", err=True)
-        raise typer.Exit(1)
+        refuse(f"git could not finish it: {decode_stderr(e)}", what=operation)
 
 
 def conflict_blocks(

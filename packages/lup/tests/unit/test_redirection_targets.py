@@ -336,7 +336,7 @@ class TestAWriteNobodyCanRead:
         answer = written("date +%s > src.py", tracked=["src.py"])
 
         assert answer.effect == "ask"
-        assert "src.py" in answer.reason
+        assert answer.subject == "src.py"
 
     def test_appending_is_the_same_answer_as_replacing(self) -> None:
         """The bytes are equally unread either way, so the question is too."""
@@ -346,8 +346,8 @@ class TestAWriteNobodyCanRead:
         """A question an agent cannot act on becomes a retry."""
         answer = written("date +%s > src.py", tracked=["src.py"])
 
-        assert "scratch" in answer.recovery
-        assert "carry the content" in answer.recovery
+        assert "scratch" in answer.addressed()
+        assert "carry the content" in answer.addressed()
 
     def test_a_create_replaces_nothing_and_keeps_its_allow(self) -> None:
         """What the question is about is the reviewed version being replaced."""

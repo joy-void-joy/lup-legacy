@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { LiveMessage, LiveSession } from "../generated/views";
-import { applied, NO_KEYS, UNSAID } from "./live";
+import { applied, NO_BUDGET, NO_KEYS, UNSAID } from "./live";
 import { discussions, reaches, threadBuffer } from "./threads";
 
 const repository = { key: "r1", name: "lup", repository: "/src/lup.git", checkout: "/src/lup.git/tree/dev" };
@@ -9,20 +9,20 @@ function session(id: string, name = id): LiveSession {
   return {
     key: `r1/${id}`, repository: "r1", id, parent: "", kind: "session", name, doing: "", task: "", running: true, worktree: "", holding: [], contested: [],
     delivery: "hook", wake: "claude", arrived: null, heard: "2026-09-29T12:00:00Z", summary: "", error: "", waiting: 0, runtime: "claude", spawned_by: "", process: null,
-    activity: { said: "", calling: "", arguments: {}, at: null, transcript: "", recent: [] },
+    holds: [], held_since: null, activity: { said: "", calling: "", arguments: {}, at: null, transcript: "", recent: [] },
   };
 }
 
 let byte = 0;
 function message(id: string, sender: string, recipient: string, text: string, at: string, fields: Partial<LiveMessage> = {}): LiveMessage {
   byte += 100;
-  return { key: `r1/${id}`, repository: "r1", id, at: byte, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: at, waiting: false, post: id, thread: id, ...fields };
+  return { key: `r1/${id}`, repository: "r1", id, at: byte, sender, recipient, recipient_kind: recipient === "user" ? "user" : "session", text, door: "agent", redirect: false, in_reply_to: "", sent_at: at, waiting: false, post: id, thread: id, prompt: false, ...fields };
 }
 
 const live = (messages: LiveMessage[]) => {
   const state = applied(null, {
     cursor: "c",
-    event: { type: "snapshot", repositories: [repository], sessions: [session("res", "research"), session("sum", "summarize_sources")], messages, extents: [], reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS, users: [], served: [] },
+    event: { type: "snapshot", repositories: [repository], sessions: [session("res", "research"), session("sum", "summarize_sources")], messages, extents: [], reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, keys: NO_KEYS, users: [], served: [], budget: NO_BUDGET },
   });
   if (state === null) throw new Error("a snapshot always applies");
   return state;

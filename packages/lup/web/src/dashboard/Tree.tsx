@@ -7,7 +7,7 @@ import { grouped, type Dashboard } from "./dashboard";
 import { openItem, toggleStopped } from "./editor";
 import { checkoutLabel, plural, staleSentences, stateClass, stateLabel, stateSign } from "./review";
 import type { PageState } from "./state";
-import { activityBrief, ago, GLYPH, membersOf, repositoryOf, reviewsOf, standing, unreadCount, wroteYou, type TreeItem } from "./supervision";
+import { activityBrief, ago, GLYPH, heldCount, heldWord, holdTitle, membersOf, meterOf, repositoryOf, reviewsOf, spendLine, standing, unreadCount, wouldHold, wroteYou, type TreeItem } from "./supervision";
 import { discussionLine } from "./threads";
 
 /** A tree row's second line: what the agent is doing, its first line whole, and how many more a hover reads. */
@@ -36,8 +36,9 @@ function TreeRow({ d, state, item, index }: { d: Dashboard; state: PageState; it
       const working = membersOf(live, item.key).filter((each) => each.running).length;
       const asks = d.pending(state).filter((row) => repositoryOf(live, d.roots(state), row.root_id) === item.key).length;
       const unread = unreadCount(live, item.key);
+      const held = heldCount(live, item.key);
       return <button type="button" className={classes} style={style} data-ti={index} title={repository.repository} onClick={open}>
-        <span className="t1"><span>{state.collapsed.has(item.key) ? "▸" : "▾"}</span><span className="nm">{repository.name} <span className="muted">· {working} working{asks > 0 && <> · <span className="warn">{asks} wait on you</span></>}{unread > 0 && <> · <span className="warn">✉ {unread} to you</span></>}</span></span></span>
+        <span className="t1"><span>{state.collapsed.has(item.key) ? "▸" : "▾"}</span><span className="nm">{repository.name} <span className="muted">· {working} working{held > 0 && <> · <span className="warn">⏸{held} held</span></>}{asks > 0 && <> · <span className="warn">{asks} wait on you</span></>}{unread > 0 && <> · <span className="warn">✉ {unread} to you</span></>}</span></span></span>
       </button>;
     }
     case "you": return <button type="button" className={classes} style={style} data-ti={index} onClick={open}>
@@ -51,12 +52,16 @@ function TreeRow({ d, state, item, index }: { d: Dashboard; state: PageState; it
       const asks = reviewsOf(live, d.roots(state), d.pending(state), session).length;
       const wrote = wroteYou(live, session);
       const what = brief(activityBrief(session, state.now));
+      const meter = session.running ? meterOf(live, session) : undefined;
+      const spend = meter === undefined ? "" : spendLine(meter);
+      const held = session.running ? heldWord(session) : "";
       const foldable = asks > 0 || membersOf(live, session.repository).some((each) => each.parent === session.id);
       return <button type="button" className={`${classes}${session.running ? "" : " stopped"}`} style={style} data-ti={index} onClick={open}>
         <span className="t1">
           {foldable ? <span className="fold" onClick={(event) => { event.stopPropagation(); d.set((now_) => { const collapsed = new Set(now_.collapsed); if (collapsed.has(session.key)) collapsed.delete(session.key); else collapsed.add(session.key); return { collapsed }; }); }}>{state.collapsed.has(session.key) ? "▸" : "▾"}</span> : <span> </span>}
           <span className="nm">{session.parent !== "" && <span className="cyan">↳ </span>}<span className={`g-${now}`} title={now}>{GLYPH[now]}</span> <b>{session.name || session.id}</b>{session.parent === "" && session.wake !== "" && <span className="tag"> {session.wake}</span>}</span>
           <span className="flags">
+            {held !== "" && <span className="warn held" title={holdTitle(live, session, state.now)}>⏸ {held} </span>}
             {asks > 0 && <span className="warn" title="reviews wait on you">?{asks} </span>}
             {wrote > 0 && <span className="warn" title="unread messages it sent you">✎{wrote} </span>}
             {session.running && session.waiting > 0 && <span className="info" title="messages waiting in its mailbox">✉{session.waiting} </span>}
@@ -66,6 +71,11 @@ function TreeRow({ d, state, item, index }: { d: Dashboard; state: PageState; it
           </span>
         </span>
         <span className="t2">{what.first}{what.more > 0 && <span className="muted"> · {plural(what.more, "more line")}, K</span>}</span>
+        {meter !== undefined && (spend !== "" || wouldHold(live.budget, meter.held) !== "" || meter.priority !== "normal") && <span className="t3">
+          {wouldHold(live.budget, meter.held) !== "" && <span className="muted">{wouldHold(live.budget, meter.held)}</span>}
+          {wouldHold(live.budget, meter.held) !== "" && spend !== "" && " · "}{spend}
+          {meter.priority !== "normal" && <span className={meter.priority === "high" ? "info" : "muted"}> · {meter.priority}</span>}
+        </span>}
       </button>;
     }
     case "folded": return <button type="button" className={classes} style={style} data-ti={index} onClick={open}>
@@ -87,10 +97,11 @@ function AgentsTree({ d, state }: { d: Dashboard; state: PageState }) {
   const all = [...(live?.sessions.values() ?? [])];
   const working = all.filter((each) => standing(each, state.now) === "working").length;
   const quiet = all.filter((each) => standing(each, state.now) === "quiet").length;
+  const held = live === null ? 0 : heldCount(live);
   const waiting = d.pending(state).length;
   const reasons = [...(state.connection === "Live" ? [] : [state.connection]), ...(live?.reviews.errors ?? []).map((issue) => `${issue.root.slice(issue.root.lastIndexOf("/") + 1) || issue.root} unavailable: ${issue.message}`)];
   return <>
-    <div className="wb" id="qbar"><span className="t">agents</span><span>{working} working{quiet > 0 && <> · <span className="warn">{quiet} quiet</span></>} · {d.counted(waiting, state)} wait on you</span><span className="grow" /><span className="muted" title="Space t a / t t / t r">{state.tree}</span>
+    <div className="wb" id="qbar"><span className="t">agents</span><span>{working} working{quiet > 0 && <> · <span className="warn">{quiet} quiet</span></>}{held > 0 && <> · <span className="warn" title="agents held at their next tool call">⏸{held} held</span></>} · {d.counted(waiting, state)} wait on you</span><span className="grow" /><span className="muted" title="Space t a / t t / t r">{state.tree}</span>
       {state.narrow && <button type="button" className="fx" aria-label="Close" onClick={() => d.set({ touch: { drawer: "", sheet: "" } })}>✕</button>}</div>
     <Scroller d={d} state={state}>
       {reasons.length > 0 && <div className="qstate" role="status">{reasons.join(" · ")}</div>}

@@ -1,4 +1,4 @@
-import type { Feature, KeyBindings, LiveMessage, LiveRepository, LiveSession, MessagePage, ReviewSnapshot, ReviewSummary, RunningCode, StreamFrame, UserRow } from "../generated/views";
+import type { BudgetView, Feature, KeyBindings, LiveMessage, LiveRepository, LiveSession, MessagePage, ReviewSnapshot, ReviewSummary, RunningCode, StreamFrame, UserRow } from "../generated/views";
 
 /**
  * Everything live the page shows, as the stream has moved it so far.
@@ -9,6 +9,8 @@ import type { Feature, KeyBindings, LiveMessage, LiveRepository, LiveSession, Me
  * start at: older ones are read a page at a time from there back, and 0 is a
  * repository whose every message is here. `users` is the person's own row in
  * each repository, and `served` the supervision the dashboard serves.
+ * `budget` is each account's meter and each agent's spend, where the
+ * dashboard governs a budget.
  */
 export type LiveState = {
   cursor: string;
@@ -21,6 +23,7 @@ export type LiveState = {
   users: ReadonlyMap<string, UserRow>;
   served: readonly Feature[];
   keys: KeyBindings;
+  budget: BudgetView;
 };
 
 /** What a dashboard that has not said which code it runs is taken to run. */
@@ -28,6 +31,9 @@ export const UNSAID: RunningCode = { source: "", root: "", since: null, older: f
 
 /** What a dashboard that has not said the person's keys is taken to say: every key lup's own. */
 export const NO_KEYS: KeyBindings = { source: "", unread: "", changed: [], report: { applied: [], refused: [], waits: [] } };
+
+/** What a dashboard that governs no budget is taken to show: no account, no agent's spend. */
+export const NO_BUDGET: BudgetView = { accounts: [], agents: [], turtle: false, telemetry: false, refused: "", holds: false };
 
 /** One line of what the stream moved, as a repository's page logs it, newest last. */
 export type Moved = { repository: string; text: string };
@@ -50,6 +56,9 @@ export function moved(previous: LiveState | null, frame: StreamFrame): Moved[] {
       const who = session.name || session.id;
       if (before === undefined) return [{ repository: session.repository, text: `${who} arrived` }];
       if (before.running && !session.running) return [{ repository: session.repository, text: `${who} stopped${session.summary || session.error ? `: ${session.summary || session.error}` : ""}` }];
+      const held = session.holds[0];
+      if (before.holds.length === 0 && held !== undefined) return [{ repository: session.repository, text: `${who} is held at its next tool call: ${held.said}${held.freeze ? ", frozen" : ""}` }];
+      if (before.holds.length > 0 && held === undefined) return [{ repository: session.repository, text: `${who} is held no longer` }];
       if (session.activity.calling !== "" && session.activity.calling !== before.activity.calling) return [{ repository: session.repository, text: `${who} calling ${session.activity.calling}` }];
       if (session.doing !== before.doing && session.doing !== "") return [{ repository: session.repository, text: `${who} is on: ${session.doing}` }];
       return [];
@@ -57,7 +66,8 @@ export function moved(previous: LiveState | null, frame: StreamFrame): Moved[] {
     case "message": {
       if (previous?.messages.has(event.message.key) === true) return [];
       const message = event.message;
-      return [{ repository: message.repository, text: `${message.sender === "" ? message.door : name(message.repository, message.sender)} → ${name(message.repository, message.recipient)}: ${message.text}` }];
+      const from = message.prompt ? "prompt" : message.sender === "" ? message.door : name(message.repository, message.sender);
+      return [{ repository: message.repository, text: `${from} → ${name(message.repository, message.recipient)}: ${message.text}` }];
     }
     case "review": {
       const was = previous?.reviews.reviews.find((row) => row.key === event.review.key);
@@ -120,9 +130,11 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
       users: keyed(event.users),
       served: event.served,
       keys: event.keys,
+      // A dashboard running older code than the page says nothing of a budget.
+      budget: event.budget ?? NO_BUDGET,
     };
   }
-  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), earlier: new Map(), reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, users: new Map(), served: [], keys: NO_KEYS }), cursor: frame.cursor };
+  const base: LiveState = { ...(state ?? { repositories: new Map(), sessions: new Map(), messages: new Map(), earlier: new Map(), reviews: { roots: [], reviews: [], errors: [], history: 0 }, code: UNSAID, users: new Map(), served: [], keys: NO_KEYS, budget: NO_BUDGET }), cursor: frame.cursor };
   switch (event.type) {
     case "repository": return { ...base, repositories: set(base.repositories, event.repository.key, event.repository) };
     case "repository_gone": return { ...base, repositories: without(base.repositories, event.key) };
@@ -140,6 +152,7 @@ export function applied(state: LiveState | null, frame: StreamFrame): LiveState 
     // A followed transcript is read where it is shown, never held as state.
     case "transcript": return base;
     case "keys": return { ...base, keys: event.keys };
+    case "budget": return { ...base, budget: event.budget };
   }
 }
 

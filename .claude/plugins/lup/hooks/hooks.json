@@ -1,5 +1,5 @@
 {
-  "description": "Lup semantic permission policy, peer delivery, the calling subagent on each coordination call, the roster's changes at each prompt, this session's name for its work, a session's or subagent's departure as it ends, and a subagent's report waiting on its background work",
+  "description": "Lup semantic permission policy, peer delivery, the hold on a paused or budget-held agent's next call, the calling subagent on each coordination call, the roster's changes at each prompt, this session's name for its work, a session's or subagent's departure as it ends, and a subagent's report waiting on its background work",
   "hooks": {
     "PostToolUse": [
       {
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "command": "sh \"$CLAUDE_PLUGIN_ROOT/hooks/scripts/policy.sh\" || exit 2",
-            "timeout": 30,
+            "timeout": 86430,
             "type": "command"
           }
         ],
@@ -29,6 +29,16 @@
           {
             "command": "sh \"$CLAUDE_PLUGIN_ROOT/hooks/scripts/coordination_delivery.sh\" || exit 0",
             "timeout": 10,
+            "type": "command"
+          }
+        ],
+        "matcher": ""
+      },
+      {
+        "hooks": [
+          {
+            "command": "sh \"$CLAUDE_PLUGIN_ROOT/hooks/scripts/coordination_hold.sh\" || exit 2",
+            "timeout": 86430,
             "type": "command"
           }
         ],

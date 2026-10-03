@@ -30,7 +30,9 @@ import lup.devtools.dev.scaffold_fit as scaffold_fit
 from lup.formats.banner import REGENERATE_COMMAND
 from lup.devtools.sync import ensure_local, find_project
 from lup.devtools.utils import decode_stderr, short_sha, uv
+from lup.diagnostics import refuse
 from lup.execution.shell import git
+from lup.policy.kernel.diagnostic import devtools, step
 
 
 class CarrierDrift(BaseModel, frozen=True):
@@ -376,17 +378,26 @@ def adopted(
     """
     standing = scaffold.branch_head(root, source.branch)
     if standing:
-        raise typer.BadParameter(
-            f"{source.branch} already stands at {short_sha(standing)}, compiled "
-            f"at {short_sha(scaffold.compiled_at(root, standing))}. Adoption "
-            "happens once; `dev update` is every time after it."
+        refuse(
+            f"already stands at {short_sha(standing)}, compiled at "
+            f"{short_sha(scaffold.compiled_at(root, standing))}, and adoption "
+            "happens once",
+            what=source.branch,
+            steps=[
+                step(
+                    "take every later upstream change as an update",
+                    devtools("dev", "update"),
+                )
+            ],
+            code=2,
         )
     staged = git.lines("-C", str(root), "diff", "--cached", "--name-only")
     if staged:
-        raise typer.BadParameter(
+        refuse(
             f"{len(staged)} path(s) are staged in this checkout, and adoption is "
-            "recorded as a merge, which git refuses over a staged change. "
-            "Commit them first."
+            "recorded as a merge, which git refuses over a staged change",
+            steps=[step("commit them first")],
+            code=2,
         )
     repository = upstream_checkout(source.project, report)
     commit = scaffold_fit.checked_base(

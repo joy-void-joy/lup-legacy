@@ -7,7 +7,7 @@ import { jumpTo, openMessage, reveal, rowsOf } from "./editor";
 import { CATALOG } from "./keys";
 import { basename, EFFECT_SIGN, exceptionRules, exceptionStops, headOf, headText, MARKER_LETTER, markerLabel, markerStops, relative, reviewLabel, rowText, SOURCES, stateLabel, stateSign, type Entry } from "./review";
 import type { Tone } from "./state";
-import { activityBrief, attention, clock, GLYPH, inboxOf, kindWords, mailHeads, standing } from "./supervision";
+import { activityBrief, attention, clock, GLYPH, heldWord, inboxOf, kindWords, mailHeads, standing } from "./supervision";
 import { discussionLine, memberName } from "./threads";
 
 /** What a picker's preview pane shows. */
@@ -64,8 +64,9 @@ export const PICKERS: Record<string, { title: string; items: (d: Dashboard) => F
       if (live === null) return [];
       return [...live.sessions.values()].sort((left, right) => Number(right.running) - Number(left.running) || (left.name || left.id).localeCompare(right.name || right.id)).map((session) => {
         const state = standing(session, d.state.now);
+        const held = session.running ? heldWord(session) : "";
         return {
-          text: `${GLYPH[state]} ${session.name || session.id} · ${live.repositories.get(session.repository)?.name ?? ""} · ${kindWords(session)} · ${activityBrief(session, d.state.now)}`,
+          text: `${GLYPH[state]} ${session.name || session.id}${held !== "" ? ` ⏸ ${held}` : ""} · ${live.repositories.get(session.repository)?.name ?? ""} · ${kindWords(session)} · ${activityBrief(session, d.state.now)}`,
           run: (dashboard) => dashboard.openOther("member", session.key),
           preview: () => ({
             heading: `${session.name || session.id} · ${state} · ${kindWords(session)}`,
@@ -86,7 +87,7 @@ export const PICKERS: Record<string, { title: string; items: (d: Dashboard) => F
         preview: () => ({
           heading: discussion.title,
           lines: discussion.posts.flatMap((post) => [
-            { text: `${memberName(live, discussion.repository, post.sender)} · ${clock(post.sent_at)}`, tone: "info" as const },
+            { text: `${post.prompt ? "prompt" : memberName(live, discussion.repository, post.sender)} · ${clock(post.sent_at)}`, tone: "info" as const },
             { text: post.text, tone: "" as const },
           ]),
         }),

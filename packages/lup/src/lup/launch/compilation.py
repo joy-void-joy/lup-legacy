@@ -15,7 +15,13 @@ from lup.harness.models import HookSet
 from lup.launch.session import start_harness_transcript
 from lup.observability.native import NativeTranscripts
 from lup.launch.declaration import Recording, Sandbox
-from lup.policy.enforcement import NativeSemantics, create_policy_hooks
+from lup.coordination.meeting import coordination_root
+from lup.policy.bundle import held_hook_timeout
+from lup.policy.enforcement import (
+    NativeSemantics,
+    create_hold_hooks,
+    create_policy_hooks,
+)
 from lup.policy.hooks import LupHooksConfig
 from lup.sessions.recursion import (
     MAX_RECURSIVE_AGENT_ENV,
@@ -65,6 +71,22 @@ def semantic_hooks(
         semantics.also_refusing(policy.refused_tools),
         sandbox=posture,
         timeout=policy.policy_timeout,
+    )
+
+
+def held_hooks(policy: HookSet, root: Path, member: str) -> LupHooksConfig:
+    """The hold over a session opened here, as the plugin holds a launched one.
+
+    Every call of *member* waits while the operator's pause or a budget
+    covers it in *root*'s repository, for as long as the declaration's hold
+    lasts, and the runtime is told the same timeout the plugin declares for a
+    hook that holds, so the refusal at the hold's limit is the hook's own.
+    """
+    return create_hold_hooks(
+        coordination_root(root),
+        member,
+        policy.hold_seconds,
+        held_hook_timeout(policy.policy_timeout, policy.hold_seconds),
     )
 
 

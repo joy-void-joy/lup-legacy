@@ -83,6 +83,10 @@ class ActorMessage(BaseModel, frozen=True):
     """A wake has put this redirect in front of its reader already; it waits
     only for the hook to refuse the reader's next tool call with it."""
 
+    prompt: bool = False
+    """A bare prompt its reader's runtime was woken with -- a resume's
+    "continue" -- recorded as the turn's own words rather than as mail."""
+
     def heading(self) -> str:
         """What its reader is told before the text, as the delivery hook tells it."""
         return mail.heading(
@@ -232,6 +236,7 @@ def folded_message(message: mail.Message) -> ActorMessage:
             if isinstance(each, str)
         ],
         carried=bool(message.get("carried")),
+        prompt=bool(message.get("prompt")),
     )
 
 

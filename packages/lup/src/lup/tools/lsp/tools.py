@@ -23,7 +23,6 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import unquote, urlparse
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -33,6 +32,7 @@ from lup.tools.lsp.replies import (
     HOVER,
     LOCATIONS,
     WORKSPACE_EDIT,
+    path_of,
 )
 from lup.tools.mcp import LupMcpTool, ToolDeclaration, ToolError, lup_tool
 from lup.types import JsonObject, JsonValue
@@ -198,11 +198,6 @@ class DocumentInput(BaseModel, extra="forbid"):
             "working in a different one, such as a worktree."
         )
     )
-
-
-def path_of(uri: str) -> str:
-    """The filesystem path a `file:` URI names."""
-    return Path(unquote(urlparse(uri).path)).as_posix()
 
 
 def pointed(file: Path, params: PositionInput) -> None:

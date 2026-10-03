@@ -8,6 +8,7 @@ from .decision import (
     SandboxPlacement,
     CheckpointRequirement,
 )
+from .diagnostic import Step, devtools, step
 from .semantics import (
     ReviewerRequirement,
     ReviewPurpose,
@@ -43,7 +44,10 @@ class DecisionWire(TypedDict):
     findings: list["DecisionWire"]
     rule: str
     evaluator: str
-    recovery: str
+    recovery: list[Step]
+    subject: str
+    see: str
+    queued: str
     reach: Reach | None
     unread: bool
 
@@ -91,7 +95,10 @@ def decision_wire(decision: KernelDecision) -> DecisionWire:
         findings=[decision_wire(part) for part in decision.findings],
         rule=decision.rule,
         evaluator=decision.evaluator,
-        recovery=decision.recovery,
+        recovery=list(decision.recovery),
+        subject=decision.subject,
+        see=decision.see,
+        queued=decision.queued,
         reach=decision.reach,
         unread=decision.unread,
     )
@@ -103,9 +110,26 @@ def valid_decision(value: WireValue | DecisionWire) -> TypeGuard[DecisionWire]:
         DecisionWire.__annotations__
     ):
         raise ValueError("destination evaluator returned an incompatible decision")
-    for name in ("reason", "escalated", "rule", "evaluator", "recovery"):
+    for name in (
+        "reason",
+        "escalated",
+        "rule",
+        "evaluator",
+        "subject",
+        "see",
+        "queued",
+    ):
         if not isinstance(value[name], str):
             raise ValueError(f"destination decision {name} must be text")
+    if not isinstance(value["recovery"], list) or not all(
+        isinstance(through, dict)
+        and sorted(through) == ["run", "says"]
+        and isinstance(through["says"], str)
+        and isinstance(through["run"], list)
+        and all(isinstance(word, str) for word in through["run"])
+        for through in value["recovery"]
+    ):
+        raise ValueError("destination decision recovery must be a list of steps")
     for name in ("unlisted", "hard", "unread"):
         if not isinstance(value[name], bool):
             raise ValueError(f"destination decision {name} must be boolean")
@@ -195,17 +219,30 @@ def read_decision(value: WireValue | DecisionWire) -> KernelDecision:
         recovery=row["recovery"],
         reach=row["reach"],
         unread=row["unread"],
+        subject=row["subject"],
+        see=row["see"],
+        queued=row["queued"],
     )
 
 
-def routing_failure(reason: str) -> KernelDecision:
-    """An unavailable owner is a refusal, never an origin-policy fallback."""
+def routing_failure(reason: str, path: str = "") -> KernelDecision:
+    """An unavailable owner is a refusal, never an origin-policy fallback.
+
+    ``path`` is the write it refuses, which the verdict names as its subject.
+    """
     return KernelDecision(
         "deny",
-        f"Destination policy unavailable: {reason}",
+        f"the destination's policy is unavailable: {reason}",
+        subject=path,
         hard=True,
         rule="edit:destination-policy",
-        recovery="Regenerate the destination harness and ask the operator to refresh its accepted policy snapshot.",
+        recovery=(
+            step(
+                "regenerate the destination's harness",
+                devtools("harness", "generate", "all"),
+            ),
+            step("then ask the operator to refresh its accepted policy snapshot"),
+        ),
     )
 
 
@@ -213,7 +250,7 @@ def read_response(value: WireValue) -> KernelDecision:
     """Read the versioned semantic reply from an accepted evaluator."""
     if not isinstance(value, dict) or sorted(value) != ["decision", "protocol"]:
         raise ValueError("malformed destination evaluator response")
-    if type(value["protocol"]) is not int or value["protocol"] != 1:
+    if type(value["protocol"]) is not int or value["protocol"] != 2:
         raise ValueError("unsupported destination evaluator response")
     return read_decision(value["decision"])
 
@@ -224,7 +261,7 @@ def valid_edit_request(value: WireValue) -> TypeGuard[EditRequest]:
         EditRequest.__annotations__
     ):
         raise ValueError("incompatible destination edit request")
-    if type(value["protocol"]) is not int or value["protocol"] != 1:
+    if type(value["protocol"]) is not int or value["protocol"] != 2:
         raise ValueError("unsupported destination evaluator protocol")
     for name in ("path", "operation", "cwd", "owner", "agent_identity"):
         if not isinstance(value[name], str):

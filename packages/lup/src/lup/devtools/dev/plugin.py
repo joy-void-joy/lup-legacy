@@ -25,6 +25,7 @@ from typing import TypedDict
 import typer
 from pydantic import ConfigDict, TypeAdapter, with_config
 
+from lup.diagnostics import refuse
 from lup.devtools.harness.settings import MARKETPLACE_SOURCE
 from lup.harness.models import Plugin
 from lup.providers.harness import AdapterName, spellings_of
@@ -78,8 +79,10 @@ def settings_file(root: Path) -> Path:
 
 def validate_name(name: str) -> str:
     if not name or any(c in name for c in " \t@/"):
-        raise typer.BadParameter(
-            f"Invalid marketplace name {name!r}: no spaces, '@', or '/'"
+        refuse(
+            "is not a marketplace name, which holds no spaces, '@' or '/'",
+            what=name,
+            code=2,
         )
     return name
 
@@ -100,11 +103,11 @@ def points_at_self(entry: MarketplaceEntry, root: Path) -> bool:
 def apply_marketplace_json(root: Path, name: str, dry_run: bool) -> list[str]:
     path = marketplace_file(root)
     if not path.exists():
-        raise typer.BadParameter(f"No marketplace.json at {path}")
+        refuse("no marketplace.json is there", what=str(path), code=2)
     try:
         data = MARKETPLACE_ADAPTER.validate_python(json.loads(path.read_text()))
     except json.JSONDecodeError as error:
-        raise typer.BadParameter(f"{path} is not valid JSON: {error}") from error
+        refuse(f"is not valid JSON: {error}", what=str(path), code=2)
     old = data.get("name")
     if old == name:
         return []
@@ -125,7 +128,7 @@ def apply_settings_json(
             else SettingsJson()
         )
     except json.JSONDecodeError as error:
-        raise typer.BadParameter(f"{path} is not valid JSON: {error}") from error
+        refuse(f"is not valid JSON: {error}", what=str(path), code=2)
     changes: list[str] = []  # lup: ignore[empty-collection] — change log
 
     known = settings.get("extraKnownMarketplaces") or {}

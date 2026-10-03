@@ -2,6 +2,7 @@
 
 import json
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -37,6 +38,7 @@ from lup.launch.declaration import (
     resumption,
     session_loopback,
 )
+from lup.launch.config_volume import LaunchedAccount, LaunchedAccounts, LoginOwner
 from lup.launch.environments import revisions_home
 from lup.launch.guidance import held_guidance
 from lup.launch.foreground import between_steps, run_in_foreground
@@ -624,6 +626,20 @@ class CodexLaunchHome(BaseModel, frozen=True, arbitrary_types_allowed=True):
     settings: CodexAccountSettings | None = None
     """The person's settings, carried into a container's home at its start."""
 
+    profile: str | None = None
+    """The profile the account is, named or selected; ``None`` where none is."""
+
+    def owner(self) -> LoginOwner:
+        """Whose login the session runs on: the account a derived home copies, or the home named."""
+        return LoginOwner(
+            home=(
+                self.store.account_home
+                if self.selection.isolated
+                else self.selection.path
+            ),
+            profile=self.profile,
+        )
+
 
 def codex_launch_home(
     agent: "Codex", environment: EnvVars, root: Path
@@ -636,8 +652,9 @@ def codex_launch_home(
     """
     config = UserConfigFile()
     personal = personal_config(config)
+    directory = profile_directory(CODEX_LOGIN, config)
     try:
-        account_home = profile_directory(CODEX_LOGIN, config).launch_home(agent.profile)
+        account_home = directory.launch_home(agent.profile)
     except (KeyError, DefaultHomeProfile) as error:
         raise LaunchRefused(str(error)) from error
     store = CodexWorktreeHomeStore(
@@ -649,7 +666,12 @@ def codex_launch_home(
     selection = select_codex_home(agent.home, environment, root, store)
     contained = agent.sandbox.posture().contained()
     settings = CodexAccountSettings.capture(selection.path) if contained else None
-    return CodexLaunchHome(store=store, selection=selection, settings=settings)
+    return CodexLaunchHome(
+        store=store,
+        selection=selection,
+        settings=settings,
+        profile=agent.profile or directory.active_name(),
+    )
 
 
 def check_codex(agent: "Codex") -> list[Finding]:
@@ -821,6 +843,18 @@ def codex_opening(
             else []
         ),
         overlays=codex_guidance(root, config.sandbox),
+        owner=home.owner(),
+        moving="move" if config.move_sessions else "refuse",
+    )
+    LaunchedAccounts().record(
+        LaunchedAccount(
+            member=member.member_id,
+            runtime=CODEX_LOGIN.state_volume,
+            owner=home.owner(),
+            checkout=root,
+            contained=posture.contained(),
+            at=datetime.now(UTC),
+        )
     )
     return LaunchCommand(argv=argv, env=environment, cwd=root)
 

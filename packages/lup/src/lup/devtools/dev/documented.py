@@ -21,6 +21,9 @@ is not checking it. What the sweep never does is decide what a command
 answers.
 """
 
+import ast
+from itertools import takewhile
+
 # lup: ignore[import-re] — the executable's own name inside arbitrary English,
 # which no parser owns: what follows it is handed to the walked app rather
 # than interpreted here
@@ -104,11 +107,48 @@ def written_commands() -> list[WrittenCommand]:
             if tail.strip()
         ]
 
+    def structured(file: str) -> list[WrittenCommand]:
+        """The commands a module names as the words that run them, through `devtools(...)`.
+
+        A diagnostic's way through holds its command as words, so no prose
+        mention of it exists to read; the call that spells it is read instead,
+        up to the first word only the running code knows.
+        """
+
+        def literal(argument: ast.expr) -> str | None:
+            match argument:
+                case ast.Constant(value=str() as word):
+                    return word
+            return None
+
+        def named(node: ast.AST) -> list[str]:
+            match node:
+                case ast.Call(
+                    func=ast.Name(id="devtools") | ast.Attribute(attr="devtools"),
+                    args=arguments,
+                ):
+                    found = [literal(argument) for argument in arguments]
+                    leading = takewhile(lambda word: word is not None, found)
+                    return [word for word in leading if word is not None]
+            return []
+
+        if not file.endswith(".py"):
+            return []
+        try:
+            tree = ast.parse(Path(file).read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            return []
+        return [
+            WrittenCommand(file=file, line=node.lineno, spelled=" ".join(words))
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and (words := named(node))
+        ]
+
     return [
         mention
         for file in tracked_files(suffixes=(".py", ".md"))
         if "tests/" not in file
-        for mention in mentions(file)
+        for mention in [*mentions(file), *structured(file)]
     ]
 
 

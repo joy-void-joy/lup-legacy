@@ -8,11 +8,11 @@ is refused rather than read as a scope holding nothing.
 from pathlib import Path
 
 import pytest
-import typer
 
 from lup.devtools.dev.antipatterns import mirrored_file, scan_antipatterns
 from lup.devtools.dev.check import changed_paths
 from lup.devtools.project import DevProject
+from lup.diagnostics import Refusal
 from lup.policy.kernel.rows import PathRoleRow
 from tests.unit.repos import commit_file, git_in, initialized_repo
 
@@ -166,8 +166,9 @@ class TestTheAntiPatternSweepIsScopedToWhatATreeChanged:
         """
         self.two_files_that_trip_a_rule(tmp_path, monkeypatch)
 
-        with pytest.raises(typer.BadParameter, match="does not name a commit"):
+        with pytest.raises(Refusal) as refused:
             changed_paths("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
+        assert refused.value.said["why"].startswith("does not name a commit")
 
     def test_a_ref_that_resolves_names_what_changed_since_it(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

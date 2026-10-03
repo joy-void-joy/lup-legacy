@@ -36,6 +36,7 @@ from lup.providers.harness import (
 )
 from lup.providers.codex.login import CODEX_LOGIN
 from lup.policy.bundle import compilation_sources
+from lup.policy.kernel.diagnostic import devtools, step
 from lup.policy.models import ProtectedRoot, UrlScope
 from lup.policy.refused_paths import credential_files
 from lup.policy.rules import dependency_declarations
@@ -179,11 +180,13 @@ def served_exclusions(composed: Composition = COMPOSITION) -> list[str]:
 ARTIFACT_REFUSAL = "publishing a page puts this work outside the repository"
 """Why an artifact is the wrong reflex here, as the approver of one reads it."""
 
-ARTIFACT_RECOVERY = (
-    "Run `uv run lup-devtools dev report` for everything left to implement, or"
-    " the report skill to write it whole to a file named for the work, under"
-    " tmp/."
-)
+ARTIFACT_RECOVERY = [
+    step("list everything left to implement", devtools("dev", "report")),
+    step(
+        "or use the report skill to write it whole to a file under tmp/, named"
+        " for the work"
+    ),
+]
 """What answers the same need inside the repository.
 
 The redirect is the point rather than the refusal, exactly as the
@@ -198,14 +201,16 @@ WORKTREE_ENTRY_REFUSAL = (
     " such as hash, alias and let for the rest of the session"
 )
 
-WORKTREE_ENTRY_RECOVERY = (
-    "The tool call arms worktree isolation wherever the session is, and it then"
-    " refuses eval, source, fc, coproc, trap, enable, mapfile, readarray, hash,"
-    " bind, complete, compgen, alias and let in any argv position, even in"
-    " read-only commands, so `grep -c hash file.py` stops working."
-    " `git worktree create` already made the tree: launch a session rooted in"
-    " it, or address its files by absolute path from here."
-)
+WORKTREE_ENTRY_RECOVERY = [
+    step(
+        "make the worktree without moving this session",
+        devtools("git", "worktree", "create", "<name>"),
+    ),
+    step(
+        "then address its files by absolute path from here, or ask the user to"
+        " launch a session rooted in it"
+    ),
+]
 """Why the tool that moves a session into a worktree is the wrong way in.
 
 The refusal names the cost rather than the rule, because the cost is what is
@@ -912,6 +917,13 @@ def portable_harness(
                 HookPathRole(
                     root=Path("packages/lup/src/lup/web/bundles"), role="scratch"
                 ),
+                # Every page under docs/ and the root guidance file are
+                # compiled from typed sources by `harness generate all`, so an
+                # edit of one is refused in the same words whether it comes
+                # through an edit tool or a shell redirection, pointing at the
+                # source its first line names.
+                HookPathRole(root=Path("docs"), role="generated"),
+                HookPathRole(root=Path("AGENTS.md"), role="generated"),
                 # A pending migration is a declaration a break's own commit
                 # writes, one TOML file each: data read by `dev migrate` and
                 # the release, not source a whole-file or size gate reviews

@@ -61,33 +61,44 @@ line imply the switch happened.
 
 ## Switching the running session
 
-The session reads its configuration home once, at startup, and the
-environment variable naming it cannot be changed from inside. What *can*
-change is what that home contains, and whether the session re-reads it.
+The session reads where its configuration home is once, at startup, and the
+variable naming it cannot be changed from inside. What can change is the
+login that home holds — and where the runtime reads its login file again at
+every request, a session whose home is handed another account's login runs as
+that account from its next request, with nothing typed into it.
 
-So a switch is two moves, and both have to land:
+Where it can move depends on where the session runs. `LUP_CONTAINED=1` says
+it runs in its repository's container, on the volume every contained session
+of that repository and runtime shares:
 
-1. **Seed the active home** from the named profile's saved login. Under a
-   contained session the active home is the container's own state rather than
-   the profile's directory, so this leaves the source profile untouched;
-   confirm that before writing, because a home that *is* the profile's
-   directory would be overwritten with another account's login.
-2. **Make the session re-read it**, by putting `/login` into the session's own
-   input the way a person typing it would.
+```bash
+uv run lup-devtools harness profile switch <name>
+```
 
-**Report which of the two you actually achieved, separately.** The second move
-rests on `/login` re-reading a saved login from disk rather than opening a
-fresh interactive sign-in, and that is a property of the runtime rather than
-of this repository. Where it opens a sign-in instead, say so: the seeding
-still happened, and the person finishes in the dialog.
+That hands the profile's login to the volume, so it moves this session *and
+every other contained one of the same runtime in the repository*; say so
+before running it. It is put to the operator before it runs, since moving
+sessions onto another account is theirs to approve. A session of a runtime
+that rereads its login runs on the new account from its next request; one that
+keeps the login it started with stays on it until opened again, and the
+command prints the one that reopens it on the profile (`--runtime` names
+which runtime's sessions move).
 
-Where either move is unavailable, fall back to selecting the profile and
-printing the exact command that starts a new session on it. A relaunch is a
-real answer to "switch me to this account"; a claimed switch that did not
-happen is not.
+A session on the host runs in its profile's own home, and nothing rewrites
+that: another account's login written there would overwrite the profile's
+own. The command answers a host session with the command that opens it again
+on the profile; give the person that, after selecting the profile as above.
+
+**Report what the command printed for each session, separately** — which run
+on the new account from their next request and which need opening again —
+rather than one line saying the switch happened. Where it is declined or
+fails, fall back to selecting the profile and printing the exact command that
+starts a new session on it: a relaunch is a real answer to "switch me to this
+account"; a claimed switch that did not happen is not.
 
 ## Afterwards
 
-Read the roster again and report which account the session is on now, measured
-rather than assumed — the switch either moved it or it did not, and the only
-honest report is the one that looked.
+Report which account the session is on now, measured rather than assumed:
+for a contained session, what the volume holds, which the switch printed; for
+any other, the home its variable names. The switch either moved it or it did
+not, and the only honest report is the one that looked.

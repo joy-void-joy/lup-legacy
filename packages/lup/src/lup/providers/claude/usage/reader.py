@@ -7,7 +7,7 @@ The display itself knows none of it.
 """
 
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
@@ -25,8 +25,11 @@ from lup.providers.claude.usage.api import (
     StatsCache,
     UsageBucket,
     UsageResponse,
+    access_token,
+    cached_usage,
     creds_path,
     fetch_usage,
+    fetch_usage_as,
     load_stats,
 )
 from lup.observability.usage.app import UsageEntry
@@ -203,13 +206,13 @@ def windows_from(usage: UsageResponse) -> list[PacingWindow]:
 def spend_from(usage: UsageResponse) -> SpendWindow | None:
     """Overage as dollars, which the endpoint reports in cents."""
     extra = usage.extra_usage
-    if extra is None or not extra.is_enabled:
+    if extra is None or not extra.is_enabled or extra.monthly_limit is None:
         return None
     return SpendWindow(
         label="overage",
-        used=extra.used_credits / 100,
+        used=(extra.used_credits or 0) / 100,
         limit=extra.monthly_limit / 100,
-        utilization_pct=extra.utilization,
+        utilization_pct=extra.utilization or 0,
     )
 
 
@@ -265,28 +268,60 @@ def legend_from(daily: list[DayUsage]) -> list[ModelShare]:
 
 
 class ClaudeUsageReader(UsageReader):
-    """Read the live OAuth usage endpoint, and the local cache for detail."""
+    """Read the live OAuth usage endpoint, and the local cache for detail.
 
-    def __init__(self, config_dir: Path) -> None:
+    Through the reading every reader of the account on this machine shares
+    (:func:`cached_usage`): one no older than ``max_age`` answers without a
+    request, and while the endpoint refuses to be asked the last good one
+    stands, saying its age.
+    """
+
+    def __init__(
+        self,
+        config_dir: Path,
+        max_age: timedelta = timedelta(minutes=1),
+        record: Path | None = None,
+        stored: Callable[[], bytes | None] | None = None,
+    ) -> None:
         self.config_dir = config_dir
+        self.max_age = max_age
+        self.record = record
+        """Where the reading is shared: the account's own record where its id is known, else the home's."""
+        self.stored = stored
+        """Reads the login to ask with, where it is not *config_dir*'s own."""
 
     def read(self, detail: bool) -> UsageReport:
         credentials = creds_path(self.config_dir)
-        if not credentials.exists():
+        stored = self.stored
+        if stored is None and not credentials.exists():
             raise UsageUnavailable(
                 f"No credentials at {credentials}. This reads the OAuth usage "
                 "endpoint for a signed-in profile; sign in, or name another "
                 "profile with --profile."
             )
+
+        def asked(home: Path) -> UsageResponse:
+            if stored is None:
+                return fetch_usage(home)
+            login = stored()
+            if login is None:
+                raise RuntimeError(f"no login is kept for {home}")
+            return fetch_usage_as(access_token(login, str(home)))
+
         try:
-            usage = fetch_usage(self.config_dir)
+            reading = cached_usage(
+                self.config_dir, self.max_age, record=self.record, fetch=asked
+            )
         except (httpx.HTTPError, RuntimeError, ValidationError) as error:
             raise UsageUnavailable(str(error)) from error
+        usage = reading.usage
 
         report = UsageReport(
             runtime_name=ClaudeSpellings().runtime_name,
             windows=windows_from(usage),
             spend=spend_from(usage),
+            read_at=reading.read_at,
+            stale=reading.stale,
         )
         stats = load_stats(self.config_dir) if detail else None
         if stats is None:

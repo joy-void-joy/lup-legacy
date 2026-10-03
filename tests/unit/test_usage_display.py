@@ -14,6 +14,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import httpx
 import pytest
 from rich.console import Console
 
@@ -27,7 +28,16 @@ from lup.providers.codex.usage.api import (
 )
 from lup.harness.codescan.boundaries import NATIVE_SPELLINGS
 from lup.types import JsonObject, JsonValue
-from lup.providers.claude.usage.api import StatsCache, UsageResponse
+from lup.providers.claude.usage.api import (
+    USAGE_API_URL,
+    CachedUsage,
+    StatsCache,
+    UsageRefused,
+    UsageResponse,
+    asked_again,
+    backoff,
+    cached_usage,
+)
 from lup.providers.claude.usage.reader import (
     days_from,
     legend_from,
@@ -242,6 +252,10 @@ class TestAPayloadThatDriftsCostsOnlyWhatItNames:
 
         assert windows_from(usage) == []
 
+    def test_overage_the_endpoint_leaves_null_reads_as_none(self) -> None:
+        unset = {"is_enabled": True, "monthly_limit": None, "used_credits": None}
+        assert spend_from(UsageResponse.model_validate({"extra_usage": unset})) is None
+
 
 class RefusingServer(CodexAppServer):
     """An app-server that answers the daily read with one chosen error."""
@@ -291,3 +305,94 @@ def test_the_daily_read_names_the_method_the_runtime_actually_has() -> None:
     assert RATE_LIMITS_METHOD == "account/rateLimits/read"
     for method in (TOKEN_USAGE_METHOD, RATE_LIMITS_METHOD):
         assert method in NATIVE_SPELLINGS, method
+
+
+ASKED_AT = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
+
+
+def answered(used: float) -> UsageResponse:
+    return UsageResponse.model_validate(
+        {"five_hour": {"utilization": used, "resets_at": "2026-10-05T14:00:00+00:00"}}
+    )
+
+
+def too_many(headers: dict[str, str]) -> httpx.HTTPStatusError:
+    """The endpoint's refusal of one request too many, with the headers it named."""
+    request = httpx.Request("GET", USAGE_API_URL)
+    response = httpx.Response(429, headers=headers, request=request)
+    return httpx.HTTPStatusError(
+        "429 Too Many Requests", request=request, response=response
+    )
+
+
+class Endpoint:
+    """The usage endpoint as a test scripts it: each request takes the next answer."""
+
+    def __init__(self, *answers: UsageResponse | httpx.HTTPStatusError) -> None:
+        self.answers = list(answers)
+        self.asked = 0
+
+    def __call__(self, home: Path) -> UsageResponse:
+        del home
+        self.asked += 1
+        answer = self.answers.pop(0)
+        if isinstance(answer, httpx.HTTPStatusError):
+            raise answer
+        return answer
+
+
+def test_readers_of_one_account_share_a_fresh_reading(tmp_path: Path) -> None:
+    endpoint = Endpoint(answered(10))
+    record = tmp_path / "claude.json"
+
+    first = cached_usage(tmp_path, timedelta(minutes=1), ASKED_AT, record, endpoint)
+    later = ASKED_AT + timedelta(seconds=30)
+    second = cached_usage(tmp_path, timedelta(minutes=1), later, record, endpoint)
+
+    assert endpoint.asked == 1 and second.read_at == first.read_at == ASKED_AT
+    assert second.stale == ""
+
+
+def test_a_refusal_keeps_the_last_reading_until_the_endpoint_may_be_asked_again(
+    tmp_path: Path,
+) -> None:
+    endpoint = Endpoint(answered(10), too_many({"Retry-After": "120"}), answered(30))
+    record = tmp_path / "claude.json"
+
+    def asked(minutes: int) -> CachedUsage:
+        moment = ASKED_AT + timedelta(minutes=minutes)
+        return cached_usage(tmp_path, timedelta(minutes=1), moment, record, endpoint)
+
+    asked(0)
+    refused = asked(2)
+    waiting = asked(3)
+    again = asked(5)
+
+    assert refused.read_at == ASKED_AT and "read 2 min ago" in refused.stale
+    assert "429 Too Many Requests" in refused.stale and waiting.read_at == ASKED_AT
+    assert endpoint.asked == 3 and again.usage.five_hour is not None
+    assert again.usage.five_hour.utilization == 30 and again.stale == ""
+
+
+def test_a_refusal_with_nothing_read_says_when_it_asks_again(tmp_path: Path) -> None:
+    endpoint = Endpoint(too_many({}))
+
+    with pytest.raises(UsageRefused, match="asking again at"):
+        cached_usage(
+            tmp_path,
+            timedelta(minutes=1),
+            ASKED_AT,
+            tmp_path / "claude.json",
+            endpoint,
+            jitter=lambda: 1.0,
+        )
+
+
+def test_the_backoff_doubles_to_its_cap_and_is_jittered() -> None:
+    minute, cap = timedelta(minutes=1), timedelta(minutes=30)
+    assert backoff(1, minute, cap, lambda: 1.0) == minute
+    assert backoff(3, minute, cap, lambda: 1.0) == 4 * minute
+    assert backoff(10, minute, cap, lambda: 1.0) == cap
+    assert backoff(1, minute, cap, lambda: 0.0) == minute / 2
+    retry = asked_again(too_many({"Retry-After": "90"}).response, ASKED_AT)
+    assert retry == ASKED_AT + timedelta(seconds=90)

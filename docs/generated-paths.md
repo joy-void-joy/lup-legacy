@@ -8,7 +8,7 @@ A source spelled as a dotted module is a module to open. One spelled as an ident
 
 The repository-wide artifacts written outside every runtime tree — the rule and command references, this page, and the CI workflow — belong to no recipe and are described in [harness.md](harness.md) instead.
 
-## `claude` — 134 artifacts
+## `claude` — 138 artifacts
 
 | Generated path | Compiled from |
 | --- | --- |
@@ -66,6 +66,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/hooks/runtime/coordination/arrival.py` | lup.coordination.bare.arrival |
 | `.claude/plugins/lup/hooks/runtime/coordination/changes.py` | lup.coordination.bare.changes |
 | `.claude/plugins/lup/hooks/runtime/coordination/departure.py` | lup.coordination.bare.departure |
+| `.claude/plugins/lup/hooks/runtime/coordination/holds.py` | lup.coordination.bare.holds |
 | `.claude/plugins/lup/hooks/runtime/coordination/mail.py` | lup.coordination.bare.mail |
 | `.claude/plugins/lup/hooks/runtime/coordination/naming.py` | lup.coordination.bare.naming |
 | `.claude/plugins/lup/hooks/runtime/coordination/runtime.py` | lup.coordination.bare.runtime |
@@ -75,6 +76,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/hooks/runtime/coordination_changes.py` | lup.providers.roster_prompt |
 | `.claude/plugins/lup/hooks/runtime/coordination_delivery.py` | lup.providers.assets.peer_delivery_runtime |
 | `.claude/plugins/lup/hooks/runtime/coordination_departure.py` | lup.providers.roster_prompt |
+| `.claude/plugins/lup/hooks/runtime/coordination_hold.py` | lup.providers.assets.hold_runtime |
 | `.claude/plugins/lup/hooks/runtime/evidence.json` | hooks.lup-policy |
 | `.claude/plugins/lup/hooks/runtime/kernel/__init__.py` | lup.policy.kernel.__init__ |
 | `.claude/plugins/lup/hooks/runtime/kernel/archives.py` | lup.policy.kernel.archives |
@@ -82,6 +84,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/hooks/runtime/kernel/commands.py` | lup.policy.kernel.commands |
 | `.claude/plugins/lup/hooks/runtime/kernel/decision.py` | lup.policy.kernel.decision |
 | `.claude/plugins/lup/hooks/runtime/kernel/delegation.py` | lup.policy.kernel.delegation |
+| `.claude/plugins/lup/hooks/runtime/kernel/diagnostic.py` | lup.policy.kernel.diagnostic |
 | `.claude/plugins/lup/hooks/runtime/kernel/documents.py` | lup.policy.kernel.documents |
 | `.claude/plugins/lup/hooks/runtime/kernel/downloads.py` | lup.policy.kernel.downloads |
 | `.claude/plugins/lup/hooks/runtime/kernel/edit.py` | lup.policy.kernel.edit |
@@ -115,6 +118,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.claude/plugins/lup/hooks/scripts/coordination_changes.sh` | lup.providers.roster_prompt |
 | `.claude/plugins/lup/hooks/scripts/coordination_delivery.sh` | lup.providers.peer_delivery |
 | `.claude/plugins/lup/hooks/scripts/coordination_departure.sh` | lup.providers.roster_prompt |
+| `.claude/plugins/lup/hooks/scripts/coordination_hold.sh` | lup.providers.hold_guard |
 | `.claude/plugins/lup/hooks/scripts/policy.py` | lup.policy.assets.host and lup.providers.claude.assets.policy_dispatcher |
 | `.claude/plugins/lup/hooks/scripts/policy.sh` | lup.policy.dispatcher |
 | `.claude/plugins/lup/hooks/scripts/policy_evaluator.py` | lup.policy.assets.policy_evaluator |
@@ -147,7 +151,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `docs/template.md` | lup_template.harness.content.docs.template |
 | `docs/upstream-reports.md` | lup.harness.content.docs.upstream_reports |
 
-## `codex` — 114 artifacts
+## `codex` — 118 artifacts
 
 | Generated path | Compiled from |
 | --- | --- |
@@ -168,6 +172,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/hooks/runtime/coordination/arrival.py` | lup.coordination.bare.arrival |
 | `.codex/plugins/lup/hooks/runtime/coordination/changes.py` | lup.coordination.bare.changes |
 | `.codex/plugins/lup/hooks/runtime/coordination/departure.py` | lup.coordination.bare.departure |
+| `.codex/plugins/lup/hooks/runtime/coordination/holds.py` | lup.coordination.bare.holds |
 | `.codex/plugins/lup/hooks/runtime/coordination/mail.py` | lup.coordination.bare.mail |
 | `.codex/plugins/lup/hooks/runtime/coordination/naming.py` | lup.coordination.bare.naming |
 | `.codex/plugins/lup/hooks/runtime/coordination/runtime.py` | lup.coordination.bare.runtime |
@@ -178,6 +183,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/hooks/runtime/coordination_changes.py` | lup.providers.roster_prompt |
 | `.codex/plugins/lup/hooks/runtime/coordination_delivery.py` | lup.providers.assets.peer_delivery_runtime |
 | `.codex/plugins/lup/hooks/runtime/coordination_departure.py` | lup.providers.roster_prompt |
+| `.codex/plugins/lup/hooks/runtime/coordination_hold.py` | lup.providers.assets.hold_runtime |
 | `.codex/plugins/lup/hooks/runtime/evidence.json` | hooks.lup-policy |
 | `.codex/plugins/lup/hooks/runtime/kernel/__init__.py` | lup.policy.kernel.__init__ |
 | `.codex/plugins/lup/hooks/runtime/kernel/archives.py` | lup.policy.kernel.archives |
@@ -185,6 +191,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/hooks/runtime/kernel/commands.py` | lup.policy.kernel.commands |
 | `.codex/plugins/lup/hooks/runtime/kernel/decision.py` | lup.policy.kernel.decision |
 | `.codex/plugins/lup/hooks/runtime/kernel/delegation.py` | lup.policy.kernel.delegation |
+| `.codex/plugins/lup/hooks/runtime/kernel/diagnostic.py` | lup.policy.kernel.diagnostic |
 | `.codex/plugins/lup/hooks/runtime/kernel/documents.py` | lup.policy.kernel.documents |
 | `.codex/plugins/lup/hooks/runtime/kernel/downloads.py` | lup.policy.kernel.downloads |
 | `.codex/plugins/lup/hooks/runtime/kernel/edit.py` | lup.policy.kernel.edit |
@@ -219,6 +226,7 @@ The repository-wide artifacts written outside every runtime tree — the rule an
 | `.codex/plugins/lup/hooks/scripts/coordination_changes.sh` | lup.providers.roster_prompt |
 | `.codex/plugins/lup/hooks/scripts/coordination_delivery.sh` | lup.providers.peer_delivery |
 | `.codex/plugins/lup/hooks/scripts/coordination_departure.sh` | lup.providers.roster_prompt |
+| `.codex/plugins/lup/hooks/scripts/coordination_hold.sh` | lup.providers.hold_guard |
 | `.codex/plugins/lup/hooks/scripts/policy.py` | lup.policy.assets.host and lup.providers.codex.assets.policy_dispatcher |
 | `.codex/plugins/lup/hooks/scripts/policy.sh` | lup.policy.dispatcher |
 | `.codex/plugins/lup/hooks/scripts/policy_evaluator.py` | lup.policy.assets.policy_evaluator |

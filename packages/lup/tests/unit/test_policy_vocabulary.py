@@ -199,7 +199,7 @@ def test_redirect_checkout_chooses_between_asking_and_naming_the_newer_verbs() -
     assert "git switch" in verdict("git checkout main", redirecting).reason
     assert verdict("git checkout HEAD~1 -- src/x.py", asking).effect == "allow"
     assert restored.effect == "deny"
-    assert "git restore --source=HEAD~1 -- src/x.py" in restored.recovery
+    assert "git restore --source=HEAD~1 -- src/x.py" in restored.addressed()
 
 
 def test_the_git_family_is_drawn_by_what_a_verb_reaches_not_by_what_it_writes() -> None:

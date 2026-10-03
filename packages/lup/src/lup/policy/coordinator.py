@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from lup.policy.boundary import BoundaryPreflight
 from lup.policy.checkpoints import Checkpoint, RecoveryCoordinator, WorktreeLease
 from lup.policy.kernel.decision import KernelDecision
+from lup.policy.kernel.diagnostic import Step, stated
 from lup.policy.kernel.escalation import EscalationRequest
 from lup.policy.kernel.settlement import SettlementFacts, settle
 from lup.policy.models import Decision
@@ -135,7 +136,7 @@ class OperationCoordinator:
         escalation: EscalationRequest | None,
         checkpoint: Checkpoint | None,
         reviewable: bool,
-        hint: str,
+        hint: tuple[Step, ...],
     ) -> SettlementFacts:
         """The session's own answers, read from the boundary rather than guessed.
 
@@ -164,7 +165,7 @@ class OperationCoordinator:
         classified: KernelDecision,
         escalation: EscalationRequest | None = None,
         reviewable: bool = True,
-        hint: str = "",
+        hint: tuple[Step, ...] = (),
     ) -> CoordinatorResult:
         """Settle what is known before anything is captured or locked.
 
@@ -219,7 +220,7 @@ class OperationCoordinator:
                 file_reviews=file_reviews,
                 unpreviewed=unpreviewed,
                 segments=segments,
-                reason=decision.reason,
+                reason=stated(decision.subject, decision.reason),
                 rule=decision.rule,
                 purpose=decision.purpose,
                 requirement=decision.reviewer,
@@ -235,7 +236,7 @@ class OperationCoordinator:
         precious: list[Path],
         escalation: EscalationRequest | None = None,
         reviewable: bool = True,
-        hint: str = "",
+        hint: tuple[Step, ...] = (),
     ) -> CoordinatorResult:
         """Take the lease, capture, and settle again on what was measured.
 
