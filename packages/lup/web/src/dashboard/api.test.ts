@@ -201,7 +201,7 @@ describe("reply", () => {
     expect(calls[0]?.options?.method).toBe("POST");
     expect(new Headers(calls[0]?.options?.headers).get("Authorization")).toBe("Bearer secret");
     expect(new Headers(calls[0]?.options?.headers).get("Content-Type")).toBe("application/json");
-    expect(JSON.parse(String(calls[0]?.options?.body))).toEqual({ text: "rebase first" });
+    expect(JSON.parse(String(calls[0]?.options?.body))).toEqual({ text: "rebase first", in_reply_to: "", redirect: false, priority: "next" });
   });
 
   test("a refused reply says why", async () => {

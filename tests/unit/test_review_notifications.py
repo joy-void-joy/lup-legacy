@@ -234,7 +234,7 @@ def test_a_woken_requester_is_handed_the_answer_once(
     monkeypatch.setattr(
         watch,
         "wake",
-        lambda path, message, cwd, queue_timeout_seconds: (
+        lambda path, message, cwd, queue_timeout_seconds, priority: (
             carried.append(message) or Woken(reached=True)
         ),
     )

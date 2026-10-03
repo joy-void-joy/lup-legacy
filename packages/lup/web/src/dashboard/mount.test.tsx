@@ -367,7 +367,7 @@ describe("dashboard page", () => {
     await until(() => detailed.querySelector(".reply-outcome") !== null, "the reply's outcome");
     const posted = requests.find((request) => request.path === "api/repositories/r1/sessions/lead/messages");
     expect(posted?.method).toBe("POST");
-    expect(posted?.body).toEqual({ text: "stop and look at the stream" });
+    expect(posted?.body).toEqual({ text: "stop and look at the stream", in_reply_to: "", redirect: false, priority: "next" });
     expect(posted?.authorization).toBe("Bearer browser-secret");
     expect(one(detailed, ".reply-outcome").textContent).toContain("runtime accepted the wake");
     expect(one<HTMLTextAreaElement>(detailed, "textarea").value).toBe("");
