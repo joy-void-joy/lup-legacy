@@ -169,9 +169,9 @@ def repository_state(root: Path, namespace: str = "") -> dict[str, str]:
     Minus the two namespaces this repository's own tooling *writes by design*
     while a suite runs. The permission dispatcher takes an undo snapshot in
     front of every command an agent is allowed, so a suite an agent starts has
-    refs appearing under that namespace throughout — measured, two dozen in
-    the ninety seconds around one `dev check`, each read as a teardown
-    failure by every xdist worker, naming refs no fixture touched. And
+    refs appearing under that namespace throughout — some two dozen in the
+    ninety seconds around one `dev check`, each of which every xdist worker
+    would report as a teardown failure, naming refs no fixture touched. And
     `dev check` runs its harness rows beside the two test suites, one of which
     probes the checkpoint store by writing a ref under the preflight namespace
     and deleting it again, which the worker running a test just then would
@@ -321,8 +321,8 @@ class Window(BaseModel, frozen=True):
     """Where a change was noticed: which worker, and the test it was running.
 
     Under xdist the suite is many sessions over one ref store, and a
-    comparison closed once per session lands on whichever test tore down
-    last on the worker that noticed — a policy row about `gh pr create` was
+    comparison closed once per session would land on whichever test tore
+    down last on the worker that noticed — a policy row about `gh pr create`,
     failed for a branch a sibling session cut forty seconds into the run.
     Naming the window says the one thing the evidence supports: the change
     appeared while this test ran here.
@@ -527,10 +527,10 @@ class ForeignCheckouts(BaseModel, frozen=True):
 
     Every worktree cut from a repository shares its ref store, so the guard
     reading `for-each-ref` in one of them sees every branch the repository
-    holds — twenty-five of them here, of which one is the checkout the suite
-    is running in. A commit landing in a sibling worktree while the suite runs
-    moves a ref for real, and from the refs alone that is indistinguishable
-    from a fixture escaping into the enclosing repository.
+    holds, of which one is the checkout the suite is running in. A commit
+    landing in a sibling worktree while the suite runs moves a ref for real,
+    and from the refs alone that is indistinguishable from a fixture
+    escaping into the enclosing repository.
 
     Asking git who holds each branch is what tells them apart. It is a
     narrower question than "did anything move", and deliberately so: a ref
