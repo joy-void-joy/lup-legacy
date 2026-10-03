@@ -1708,7 +1708,11 @@ class HookSet(BaseModel, frozen=True):
             "Native calls this project has decided against outright, each "
             "carrying the surface to reach for instead. Whether a tool is "
             "against the point of a project is that project's judgement, so "
-            "an empty list — the library's own answer — refuses nothing"
+            "an empty list — the library's own answer — refuses nothing. A "
+            "runtime's spawn tools may be named too (`Agent`, "
+            "`collaborationspawn_agent`, `spawn_agent`): a refused spawn is "
+            "refused before its name is judged, and a session composed in "
+            "process opens without the agent tools a refusal leaves no use for"
         ),
     )
     refused_paths: list[RefusedPaths] = Field(

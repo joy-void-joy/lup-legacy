@@ -247,6 +247,10 @@ class NativeSemantics(BaseModel, frozen=True):
     and the routed set. Left false, a placement never reaches the wire — the
     conservative direction, and the right one for a seam that answers with a
     verdict alone and never rewrites the call it judges."""
+    refusable_tools: list[str] = []
+    """Routed tools a declared refusal still reaches, the runtime's spawns:
+    the dispatcher's branch for one asks the refusal table first, so a
+    refusal of one is in force rather than unreachable."""
 
     def also_refusing(self, refused: list[RefusedTool]) -> "NativeSemantics":
         """The same decoder, registered for the refused tools as well.
@@ -258,8 +262,9 @@ class NativeSemantics(BaseModel, frozen=True):
         """
         return NativeSemantics(
             decode=self.decode,
-            routed_tools=routed_for(self.routed_tools, refused),
+            routed_tools=routed_for(self.routed_tools, refused, self.refusable_tools),
             escapable=self.escapable,
+            refusable_tools=self.refusable_tools,
         )
 
     def escapes_from(self, sandbox: SandboxPosture) -> bool:

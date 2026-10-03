@@ -477,10 +477,12 @@ def dispatch(payload):
         # rather than as a verdict that could take the answer away.
         return peer_listing_decision()
     if name == "Agent":
-        # A spawn is judged by the one thing that makes its subagent legible
-        # and addressable: the name it goes out under, read out of the
-        # description every spawn here carries where none was given.
+        # A spawn is judged by whether the project refuses spawning, and then
+        # by the one thing that makes its subagent legible and addressable:
+        # the name it goes out under, read out of the description every spawn
+        # here carries where none was given.
         return spawn_decision(
+            name,
             tool_input["name"] if "name" in tool_input else "",
             tool_input["description"] if "description" in tool_input else "",
             [value for value in tool_input.values() if isinstance(value, str)],

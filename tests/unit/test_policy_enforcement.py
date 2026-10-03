@@ -549,6 +549,24 @@ def test_refusing_a_tool_the_runtime_decodes_is_refused_outright() -> None:
         )
 
 
+def test_refusing_a_spawn_the_runtime_decodes_is_in_force() -> None:
+    """A spawn's branch asks the refusal table first, so refusing one is reachable.
+
+    Its own family judges only the name it goes out under, which leaves the
+    table as the one place a project can say it runs no subagents at all.
+    """
+    refusal = RefusedTool(
+        tool="Agent",
+        reason="this project runs no subagents",
+        recovery="Do the work in this conversation.",
+    )
+
+    routed = CLAUDE_SEMANTICS.also_refusing([refusal]).routed_tools
+
+    assert routed.count("Agent") == 1
+    assert routed == CLAUDE_SEMANTICS.routed_tools
+
+
 def test_a_decoder_cannot_be_enforced_over_no_tools_at_all() -> None:
     """The scope is carried with the decoder, and an empty one is refused.
 

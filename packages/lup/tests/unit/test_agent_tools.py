@@ -111,7 +111,12 @@ def test_an_exact_claude_list_is_the_roster_name_for_name() -> None:
         (
             "stock",
             CodexBuiltins(
-                shell=True, web=True, write=True, images=True, all_tools=True
+                shell=True,
+                web=True,
+                write=True,
+                images=True,
+                all_tools=True,
+                agents=True,
             ),
         ),
         ("web", CodexBuiltins(web=True)),

@@ -30,6 +30,12 @@ class CodexBuiltins(BaseModel, frozen=True):
     write: bool = False
     images: bool = False
     all_tools: bool = False
+    agents: bool = False
+    """Whether the session gets Codex's agent tools: spawning a subagent, and
+    messaging, waiting on and closing one. Its own switch because a project
+    that refuses spawning refuses it here too — a session composed in process
+    cannot see a spawn to refuse it whenever no policy plugin is installed —
+    while keeping every other tool its grant names."""
 
     @classmethod
     def compile(cls, builtin: "BuiltinPreset | list[CodexBuiltinTool]") -> Self:
@@ -37,7 +43,12 @@ class CodexBuiltins(BaseModel, frozen=True):
         match builtin:
             case "stock":
                 return cls(
-                    shell=True, web=True, write=True, images=True, all_tools=True
+                    shell=True,
+                    web=True,
+                    write=True,
+                    images=True,
+                    all_tools=True,
+                    agents=True,
                 )
             case "web":
                 return cls(web=True)
@@ -84,8 +95,8 @@ class CodexBuiltins(BaseModel, frozen=True):
         features: JsonObject = {feature: False for feature in disabled}
         features.update(shell_tool=self.shell, unified_exec=self.shell)
         features["view_image"] = self.images
-        features["multi_agent"] = self.all_tools
-        features["multi_agent_v2"] = self.all_tools
+        features["multi_agent"] = self.agents
+        features["multi_agent_v2"] = self.agents
         features["standalone_web_search"] = self.web
         return {
             "features": features,
@@ -160,10 +171,13 @@ class CodexBuiltins(BaseModel, frozen=True):
                 item["tool_mode"] = "direct"
                 if not self.all_tools:
                     item.update(
-                        experimental_supported_tools=[],
-                        multi_agent_version=None,
-                        node_repl_disabled=True,
+                        experimental_supported_tools=[], node_repl_disabled=True
                     )
+                if not self.agents:
+                    # The features alone do not take the agent tools away: a
+                    # model whose row names `v2` was offered them with both
+                    # off (0.159.2, `gpt-5.6-sol`), so the row has to say so.
+                    item["multi_agent_version"] = None
                 if not self.write:
                     item["apply_patch_tool_type"] = None
         return catalog

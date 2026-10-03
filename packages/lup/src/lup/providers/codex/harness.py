@@ -560,12 +560,24 @@ CODEX_DISPATCHER = DispatcherDeclaration(
     runtime_name="Codex",
     package="lup.providers.codex",
     managed_root_env=CODEX_LOGIN.config_home_env,
-    routed_tools=["Bash", "web_fetch", "apply_patch", "collaborationspawn_agent"],
+    routed_tools=[
+        "Bash",
+        "web_fetch",
+        "apply_patch",
+        "collaborationspawn_agent",
+        "spawn_agent",
+    ],
+    # Both spellings of one act: `multi_agent_v2`'s, which the hook names by
+    # its namespace and tool run together, and `multi_agent_v1`'s, which it
+    # names bare (0.159.2). Which a session gets is the model catalog's
+    # `multi_agent_version` and the two features, not the project's choice.
+    spawn_tools=["collaborationspawn_agent", "spawn_agent"],
     hook_events=["PermissionRequest", "PreToolUse", "PostToolUse"],
     observation_event="PostToolUse",
     # No spawn, unlike Claude Code's: 0.159.2 lists `task_name` as required
-    # and refuses a spawn without one before any hook runs, so no spawn here
-    # goes out under a name its caller did not choose, and none needs telling.
+    # for the v2 spawn and refuses one without it before any hook runs, and
+    # the v1 spawn takes no name at all, so no spawn here goes out under a
+    # name read for its caller, and none needs telling to choose one.
     observed_tools=["apply_patch", "Bash"],
     failure="stderr_exit",
     runtime_modules=["caller_payload", "codex_patch", "policy_data"],
@@ -831,7 +843,11 @@ class CodexHookRenderer(ArtifactRenderer[HookSet]):
         decided: list[JsonValue] = [
             {
                 "matcher": "|".join(
-                    routed_for(CODEX_DISPATCHER.routed_tools, source.refused_tools)
+                    routed_for(
+                        CODEX_DISPATCHER.routed_tools,
+                        source.refused_tools,
+                        CODEX_DISPATCHER.spawn_tools,
+                    )
                 ),
                 "hooks": [policy_hook],
             }

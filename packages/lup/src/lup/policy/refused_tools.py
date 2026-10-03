@@ -7,6 +7,8 @@ composition root states its own — the same inversion the shell vocabulary
 takes. :mod:`lup.policy.kernel.tools` decides against the erased rows.
 """
 
+from collections.abc import Sequence
+
 from pydantic import BaseModel, Field
 
 from lup.policy.kernel.rows import RefusedToolRow
@@ -38,7 +40,9 @@ class RefusedTool(BaseModel, frozen=True):
         return f"{self.tool}({self.specifier})" if self.specifier else self.tool
 
 
-def routed_for(routed: list[str], refused: list[RefusedTool]) -> list[str]:
+def routed_for(
+    routed: list[str], refused: list[RefusedTool], refusable: Sequence[str] = ()
+) -> list[str]:
     """The tools a hook registers for: those it decodes, plus those refused.
 
     A refusal is only enforced over a call that reaches the judge, so the
@@ -53,15 +57,26 @@ def routed_for(routed: list[str], refused: list[RefusedTool]) -> list[str]:
     returned, because it would never be reached: that tool's own family answers
     first and the table is only consulted for what falls past them. Silently
     keeping it would read as a refusal in force while the call went through.
+    The one exception is *refusable*: decoded tools whose branch asks this
+    table before its own family, as a spawn's does — its family judges only
+    the name it goes out under, so a refusal of spawning has nowhere else to
+    be stated.
     """
-    inert = [rule.spelling() for rule in refused if rule.tool in routed]
+    inert = [
+        rule.spelling()
+        for rule in refused
+        if rule.tool in routed and rule.tool not in refusable
+    ]
     if inert:
         raise ValueError(
             f"{', '.join(inert)}: this runtime decodes that tool, so its own"
             " rules answer first and the refusal would never be reached —"
             " express it as a rule of that family instead"
         )
-    return [*routed, *dict.fromkeys(rule.tool for rule in refused)]
+    return [
+        *routed,
+        *dict.fromkeys(rule.tool for rule in refused if rule.tool not in routed),
+    ]
 
 
 def erase_refused_tools(rules: list[RefusedTool]) -> list[RefusedToolRow]:

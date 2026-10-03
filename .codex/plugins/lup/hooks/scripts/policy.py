@@ -5419,18 +5419,22 @@ def peer_listing_decision() -> KernelDecision:
 
 
 def spawn_decision(
-    name: str, description: str, values: list[str], field: str
+    tool: str, name: str, description: str, values: list[str], field: str
 ) -> KernelDecision:
-    """Judge one native spawn by the name it goes out under, against what this project declared.
+    """Judge one native spawn: refused if this project refuses it, else by its name.
 
-    ``name`` is the runtime's own field for it and ``description`` the text a
-    name is read from where none was given, each read by the host half that
-    knows which key that is — a runtime whose spawn carries no description
-    passes ``""``. ``field`` is the name's key, so the refusal can name the
-    argument; every string the call carries rides beside them so an
-    escalation marker in any of them is found.
+    ``tool`` is the runtime's name for the spawn, which the declared
+    refusals are matched against. ``name`` is the runtime's own field for the
+    subagent's name and ``description`` the text a name is read from where
+    none was given, each read by the host half that knows which key that is —
+    a runtime whose spawn carries no description passes ``""``. ``field`` is
+    the name's key, so the refusal can name the argument, and ``""`` where
+    the spawn takes no name; every string the call carries rides beside them
+    so an escalation marker in any of them is found.
     """
-    return decide_spawn(name, description, values, SPAWN_NAMES, field)
+    return decide_spawn(
+        name, description, values, SPAWN_NAMES, field, tool=tool, refused=REFUSED_TOOLS
+    )
 
 
 def spawn_named(name: str, description: str) -> str:
@@ -6348,15 +6352,30 @@ def dispatch(payload, permission_request=False):
             tool_input["command"], session_directory, autonomous, caller, session
         )
     if name == "collaborationspawn_agent":
-        # Measured on 0.155.1 and 0.158.0: the spawn carries `task_name` and
-        # `message`, and the hook names the tool this way. No description to
-        # read a name out of, so a spawn with no task name is refused where
-        # Claude's half would name it, and one misspelled goes out normalized.
+        # Measured on 0.155.1, 0.158.0 and 0.159.2: the `multi_agent_v2`
+        # spawn carries `task_name` and `message`, and the hook names the tool
+        # by its namespace and name run together. No description to read a
+        # name out of, so a spawn with no task name is refused where Claude's
+        # half would name it, and one misspelled goes out normalized.
         return spawn_decision(
+            name,
             tool_input["task_name"] if "task_name" in tool_input else "",
             "",
             [value for value in tool_input.values() if isinstance(value, str)],
             "task_name",
+        )
+    if name == "spawn_agent":
+        # The `multi_agent_v1` spawn, measured on 0.159.2: the hook names it
+        # bare where every other tool of that namespace carries the prefix,
+        # and its schema lists no name — a `task_name` passed anyway is
+        # accepted and ignored, and the subagent answers to a nickname Codex
+        # generates. So it is judged for refusal alone and asked for no name.
+        return spawn_decision(
+            name,
+            "",
+            "",
+            [value for value in tool_input.values() if isinstance(value, str)],
+            "",
         )
     # Asked of whatever reached here rather than of a listed few, exactly as
     # the Claude half asks it: which tools are worth refusing is the

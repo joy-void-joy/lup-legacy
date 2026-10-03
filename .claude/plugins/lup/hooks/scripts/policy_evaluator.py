@@ -5399,18 +5399,22 @@ def peer_listing_decision() -> KernelDecision:
 
 
 def spawn_decision(
-    name: str, description: str, values: list[str], field: str
+    tool: str, name: str, description: str, values: list[str], field: str
 ) -> KernelDecision:
-    """Judge one native spawn by the name it goes out under, against what this project declared.
+    """Judge one native spawn: refused if this project refuses it, else by its name.
 
-    ``name`` is the runtime's own field for it and ``description`` the text a
-    name is read from where none was given, each read by the host half that
-    knows which key that is — a runtime whose spawn carries no description
-    passes ``""``. ``field`` is the name's key, so the refusal can name the
-    argument; every string the call carries rides beside them so an
-    escalation marker in any of them is found.
+    ``tool`` is the runtime's name for the spawn, which the declared
+    refusals are matched against. ``name`` is the runtime's own field for the
+    subagent's name and ``description`` the text a name is read from where
+    none was given, each read by the host half that knows which key that is —
+    a runtime whose spawn carries no description passes ``""``. ``field`` is
+    the name's key, so the refusal can name the argument, and ``""`` where
+    the spawn takes no name; every string the call carries rides beside them
+    so an escalation marker in any of them is found.
     """
-    return decide_spawn(name, description, values, SPAWN_NAMES, field)
+    return decide_spawn(
+        name, description, values, SPAWN_NAMES, field, tool=tool, refused=REFUSED_TOOLS
+    )
 
 
 def spawn_named(name: str, description: str) -> str:

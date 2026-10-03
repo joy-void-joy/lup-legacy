@@ -101,7 +101,8 @@ by the runtime's subagent id under the session's, named what the spawn called
 it — which Claude Code records beside the session's transcript and Codex atop
 the subagent's own rollout, and which the caller chooses (a spawn given no
 name on Claude Code is called after its description, and its caller is told
-once to choose its own) — numbered like any default name, and live
+once to choose its own; Codex's `multi_agent_v1` spawn takes no name, so its
+row keeps the nickname Codex generated) — numbered like any default name, and live
 while its session is: it ends when the subagent stops, forwarding whatever it
 never read to its session, and with its session in any case. A subagent
 reaches the session that dispatched it at that session's address. Each row

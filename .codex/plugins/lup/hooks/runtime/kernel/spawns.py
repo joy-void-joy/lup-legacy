@@ -27,11 +27,17 @@ A name read out of a description is a summary of what was asked, not what
 anybody would call the work, so the caller is told afterwards to choose its
 own: once the spawn has gone out, rather than as a refusal before it, which
 was the friction the reading exists to spare.
+
+Whether to spawn at all is the project's declared refusals, asked before the
+name: the one place a project says it has decided against a call. A runtime
+spelling a spawn that takes no name is judged the same way and asked for none.
 """
 
+from collections.abc import Sequence
+
 from .decision import KernelDecision
-from .rows import SpawnNameRow
-from .tools import TOOL_ESCALATE_HINT, escalated_reason
+from .rows import RefusedToolRow, SpawnNameRow
+from .tools import TOOL_ESCALATE_HINT, decide_tool, escalated_reason
 
 
 def spawn_name(given: str, description: str, row: SpawnNameRow | None) -> str:
@@ -149,17 +155,40 @@ def decide_spawn(
     values: list[str],
     row: SpawnNameRow | None,
     field: str,
+    *,
+    tool: str = "",
+    refused: Sequence[RefusedToolRow] = (),
 ) -> KernelDecision:
     """The verdict on one spawn: deferred under a name, refused where none can be read.
+
+    The refusal table is asked first, under the runtime's name for the spawn
+    (``tool``): a spawn's own judgement is only of its name, so a project
+    that decided against spawning states it there, and a row naming some
+    other subject of the tool leaves the name to be judged.
 
     ``None`` for the row is a project that requires no name, which leaves the
     call to the runtime. An escalation marker among the call's inputs turns
     the refusal into the approval question the caller asked for, the way a
     refused tool's does. The recovery opens with ``field``, the key the
     runtime reads the name from (:func:`passing`).
+
+    An empty ``field`` is a spawn that takes no name. Codex 0.159.2's
+    `multi_agent_v1` `spawn_agent` lists none, accepts a `task_name` passed
+    anyway and ignores it, and answers under a nickname it generates, so
+    asking for a name would only send the caller after an argument that
+    changes nothing.
     """
+    declined = decide_tool(tool, values, list(refused))
+    if declined is not None and declined.effect != "defer":
+        return declined
     if row is None:
         return KernelDecision("defer", "no spawn name is required here")
+    if not field:
+        return KernelDecision(
+            "defer",
+            "this spawn takes no name, so it goes out under the nickname the"
+            " runtime gives it",
+        )
     named = spawn_name(given, description, row)
     if named:
         return KernelDecision("defer", f"the spawn goes out named {named!r}")

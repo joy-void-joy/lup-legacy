@@ -568,6 +568,7 @@ CLAUDE_DISPATCHER = DispatcherDeclaration(
         "ListAgents",
         "Agent",
     ],
+    spawn_tools=["Agent"],
     hook_events=["PreToolUse", "PostToolUse"],
     observation_event="PostToolUse",
     observed_tools=["Edit", "Write", "Bash", "Agent"],
@@ -691,7 +692,11 @@ class ClaudeHookRenderer(ArtifactRenderer[HookSet]):
         decided: list[JsonValue] = [
             {
                 "matcher": "|".join(
-                    routed_for(CLAUDE_DISPATCHER.routed_tools, source.refused_tools)
+                    routed_for(
+                        CLAUDE_DISPATCHER.routed_tools,
+                        source.refused_tools,
+                        CLAUDE_DISPATCHER.spawn_tools,
+                    )
                 ),
                 "hooks": command,
             }

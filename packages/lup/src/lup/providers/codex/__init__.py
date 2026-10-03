@@ -507,14 +507,31 @@ class Codex(
         return self
 
     def builtins(self) -> CodexBuiltins:
-        """The facilities sessions start with, a delegated role's or the grant's."""
+        """The facilities sessions start with, a delegated role's or the grant's.
+
+        Without the agent tools where the declared policy refuses a spawn
+        outright, in either of Codex's spellings for it. A session composed
+        in process judges a spawn only through the policy plugin, which it
+        installs only uncontained and only where the project generated one,
+        so elsewhere the refusal holds by the tool not being there. One
+        switch takes both spellings, because which one a model is offered is
+        its catalog row's to say rather than the session's.
+        """
+        from lup.providers.codex.harness import CODEX_DISPATCHER
+
         if self.delegated_tools is not None:
             return CodexBuiltins(
                 shell=self.delegated_tools.workspace_read,
                 images=self.delegated_tools.workspace_read,
                 web=self.delegated_tools.web_search,
             )
-        return CodexBuiltins.compile(self.tools.builtin)
+        granted = CodexBuiltins.compile(self.tools.builtin)
+        policy = self.enforced_policy()
+        refused = policy is not None and any(
+            rule.tool in CODEX_DISPATCHER.spawn_tools and not rule.specifier
+            for rule in policy.refused_tools
+        )
+        return granted.model_copy(update={"agents": False}) if refused else granted
 
     def workspace(self) -> Path:
         """The directory a session works in: the declared one, or where the caller is."""
