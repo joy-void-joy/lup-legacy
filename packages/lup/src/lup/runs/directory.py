@@ -11,6 +11,7 @@ Every write goes through :func:`lup.channels.models.publish_atomic`, because
 a reader holds no lock: it either sees a complete record or none.
 """
 
+import hashlib
 import logging
 from pathlib import Path
 
@@ -67,6 +68,46 @@ STDOUT_RECORD = "stdout.txt"
 # errors, beside the output it is read with
 STDERR_RECORD = "stderr.txt"
 """What a shell unit's errors are called inside its workspace."""
+
+
+# lup: ignore[constant-declaration] — POSIX NAME_MAX, the filename limit of the
+# filesystems a run directory is written to; fixed rather than asked of a disk,
+# because a writer and a reader on two machines must file one unit alike
+FILENAME_BYTES = 255
+"""The longest filename a run directory may hold, in bytes."""
+
+
+def filed_name(item: str) -> str:
+    """The one path component a unit is filed under, derived from its item.
+
+    An item that already is one keeps its own text — every item a run has
+    filed so far, so no existing directory reads differently. Any other is
+    empty, ``.`` or ``..``, holds a ``/`` or a NUL, or is too long for the
+    longest file the layout derives from it: a result's atomic temporary,
+    ``.<name>.json.tmp``. Such an item is filed under a readable prefix of
+    its text and a digest of the whole of it, so two items never share a
+    file and none can reach outside its step.
+
+    The name is only where a unit sits. The item itself is never cut: the
+    manifest, the claim and the result each carry it whole, and every reader
+    names a unit by those rather than by its file.
+    """
+    overhead = len(".") + len(".json") + len(".tmp")
+    spelled = item.encode("utf-8")
+    if (
+        item not in ("", ".", "..")
+        and "/" not in item
+        and "\0" not in item
+        and len(spelled) + overhead <= FILENAME_BYTES
+    ):
+        return item
+    fingerprint = hashlib.blake2b(spelled, digest_size=16).hexdigest()
+    room = FILENAME_BYTES - overhead - len("~") - len(fingerprint)
+    readable = "".join(
+        char if char.isascii() and (char.isalnum() or char in "-_") else "-"
+        for char in item
+    )
+    return f"{readable[:room]}~{fingerprint}"
 
 
 def progress_in(workspace: Path) -> Path:
@@ -178,11 +219,11 @@ class RunDirectory(BaseModel, frozen=True):
 
     def unit_path(self, step: str, item: str = SINGLE_ITEM) -> Path:
         """Where one unit's result lives."""
-        return self.units_root / step / f"{item}.json"
+        return self.units_root / step / f"{filed_name(item)}.json"
 
     def attempt_path(self, step: str, item: str = SINGLE_ITEM) -> Path:
         """Where one unit's claim lives while it runs."""
-        return self.attempts_root / step / f"{item}.json"
+        return self.attempts_root / step / f"{filed_name(item)}.json"
 
     def workspace(self, step: str, item: str = SINGLE_ITEM) -> Path:
         """Where one unit puts whatever it produces besides its result.
@@ -191,7 +232,7 @@ class RunDirectory(BaseModel, frozen=True):
         reading what an earlier one wrote is the ordinary case: two ends
         computing the same path by hand is how they stop agreeing.
         """
-        return self.root / "artifacts" / step / item
+        return self.root / "artifacts" / step / filed_name(item)
 
     def progress_path(self, step: str, item: str = SINGLE_ITEM) -> Path:
         """Where one unit publishes how far into its own work it has got.
@@ -272,6 +313,22 @@ class RunDirectory(BaseModel, frozen=True):
             results=[result for _, result in readings if result is not None],
             unreadable=[path for path, result in readings if result is None],
         )
+
+    def read_step(self, step: str) -> list[UnitResult]:
+        """Every unit one step has landed, read from the files themselves.
+
+        The item is taken from each result rather than from its filename,
+        because a unit is filed under :func:`filed_name` of its item, which is
+        the item only when that is already a safe path component.
+        """
+        return [
+            result
+            for result in (
+                self.parse_result(path)
+                for path in sorted((self.units_root / step).glob("*.json"))
+            )
+            if result is not None
+        ]
 
     def parse_result(self, path: Path) -> UnitResult | None:
         """One result file, or None when it will not parse."""

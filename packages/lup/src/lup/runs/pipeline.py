@@ -446,13 +446,13 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
         A computed fan-out declares none, so what it landed is discovered by
         reading the directory rather than by asking the declaration — the only
         way a resumed run can reuse a fan-out an earlier invocation sized.
+        Each item is read from its result, not its filename, which is the item
+        only when the item was already a safe path component.
         """
         declared = step.declared_items()
         if declared:
             return declared
-        return sorted(
-            path.stem for path in (self.run.units_root / step.id).glob("*.json")
-        )
+        return sorted(result.item for result in self.run.read_step(step.id))
 
     def adopt(self, step: Step) -> None:
         """Take a step this invocation will not run at its landed word."""

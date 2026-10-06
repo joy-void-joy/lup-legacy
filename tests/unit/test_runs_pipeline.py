@@ -24,8 +24,10 @@ from lup.channels.models import utc_now
 from lup.devtools.run.app import create_run_app
 from lup.runs.directory import (
     CLAIM_LEASE_SECONDS,
+    FILENAME_BYTES,
     WORKSPACE_ENV,
     RunDirectory,
+    filed_name,
     progress_in,
 )
 from lup.runs.models import UnitAttempt, UnitProgress, UnitStatus
@@ -39,6 +41,7 @@ from lup.runs.pipeline import (
     PipelineError,
     RunRequest,
     ShellStep,
+    StepBody,
     StepContext,
     StepOutcome,
 )
@@ -463,3 +466,43 @@ def test_run_report_says_so_when_nothing_told_it_where_to_write(
     monkeypatch.delenv(WORKSPACE_ENV, raising=False)
     failed = CliRunner().invoke(create_run_app(), ["report", "--done", "1"])
     assert failed.exit_code != 0
+
+
+def sweep(items: list[str], body: StepBody = counted) -> Pipeline:
+    """One fanned-out step over `items`, for pinning how units are filed."""
+    return Pipeline(
+        name="sweep",
+        workers=2,
+        steps=[CallableStep(id="solve", over=FixedItems(items=items), body=body)],
+    )
+
+
+def test_an_item_no_filename_can_hold_still_lands_and_reads_back(
+    tmp_path: Path,
+) -> None:
+    """Items are data, so their text never decides whether a run survives."""
+    long = "census." + "x" * 400
+    items = [long, "a/b", "..", "plain"]
+    summary = sweep(items).execute(RunRequest(directory=tmp_path))
+    run = RunDirectory(root=tmp_path)
+    assert summary.ok
+    assert sorted(result.item for result in run.read().results) == sorted(items)
+    filed = list((run.units_root / "solve").iterdir())
+    assert all(path.is_file() for path in filed)
+    assert all(len(path.name.encode()) <= FILENAME_BYTES for path in filed)
+    assert read_progress(run).landed == len(items)
+    assert (
+        CliRunner().invoke(create_run_app(), ["monitor", str(tmp_path), "--once"])
+    ).exit_code == 0
+
+
+def test_an_item_that_already_is_a_filename_keeps_its_own_text() -> None:
+    """Every directory filed before stays readable exactly where it is."""
+    assert filed_name("census.sort.q3.w1.0-10000000") == "census.sort.q3.w1.0-10000000"
+    assert filed_name("once") == "once"
+
+
+def test_two_long_items_sharing_a_prefix_are_filed_apart() -> None:
+    shared = "x" * 400
+    assert filed_name(shared + "a") != filed_name(shared + "b")
+    assert "/" not in filed_name("a/" * 200)
