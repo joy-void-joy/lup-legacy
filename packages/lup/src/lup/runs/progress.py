@@ -379,9 +379,17 @@ def describe_summary(summary: RunSummary) -> str:
     """How a finished run reads to whoever comes back to it."""
     if summary.interrupted:
         return f"run interrupted after {units(summary.landed)}"
-    if summary.failed or summary.skipped:
+    if summary.failed or summary.skipped or summary.unlanded:
         skipped = ", ".join(step.id for step in summary.skipped)
-        tail = f"; skipped {skipped}" if skipped else ""
+        unlanded = ", ".join(summary.unlanded)
+        tail = "".join(
+            [
+                f"; {units(len(summary.unlanded))} could not be landed: {unlanded}"
+                if unlanded
+                else "",
+                f"; skipped {skipped}" if skipped else "",
+            ]
+        )
         return f"run failed: {units(summary.failed)} failed{tail}"
     return f"run complete: {units(summary.landed)} landed"
 

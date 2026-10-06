@@ -30,8 +30,8 @@ from lup.runs.directory import (
     filed_name,
     progress_in,
 )
-from lup.runs.models import UnitAttempt, UnitProgress, UnitStatus
-from lup.runs.progress import read_progress
+from lup.runs.models import UnitAttempt, UnitProgress, UnitResult, UnitStatus
+from lup.runs.progress import describe_summary, read_progress
 from lup.runs.pipeline import (
     CallableStep,
     ComputedItems,
@@ -506,3 +506,61 @@ def test_two_long_items_sharing_a_prefix_are_filed_apart() -> None:
     shared = "x" * 400
     assert filed_name(shared + "a") != filed_name(shared + "b")
     assert "/" not in filed_name("a/" * 200)
+
+
+def test_a_claim_that_cannot_be_written_fails_only_its_own_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One unit's filesystem error is that unit's failure, never the run's."""
+    claim = RunDirectory.claim
+
+    def refuse_b(run: RunDirectory, attempt: UnitAttempt) -> None:
+        if attempt.item == "b":
+            raise OSError(36, "File name too long")
+        claim(run, attempt)
+
+    monkeypatch.setattr(RunDirectory, "claim", refuse_b)
+    summary = sweep(["a", "b", "c"]).execute(RunRequest(directory=tmp_path))
+    failed = RunDirectory(root=tmp_path).read_result("solve", "b")
+    assert summary.landed == 3
+    assert summary.failed == 1
+    assert CALLS == {"solve": 2}
+    assert failed is not None
+    assert failed.status is UnitStatus.FAILED
+    assert "File name too long" in failed.error
+
+
+def test_a_result_that_will_not_write_lands_as_its_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_result = RunDirectory.write_result
+
+    def refuse_success(run: RunDirectory, result: UnitResult) -> None:
+        if result.item == "b" and result.status is UnitStatus.OK:
+            raise OSError(28, "No space left on device")
+        write_result(run, result)
+
+    monkeypatch.setattr(RunDirectory, "write_result", refuse_success)
+    summary = sweep(["a", "b"]).execute(RunRequest(directory=tmp_path))
+    failed = RunDirectory(root=tmp_path).read_result("solve", "b")
+    assert summary.failed == 1
+    assert failed is not None
+    assert "No space left on device" in failed.error
+
+
+def test_a_unit_that_cannot_land_at_all_is_named_in_the_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_result = RunDirectory.write_result
+
+    def refuse_b(run: RunDirectory, result: UnitResult) -> None:
+        if result.item == "b":
+            raise OSError(5, "Input/output error")
+        write_result(run, result)
+
+    monkeypatch.setattr(RunDirectory, "write_result", refuse_b)
+    summary = sweep(["a", "b", "c"]).execute(RunRequest(directory=tmp_path))
+    assert summary.unlanded == ["solve/b"]
+    assert not summary.ok
+    assert "could not be landed: solve/b" in describe_summary(summary)
+    assert RunDirectory(root=tmp_path).read_summary() == summary

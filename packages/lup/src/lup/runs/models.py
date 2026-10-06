@@ -225,8 +225,20 @@ class RunSummary(BaseModel, frozen=True):
     failed: int
     skipped: list[SkippedStep] = []
     interrupted: bool = False
+    unlanded: list[str] = []
+    """Units that ran but whose result could not be written, by slug.
+
+    Counted apart from ``failed``, which is read off the landed files: a unit
+    whose result would not write has no file to be counted from, and without
+    this it would vanish from the tally rather than read as a failure.
+    """
 
     @property
     def ok(self) -> bool:
         """Whether the run ended with everything it attempted landing cleanly."""
-        return self.failed == 0 and not self.skipped and not self.interrupted
+        return (
+            self.failed == 0
+            and not self.skipped
+            and not self.interrupted
+            and not self.unlanded
+        )
