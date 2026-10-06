@@ -53,6 +53,7 @@ from lup.runs.models import (
     UnitResult,
     UnitStatus,
 )
+from lup.runs.progress import describe_summary
 from lup.runs.report import report_progress
 from lup.types import JsonValue
 
@@ -795,12 +796,19 @@ class Pipeline(BaseModel, frozen=True):
         people looking for a process table a sandbox will not show them. A
         crash writes its cause there and to the log before it propagates,
         because the launching shell's stderr is the one place nobody reads.
+
+        An earlier attempt's summary is taken down before anything is claimed,
+        and what it said goes to the log: until this attempt writes its own,
+        the directory holds a run that is still going.
         """
         run = RunDirectory(root=request.directory)
         run.root.mkdir(parents=True, exist_ok=True)
         decided = self.decide(request)
         if request.fresh:
             self.wipe(run)
+        previous = run.retire_summary()
+        if previous is not None:
+            run.append_heartbeat(f"resuming after: {describe_summary(previous)}")
         for slug in run.clear_claims():
             run.append_heartbeat(f"reclaimed {slug}: its lease had lapsed")
         state = RunState(run=run)

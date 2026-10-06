@@ -578,3 +578,26 @@ def test_a_runner_crash_leaves_its_cause_in_the_directory(tmp_path: Path) -> Non
     assert not summary.ok
     assert describe_summary(summary).startswith("run crashed after 0 units")
     assert "crashed: PipelineError(" in run.log_path.read_text(encoding="utf-8")
+
+
+def test_a_resumed_run_takes_down_the_last_ending_before_claiming(
+    tmp_path: Path,
+) -> None:
+    """Until this attempt writes its own summary, the directory is still running."""
+    sweep(["a"], body=refuses).execute(RunRequest(directory=tmp_path))
+    run = RunDirectory(root=tmp_path)
+    assert run.read_summary() is not None
+    seen: list[bool] = []
+
+    def notes_the_summary(context: StepContext) -> StepOutcome:
+        seen.append(context.run.read_summary() is None)
+        return StepOutcome()
+
+    summary = sweep(["a"], body=notes_the_summary).execute(
+        RunRequest(directory=tmp_path)
+    )
+    assert seen == [True]
+    assert summary.ok
+    assert "resuming after: run failed: 1 unit failed" in run.log_path.read_text(
+        encoding="utf-8"
+    )

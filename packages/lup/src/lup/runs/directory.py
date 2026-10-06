@@ -443,6 +443,19 @@ class RunDirectory(BaseModel, frozen=True):
         """Record that this run has ended."""
         publish_atomic(self.summary_path, summary)
 
+    def retire_summary(self) -> RunSummary | None:
+        """Take down an earlier attempt's ending, and hand back what it said.
+
+        A run started again in this directory is running until it writes its
+        own summary, and every watcher reads the summary's presence as the
+        run being over — so an earlier attempt's, left in place, has them
+        report that ending while this attempt's units are still working.
+        What it said is returned for the caller to log rather than dropped.
+        """
+        previous = self.read_summary()
+        self.summary_path.unlink(missing_ok=True)
+        return previous
+
     def read_summary(self) -> RunSummary | None:
         """How the run ended, or None while it is still going or was killed."""
         if not self.summary_path.is_file():
