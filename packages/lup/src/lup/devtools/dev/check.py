@@ -221,7 +221,9 @@ def ruff_format_check(
     An empty *scope* is the whole tree rather than nothing, which is what the
     dot has always meant here. A caller narrowing to a list it computed hands
     that list; a caller narrowing to nothing wants nothing checked and says so
-    by not narrowing at all.
+    by not narrowing at all. Ruff checks a file named on its command line even
+    when an exclusion covers it, so a narrowed run forces the exclusions: a
+    scope naming a data root's file must answer what the whole tree answers.
     """
     return ran(
         "ruff format",
@@ -231,6 +233,7 @@ def ruff_format_check(
             "format",
             *([] if fix else ["--check"]),
             *option_arguments("--exclude", excluded_roots),
+            *(["--force-exclude"] if scope else []),
             *(scope or ["."]),
         ),
         "applied" if fix else "ok",
@@ -240,7 +243,10 @@ def ruff_format_check(
 def ruff_lint_check(
     fix: bool, excluded_roots: list[str], scope: list[str] | None = None
 ) -> CheckReport:
-    """Whether the lint rules hold — or, with *fix*, applying what they can."""
+    """Whether the lint rules hold — or, with *fix*, applying what they can.
+
+    A narrowed run forces the exclusions, as `ruff_format_check` says why.
+    """
     return ran(
         "ruff check",
         lambda: uv(
@@ -248,6 +254,7 @@ def ruff_lint_check(
             "ruff",
             "check",
             *option_arguments("--exclude", excluded_roots),
+            *(["--force-exclude"] if scope else []),
             *(scope or ["."]),
             *(["--fix"] if fix else []),
         ),
