@@ -96,3 +96,32 @@ def test_every_external_check_skips_data_and_scratch(
         "--ignore-glob",
         "**/tmp/**",
     )
+
+
+def test_a_narrowed_ruff_run_forces_the_exclusions(
+    data_project: DevProject, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file named on ruff's command line is checked unless exclusions are forced.
+
+    The changed-file scope names files by path, so without `--force-exclude` a
+    data root's script that changed would be linted by the narrowed run and
+    skipped by the whole-tree one, and the two runs would disagree about it.
+    """
+    calls: list[tuple[str, ...]] = []
+
+    def capture(*arguments: str, **_options: str) -> None:
+        calls.append(arguments)
+
+    monkeypatch.setattr(check, "uv", capture)
+    excluded = check.non_code_roots(data_project)
+    scope = ["notes/study.py", "src/app.py"]
+
+    check.ruff_format_check(False, excluded, scope)
+    check.ruff_lint_check(False, excluded, scope)
+    check.ruff_format_check(False, excluded)
+    check.ruff_lint_check(False, excluded)
+
+    narrowed, whole = calls[:2], calls[2:]
+    assert all("--force-exclude" in call for call in narrowed)
+    assert all("notes/study.py" in call for call in narrowed)
+    assert all("--force-exclude" not in call for call in whole)
