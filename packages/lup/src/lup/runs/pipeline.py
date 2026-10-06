@@ -32,16 +32,18 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import IO, Annotated, Self
 
+import sh
 import typer
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from lup.channels.models import utc_now
 from lup.execution.dag import DependencyGraph
 from lup.execution.shell import LazyCommand
 from lup.runs.follow import render_landing
 from lup.runs.directory import WORKSPACE_ENV, RunDirectory, stderr_in, stdout_in
+from lup.runs.limits import SessionRegistry, UnitLimitExceeded, UnitLimits, supervise
 from lup.runs.models import (
     SINGLE_ITEM,
     RunManifest,
@@ -95,6 +97,13 @@ class StepContext(FanContext, frozen=True):
     """Everything one unit is given: where it is, and what it may read."""
 
     item: str = SINGLE_ITEM
+    sessions: SessionRegistry = Field(default_factory=SessionRegistry, exclude=True)
+    """Where a limited unit enrols the session it runs in, for the runner to stop.
+
+    The runner's own, handed down rather than reached for, so a unit run
+    outside a pipeline — a test, a one-off — gets a registry of its own and
+    needs nothing global.
+    """
 
     @property
     def workspace(self) -> Path:
@@ -202,6 +211,14 @@ class Step(BaseModel, ABC, frozen=True):
     params: JsonValue = None
     over: ItemSource | None = None
     retries: int = 0
+    limits: UnitLimits | None = None
+    """How long each of this step's units may run and how much memory it may hold.
+
+    Enforced from outside the unit, which only a unit in a process of its own
+    allows; see :mod:`lup.runs.limits`. A unit stopped for a limit fails with
+    the breach and is not retried, since another attempt would meet the same
+    bound.
+    """
 
     @abstractmethod
     def run(self, context: StepContext) -> StepOutcome:
@@ -246,6 +263,21 @@ class CallableStep(Step, frozen=True):
     """A step whose work is a Python callable, run in this process."""
 
     body: StepBody
+
+    @model_validator(mode="after")
+    def refuse_limits(self) -> Self:
+        """Refuse limits, which nothing could enforce on a body in this process.
+
+        A callable runs on one of the runner's own threads. Stopping it would
+        mean stopping the runner, and a thread cannot be killed at all; a limit
+        accepted here would be a bound that silently never fires.
+        """
+        if self.limits is not None:
+            raise ValueError(
+                f"step {self.id!r} declares limits, which need the unit in a "
+                "process of its own: run the work as a ShellStep, or drop the limits"
+            )
+        return self
 
     @property
     def kind(self) -> str:
@@ -309,10 +341,44 @@ class ShellStep(Step, frozen=True):
             out_path.open("w", encoding="utf-8") as out,
             err_path.open("w", encoding="utf-8") as err,
         ):
-            LazyCommand(self.shell)(
-                "-c", self.script(context), _out=out, _err=err, _tty_out=False
-            )
+            if self.limits is None:
+                LazyCommand(self.shell)(
+                    "-c", self.script(context), _out=out, _err=err, _tty_out=False
+                )
+            else:
+                self.run_limited(context, self.limits, out, err)
         return StepOutcome(detail={"stdout": str(out_path), "stderr": str(err_path)})
+
+    def run_limited(
+        self, context: StepContext, limits: UnitLimits, out: IO[str], err: IO[str]
+    ) -> None:
+        """Run the command in a session of its own, under its declared limits.
+
+        A session rather than the runner's own process group, so the unit's
+        memory is summed over everything it started and stopping it reaches
+        all of it; the runner's registry is what still stops it on an
+        interrupt, which a terminal no longer delivers to it directly.
+        """
+        running = LazyCommand(self.shell)(
+            "-c",
+            self.script(context),
+            _out=out,
+            _err=err,
+            _tty_out=False,
+            _bg=True,
+            _bg_exc=False,
+            _new_session=True,
+            _return_cmd=True,
+        )
+        if not isinstance(running, sh.RunningCommand):
+            raise TypeError(
+                f"step {self.id!r} needs a handle on its running command to "
+                "enforce limits, and the shell returned none"
+            )
+        supervise(running, limits, context.sessions)
+        # Read the way the unlimited path reads it, so a nonzero exit raises
+        # the same error and fails the unit the same way.
+        running.wait()
 
 
 class RunRequest(BaseModel, frozen=True):
@@ -399,6 +465,9 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
     """
 
     holding: threading.Lock = Field(default_factory=threading.Lock, exclude=True)
+
+    sessions: SessionRegistry = Field(default_factory=SessionRegistry, exclude=True)
+    """The limited units' sessions, which an interrupt or a crash must stop."""
 
     def take(self, attempt: UnitAttempt) -> None:
         """Claim one unit and hold its lease until the unit lands."""
@@ -538,6 +607,7 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
             step=unit.step.id,
             item=unit.item,
             dependencies=unit.dependencies,
+            sessions=self.sessions,
         )
         claimed = UnitAttempt(step=unit.step.id, item=unit.item, pid=os.getpid())
         begun = utc_now()
@@ -619,12 +689,18 @@ def attempt(unit: PlannedUnit, context: StepContext) -> UnitResult:
     Every attempt's traceback is kept, the successful run's included: a step
     that passes on its third try is a different thing from one that passed,
     and a result that mentioned only the last attempt would hide it.
+
+    A unit stopped for a declared limit fails at once and is not retried:
+    another attempt would meet the same bound, and spend it again.
     """
     errors: list[str] = []
     for remaining in reversed(range(max(1, unit.step.retries + 1))):
         begun = utc_now()
         try:
             outcome = unit.step.run(context)
+        except UnitLimitExceeded as exceeded:
+            failure = unit_failure(unit, begun, [*errors, exceeded.breach.render()])
+            return failure.model_copy(update={"breach": exceeded.breach})
         except Exception:
             errors.append(traceback.format_exc())
             if remaining:
@@ -862,8 +938,17 @@ class Pipeline(BaseModel, frozen=True):
             if not units:
                 continue
             with ThreadPoolExecutor(max_workers=workers) as pool:
-                for result in pool.map(state.perform, units):
-                    state.record(result)
+                try:
+                    for result in pool.map(state.perform, units):
+                        state.record(result)
+                # lup: ignore[except-baseexception] — re-raised; an interrupt cannot reach the sessions it stops
+                except BaseException:
+                    # Before the pool's exit waits on its workers: a limited
+                    # unit runs in a session of its own, which an interrupt at
+                    # the terminal does not reach, so the wait would otherwise
+                    # last as long as the slowest unit being abandoned.
+                    state.sessions.close()
+                    raise
 
     def main(self) -> None:
         """Serve this pipeline as a command line, so every one gets these flags."""

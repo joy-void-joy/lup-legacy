@@ -163,10 +163,29 @@ class RunningUnit(BaseModel, frozen=True):
     nothing is one that neither reported nor printed.
     """
 
+    typical_seconds: float | None = None
+    """The median time its step's units took to land, when enough have.
+
+    Filled by whoever takes the reading, from the step's landed results. It is
+    what makes a long-running unit legible: an hour means nothing on its own,
+    and an hour where its siblings took two minutes means look at it now.
+    """
+
     @property
     def slug(self) -> str:
         """How this unit is named to a reader."""
         return self.attempt.slug
+
+    def overdue(self, factor: float) -> float | None:
+        """How many times its step's median this unit has run, past ``factor``.
+
+        None while it is within that multiple, or while its step has no median
+        yet: a unit is only long against siblings that have finished.
+        """
+        if self.typical_seconds is None or self.typical_seconds <= 0:
+            return None
+        ratio = self.age_seconds / self.typical_seconds
+        return ratio if ratio > factor else None
 
     @property
     def stale(self) -> bool:

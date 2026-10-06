@@ -25,6 +25,7 @@ from tqdm import tqdm
 from lup.runs.directory import RunDirectory, RunningUnit
 from lup.runs.models import UnitProgress, UnitResult
 from lup.runs.progress import (
+    OVERDUE_FACTOR,
     RateTracker,
     RunProgress,
     StepState,
@@ -33,6 +34,7 @@ from lup.runs.progress import (
     describe_summary,
     read_progress,
     render_count,
+    render_overdue,
     render_span,
     unit_postfix,
 )
@@ -239,11 +241,29 @@ def phase_events(reading: RunProgress, known: dict[str, UnitProgress]) -> Iterat
         yield f"{slug} entered {record.phase} at {render_count(record)}"
 
 
+def overdue_events(
+    reading: RunProgress, flagged: list[str], factor: float = OVERDUE_FACTOR
+) -> Iterator[str]:
+    """One line per unit the first time it runs past ``factor`` times its median.
+
+    Once per unit rather than per reading, so a unit stuck for an hour is one
+    event an agent is woken for, not one every interval; ``flagged`` is the
+    caller's memory of which units have already been named.
+    """
+    for unit in reading.overdue(factor):
+        ratio = unit.overdue(factor)
+        if ratio is None or unit.slug in flagged:
+            continue
+        flagged.append(unit.slug)
+        yield f"{unit.slug} {render_overdue(unit, ratio)}"
+
+
 def follow_events(
     directory: RunDirectory,
     log: Path | None = None,
     interval: float = 2.0,
     quiet_limit: float = 900.0,
+    factor: float = OVERDUE_FACTOR,
 ) -> Iterator[str]:
     """Yield one line per thing that happens, ending when the run does.
 
@@ -263,7 +283,9 @@ def follow_events(
     landed = {result.slug: result for result in directory.read().results}
     states: dict[str, StepState] = {step.id: step.state for step in reading.steps}
     phases = reporting_units(reading)
+    flagged: list[str] = []
     yield f"attached {reading.landed}/{reading.total} landed · {reading.postfix()}"
+    yield from overdue_events(reading, flagged, factor)
     reported_stall = False
     while True:
         summary = reading.summary
@@ -286,4 +308,5 @@ def follow_events(
                 yield f"step {step.render()}"
         yield from phase_events(reading, phases)
         phases = reporting_units(reading)
+        yield from overdue_events(reading, flagged, factor)
         reported_stall = reported_stall and reading.stalled(quiet_limit)

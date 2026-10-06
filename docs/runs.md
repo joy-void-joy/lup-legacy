@@ -72,11 +72,14 @@ renewed within the lease is one nobody holds:
   the log. Claims whose lease is live are left alone, so two runners sharing a
   directory do not free each other's work.
 
-The process table is not consulted, here or anywhere in this package. Under a
-sandbox `/proc` is PID-isolated, so a healthy run is indistinguishable there
-from a dead one — a liveness answer that asks it is no answer at all on the
-host a long job most often runs on. The `pid` on a claim is there for a person
-diagnosing the machine they are standing on, and nothing decides on it.
+The process table is not consulted for liveness, here or anywhere in this
+package. Under a sandbox `/proc` is PID-isolated, so a healthy run is
+indistinguishable there from a dead one — a liveness answer that asks it is no
+answer at all on the host a long job most often runs on. The `pid` on a claim
+is there for a person diagnosing the machine they are standing on, and nothing
+decides on it. The one reader of `/proc` is the runner enforcing a unit's
+[limits](#limits), and it reads only the sessions it started itself, which
+share its namespace by construction.
 
 ## Resuming
 
@@ -112,6 +115,21 @@ Silence is the failure that matters, so a run whose heartbeat has stopped is
 reported as stalled rather than left looking like one still working.
 `--quiet-limit` is how long counts as silence; a pipeline of shell steps is
 quiet for seconds, a solver sweep for hours.
+
+A stuck unit is the opposite case: the run is not quiet at all, because its
+siblings go on landing and the runner renews its claim with theirs. So a
+reading measures each held unit against the median time its step's units took
+to land, once three of them have succeeded, and calls one **overdue** past
+three times that median:
+
+```
+solve/family-9: iteration 41 · overdue: running 1:02:00, 6.2× its step's median 0:10:00
+```
+
+`--once` carries that on the unit's line, the activity line counts the overdue
+units, and `--events` names each one once, the first time it crosses. Overdue
+is a flag for a person, not an action; a declared [limit](#limits) is what
+stops a unit.
 
 ### The estimate
 
@@ -291,6 +309,65 @@ this repository's rules mandate over `subprocess`, so the warning stands
 rather than being silenced. A pipeline whose shell steps are long and few is
 unaffected in practice; one that fans a shell step out over thousands of tiny
 items is the shape to watch.
+
+## Limits
+
+A unit that hangs or grows without bound fails nothing on its own: it holds a
+worker until somebody notices, or takes the machine down with every unit
+beside it. A shell step can declare how long each of its units may run and how
+much memory it may hold:
+
+```python
+ShellStep(
+    id="solve",
+    over=FixedItems(items=families),
+    command="solver --family \"$LUP_RUN_ITEM\"",
+    limits=UnitLimits(timeout_seconds=3600, memory_bytes=16 * 2**30),
+)
+```
+
+A limited unit runs in a session of its own, and the runner samples it every
+`sample_seconds` (one by default): the wall time since its launch, and the
+resident memory of every process in its session, summed. The session is what
+a child cannot leave by accident — a helper the solver forked is counted with
+it, as is one that moved to a process group of its own — and the measure is
+resident pages, read from `/proc/<pid>/statm`, rather than an `RLIMIT_AS`,
+because a process reserving address space it never touches, as tensor
+libraries do, holds none of it. A page two processes share is counted once
+for each, so a forking unit reads high rather than low.
+
+Past either limit the runner sends SIGTERM to the whole session, gives it
+`grace_seconds` (five by default) to write out what it has, and sends SIGKILL
+to whatever is left. The unit lands FAILED with the breach as its error, and
+the numbers behind it in `breach`:
+
+```
+exceeded memory limit: 16.2 GiB > 16.0 GiB after 0:35:12
+exceeded time limit: 1:00:01 > 1:00:00
+```
+
+It is not retried, since another attempt would meet the same bound, and its
+siblings carry on. `run monitor --once` lists every stopped unit under its
+breach, and `--events` prints the line as the unit lands.
+
+Limits say how a unit may run, not what it computes, so like `retries` they
+stay out of the step's fingerprint. A stopped unit failed, and a failed unit
+always reruns, so raising a limit and resuming reruns exactly the units it
+stopped and reuses everything that landed.
+
+A `CallableStep` refuses limits when it is declared. Its body runs on one of
+the runner's own threads, which nothing can stop short of stopping the runner,
+and a limit accepted there would be a bound that silently never fires; work
+that needs one runs as a shell step. For the same reason a memory limit on a
+machine with no `/proc` fails its unit saying so, while a timeout, which
+signals the session's process group, holds anywhere.
+
+Two things fall outside a session. A process that starts a session of its own
+— a daemon detaching — leaves the unit's, and is neither counted nor stopped.
+And an interrupt at the terminal reaches the runner's process group, which a
+limited unit is not in, so the runner stops every live limited session itself
+before it waits on its workers: Ctrl-C ends a run of limited units as promptly
+as one of unlimited units.
 
 ## Writing the layout without the runtime
 
