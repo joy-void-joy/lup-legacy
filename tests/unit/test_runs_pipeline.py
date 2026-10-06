@@ -564,3 +564,17 @@ def test_a_unit_that_cannot_land_at_all_is_named_in_the_summary(
     assert not summary.ok
     assert "could not be landed: solve/b" in describe_summary(summary)
     assert RunDirectory(root=tmp_path).read_summary() == summary
+
+
+def test_a_runner_crash_leaves_its_cause_in_the_directory(tmp_path: Path) -> None:
+    """The traceback is read where the run is read, not on a forgotten stderr."""
+    with pytest.raises(PipelineError, match="cannot run middle"):
+        chain().execute(RunRequest(directory=tmp_path, only=["middle"]))
+    run = RunDirectory(root=tmp_path)
+    summary = run.read_summary()
+    assert summary is not None
+    assert "cannot run middle" in summary.crashed
+    assert "PipelineError" in summary.crash_traceback
+    assert not summary.ok
+    assert describe_summary(summary).startswith("run crashed after 0 units")
+    assert "crashed: PipelineError(" in run.log_path.read_text(encoding="utf-8")

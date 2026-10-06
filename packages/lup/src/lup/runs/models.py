@@ -225,6 +225,22 @@ class RunSummary(BaseModel, frozen=True):
     failed: int
     skipped: list[SkippedStep] = []
     interrupted: bool = False
+    crashed: str = ""
+    """The exception that ended the runner itself, as Python spells it.
+
+    Empty for a run that ended on its own or was interrupted. A crash is a
+    different ending from failed units: the runner stopped scheduling, so
+    units the manifest names may never have started.
+    """
+
+    crash_traceback: str = ""
+    """The whole traceback of that exception, kept where the run is read.
+
+    Here rather than on the launching shell's stderr, which nothing records
+    unless somebody remembered to redirect it — the directory is the one
+    place every reader of a run already looks.
+    """
+
     unlanded: list[str] = []
     """Units that ran but whose result could not be written, by slug.
 
@@ -240,5 +256,6 @@ class RunSummary(BaseModel, frozen=True):
             self.failed == 0
             and not self.skipped
             and not self.interrupted
+            and not self.crashed
             and not self.unlanded
         )

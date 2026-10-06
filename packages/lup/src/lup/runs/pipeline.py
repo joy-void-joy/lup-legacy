@@ -383,6 +383,8 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
     items: dict[str, list[str]] = {}
     skipped: list[SkippedStep] = []
     interrupted: bool = False
+    crashed: str = ""
+    crash_traceback: str = ""
 
     unlanded: list[str] = []
     """Units whose result could not be written, by slug, taken under the lock."""
@@ -604,6 +606,8 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
             failed=sum(1 for result in landed if result.status is UnitStatus.FAILED),
             skipped=self.skipped,
             interrupted=self.interrupted,
+            crashed=self.crashed,
+            crash_traceback=self.crash_traceback,
             unlanded=unlanded,
         )
 
@@ -785,31 +789,40 @@ class Pipeline(BaseModel, frozen=True):
     def execute(self, request: RunRequest) -> RunSummary:
         """Run the selected steps and return how it ended.
 
-        The summary is written whatever happens, an interrupt included: a
-        follower has no other way to tell a run still working from one whose
-        process is gone, and leaving that ambiguous is what sends people
-        looking for a process table a sandbox will not show them.
+        The summary is written whatever happens, an interrupt or a crash
+        included: a follower has no other way to tell a run still working from
+        one whose process is gone, and leaving that ambiguous is what sends
+        people looking for a process table a sandbox will not show them. A
+        crash writes its cause there and to the log before it propagates,
+        because the launching shell's stderr is the one place nobody reads.
         """
         run = RunDirectory(root=request.directory)
         run.root.mkdir(parents=True, exist_ok=True)
+        decided = self.decide(request)
         if request.fresh:
             self.wipe(run)
         for slug in run.clear_claims():
             run.append_heartbeat(f"reclaimed {slug}: its lease had lapsed")
         state = RunState(run=run)
-        decided = self.decide(request)
-        manifest = self.declare(run, decided)
-        run.append_heartbeat(f"started {self.name}: {len(self.steps)} steps")
         stop = threading.Event()
         beat = threading.Thread(
             target=heartbeat, args=(state, stop, self.heartbeat_seconds), daemon=True
         )
         beat.start()
         try:
+            manifest = self.declare(run, decided)
+            run.append_heartbeat(f"started {self.name}: {len(self.steps)} steps")
             self.drive(state, manifest, decided, request)
         except KeyboardInterrupt:
             state.interrupted = True
             run.append_heartbeat("interrupted")
+        except Exception as error:
+            state.crashed = repr(error)
+            state.crash_traceback = traceback.format_exc()
+            run.append_heartbeat(
+                f"crashed: {state.crashed}; the traceback is in {run.summary_path.name}"
+            )
+            raise
         finally:
             stop.set()
             beat.join(timeout=self.heartbeat_seconds)
