@@ -25,6 +25,7 @@ nothing shows nothing rather than a placeholder.
 """
 
 import json
+import statistics
 import time
 from collections import Counter, defaultdict
 from datetime import timedelta
@@ -40,9 +41,36 @@ from lup.runs.models import (
     RunSummary,
     StepRecord,
     UnitProgress,
+    UnitResult,
     UnitStatus,
 )
 from lup.types import JsonValue
+
+OVERDUE_FACTOR = 3.0
+"""How many times its step's median a unit may run before a reading names it.
+
+A judgement, so it is a default a caller can replace: a step whose units
+vary by orders of magnitude wants a looser one, a uniform sweep a tighter.
+"""
+
+MEDIAN_EVIDENCE = 3
+"""How many of a step's units must have landed before their median means much."""
+
+
+def typical_duration(
+    results: list[UnitResult], step: str, evidence: int = MEDIAN_EVIDENCE
+) -> float | None:
+    """The median time one step's units took to land, once enough have.
+
+    Over the units that succeeded: a unit stopped at its limit, or one that
+    died at once, says nothing about how long the step's work takes.
+    """
+    spans = [
+        result.elapsed_seconds
+        for result in results
+        if result.step == step and result.status is UnitStatus.OK
+    ]
+    return statistics.median(spans) if len(spans) >= evidence else None
 
 
 class StepState(StrEnum):
@@ -185,19 +213,35 @@ def unit_postfix(progress: UnitProgress, rate: UnitRate | None) -> str:
     )
 
 
-def render_unit(unit: RunningUnit, rate: UnitRate | None = None) -> str:
+def render_overdue(unit: RunningUnit, ratio: float) -> str:
+    """How far past its step's median a unit has run, as a reader acts on it."""
+    typical = render_span(unit.typical_seconds or 0.0)
+    return (
+        f"overdue: running {render_span(unit.age_seconds)}, {ratio:.1f}× its "
+        f"step's median {typical}"
+    )
+
+
+def render_unit(
+    unit: RunningUnit, rate: UnitRate | None = None, factor: float = OVERDUE_FACTOR
+) -> str:
     """One running unit as a line, for a reader who sees lines and not a screen.
 
     A unit that reports carries its count; one that only prints carries its
     last line; one that does neither carries how long it has been going, which
-    is all anybody can say about it.
+    is all anybody can say about it. A unit that has run several times as long
+    as its step's landed units says so on the same line, whichever of those it
+    is, because a stuck unit is the one a reader most needs to find.
     """
     if unit.progress is None:
         said = unit.last_line or f"running for {render_span(unit.age_seconds)}"
-        return f"{unit.slug}: {said}"
-    postfix = unit_postfix(unit.progress, rate)
-    counted = render_count(unit.progress)
-    return f"{unit.slug}: {counted} {postfix}".rstrip()
+        line = f"{unit.slug}: {said}"
+    else:
+        postfix = unit_postfix(unit.progress, rate)
+        counted = render_count(unit.progress)
+        line = f"{unit.slug}: {counted} {postfix}".rstrip()
+    ratio = unit.overdue(factor)
+    return line if ratio is None else f"{line} · {render_overdue(unit, ratio)}"
 
 
 def observed(directory: RunDirectory, unit: RunningUnit) -> RunningUnit:
@@ -244,6 +288,9 @@ class RunProgress(BaseModel, frozen=True):
     failed: int
     statuses: list[StatusCount] = []
     running: list[RunningUnit] = []
+    stopped: list[UnitResult] = []
+    """Landed units the runner stopped for a declared limit, each with its breach."""
+
     steps: list[StepProgress] = []
     unreadable: list[Path] = []
     heartbeat: str = ""
@@ -281,6 +328,14 @@ class RunProgress(BaseModel, frozen=True):
         is gone, which reads as "4 running" to anybody counting claims alone.
         """
         return [unit for unit in self.running if unit.stale]
+
+    def overdue(self, factor: float = OVERDUE_FACTOR) -> list[RunningUnit]:
+        """The held units that have run past ``factor`` times their step's median."""
+        return [
+            unit
+            for unit in self.running
+            if not unit.stale and unit.overdue(factor) is not None
+        ]
 
     def render_clock(self) -> str:
         """Elapsed against the time left, in the shape a progress bar reads in.
@@ -347,10 +402,16 @@ class RunProgress(BaseModel, frozen=True):
             )
         if self.oldest_running is not None:
             span = render_span(self.oldest_running.age_seconds)
-            return (
+            activity = (
                 f"{len(self.running)} running; oldest "
                 f"{self.oldest_running.slug} for {span}"
             )
+            overdue = self.overdue()
+            if overdue:
+                activity = (
+                    f"{activity}; {len(overdue)} overdue against their step's median"
+                )
+            return activity
         if self.complete:
             return "every scheduled unit has landed"
         return self.heartbeat or "(no unit running yet)"
@@ -537,7 +598,14 @@ def read_progress(directory: RunDirectory, log: Path | None = None) -> RunProgre
     """One reading of the run at ``directory``."""
     manifest = directory.read_manifest()
     reading = directory.read()
-    running = [observed(directory, unit) for unit in directory.running()]
+    running = [
+        observed(directory, unit).model_copy(
+            update={
+                "typical_seconds": typical_duration(reading.results, unit.attempt.step)
+            }
+        )
+        for unit in directory.running()
+    ]
     resolved_log = log if log is not None else default_log(directory)
     tally = Counter(result.label for result in reading.results)
     landed_by_step: defaultdict[str, list[UnitStatus]] = defaultdict(list)
@@ -558,6 +626,7 @@ def read_progress(directory: RunDirectory, log: Path | None = None) -> RunProgre
             StatusCount(status=status, count=count) for status, count in tally.items()
         ],
         running=running,
+        stopped=[result for result in reading.results if result.breach is not None],
         steps=(
             step_progress(manifest, landed_by_step, running)
             if manifest is not None

@@ -12,13 +12,17 @@ before, a failing command still fails as before, and its siblings land.
 import shlex
 import sys
 import time
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 import sh
 from pydantic import ValidationError
 
+from lup.channels.models import utc_now
+from lup.devtools.dev.monitor import once
 from lup.runs.directory import RunDirectory
+from lup.runs.follow import overdue_events
 from lup.runs.limits import (
     LimitUnenforceable,
     SessionRegistry,
@@ -28,7 +32,7 @@ from lup.runs.limits import (
     stop_session,
     supervise,
 )
-from lup.runs.models import UnitResult, UnitStatus
+from lup.runs.models import UnitAttempt, UnitResult, UnitStatus
 from lup.runs.pipeline import (
     CallableStep,
     FixedItems,
@@ -38,6 +42,7 @@ from lup.runs.pipeline import (
     StepContext,
     StepOutcome,
 )
+from lup.runs.progress import read_progress, render_unit
 
 QUICK = UnitLimits(timeout_seconds=20.0, sample_seconds=0.05, grace_seconds=0.5)
 """Limits that sample fast and stop fast, so each test spends seconds, not minutes."""
@@ -178,6 +183,61 @@ def test_a_callable_step_refuses_limits() -> None:
 
     with pytest.raises(ValidationError, match="process of its own"):
         CallableStep(id="inline", body=body, limits=QUICK)
+
+
+def test_the_monitor_names_a_stopped_unit_and_its_breach(tmp_path: Path) -> None:
+    limits = QUICK.model_copy(update={"timeout_seconds": 0.3})
+    limited("sleep 30", limits, ["stuck"]).execute(RunRequest(directory=tmp_path))
+
+    reading = once(RunDirectory(root=tmp_path), None)
+
+    assert "stopped work/stuck: exceeded time limit:" in reading
+
+
+def test_a_unit_far_past_its_steps_median_is_named_overdue(tmp_path: Path) -> None:
+    """An hour means nothing alone; an hour where siblings took ten seconds does."""
+    run = RunDirectory(root=tmp_path)
+    now = utc_now()
+    for item in ["a", "b", "c"]:
+        run.write_result(
+            UnitResult(
+                step="work",
+                item=item,
+                status=UnitStatus.OK,
+                fingerprint="f",
+                started_at=now - timedelta(seconds=10),
+                finished_at=now,
+            )
+        )
+    run.claim(
+        UnitAttempt(
+            step="work",
+            item="d",
+            pid=999999,
+            started_at=now - timedelta(seconds=100),
+            renewed_at=now,
+        )
+    )
+
+    reading = read_progress(run)
+    [unit] = reading.overdue()
+    flagged: list[str] = []
+
+    assert "overdue: running 0:01:40" in render_unit(unit)
+    assert "its step's median 0:00:10" in render_unit(unit)
+    assert "1 overdue" in reading.describe_activity()
+    assert len(list(overdue_events(reading, flagged))) == 1
+    assert list(overdue_events(reading, flagged)) == []
+
+
+def test_a_unit_within_its_steps_median_is_not_overdue(tmp_path: Path) -> None:
+    run = RunDirectory(root=tmp_path)
+    now = utc_now()
+    run.claim(
+        UnitAttempt(step="work", item="d", pid=999999, started_at=now, renewed_at=now)
+    )
+
+    assert read_progress(run).overdue() == []
 
 
 def test_the_registry_stops_every_session_an_interrupt_would_otherwise_miss() -> None:

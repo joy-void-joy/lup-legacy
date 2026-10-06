@@ -24,9 +24,10 @@ def once(directory: RunDirectory, log: Path | None) -> str:
     """One reading, rendered as the lines a person would have watched.
 
     The run's two, then one per running unit — how far into its own work each
-    has got, or the last line it printed. Every one of them, because a reading
-    that showed the first few would read as the whole run; the screen is where
-    the room runs out, not here.
+    has got, or the last line it printed — then one per unit the runner
+    stopped for a declared limit, with the breach. Every one of them, because a
+    reading that showed the first few would read as the whole run; the screen
+    is where the room runs out, not here.
     """
     reading = read_progress(directory, log)
     return "\n".join(
@@ -35,6 +36,11 @@ def once(directory: RunDirectory, log: Path | None) -> str:
             f"{reading.postfix()}",
             reading.describe_activity(),
             *(render_unit(unit) for unit in reading.running),
+            *(
+                f"stopped {result.slug}: {result.breach.render()}"
+                for result in reading.stopped
+                if result.breach is not None
+            ),
         ]
     )
 
