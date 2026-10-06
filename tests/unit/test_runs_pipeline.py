@@ -24,12 +24,14 @@ from lup.channels.models import utc_now
 from lup.devtools.run.app import create_run_app
 from lup.runs.directory import (
     CLAIM_LEASE_SECONDS,
+    FILENAME_BYTES,
     WORKSPACE_ENV,
     RunDirectory,
+    filed_name,
     progress_in,
 )
-from lup.runs.models import UnitAttempt, UnitProgress, UnitStatus
-from lup.runs.progress import read_progress
+from lup.runs.models import UnitAttempt, UnitProgress, UnitResult, UnitStatus
+from lup.runs.progress import describe_summary, read_progress
 from lup.runs.pipeline import (
     CallableStep,
     ComputedItems,
@@ -39,6 +41,7 @@ from lup.runs.pipeline import (
     PipelineError,
     RunRequest,
     ShellStep,
+    StepBody,
     StepContext,
     StepOutcome,
 )
@@ -463,3 +466,138 @@ def test_run_report_says_so_when_nothing_told_it_where_to_write(
     monkeypatch.delenv(WORKSPACE_ENV, raising=False)
     failed = CliRunner().invoke(create_run_app(), ["report", "--done", "1"])
     assert failed.exit_code != 0
+
+
+def sweep(items: list[str], body: StepBody = counted) -> Pipeline:
+    """One fanned-out step over `items`, for pinning how units are filed."""
+    return Pipeline(
+        name="sweep",
+        workers=2,
+        steps=[CallableStep(id="solve", over=FixedItems(items=items), body=body)],
+    )
+
+
+def test_an_item_no_filename_can_hold_still_lands_and_reads_back(
+    tmp_path: Path,
+) -> None:
+    """Items are data, so their text never decides whether a run survives."""
+    long = "census." + "x" * 400
+    items = [long, "a/b", "..", "plain"]
+    summary = sweep(items).execute(RunRequest(directory=tmp_path))
+    run = RunDirectory(root=tmp_path)
+    assert summary.ok
+    assert sorted(result.item for result in run.read().results) == sorted(items)
+    filed = list((run.units_root / "solve").iterdir())
+    assert all(path.is_file() for path in filed)
+    assert all(len(path.name.encode()) <= FILENAME_BYTES for path in filed)
+    assert read_progress(run).landed == len(items)
+    assert (
+        CliRunner().invoke(create_run_app(), ["monitor", str(tmp_path), "--once"])
+    ).exit_code == 0
+
+
+def test_an_item_that_already_is_a_filename_keeps_its_own_text() -> None:
+    """Every directory filed before stays readable exactly where it is."""
+    assert filed_name("census.sort.q3.w1.0-10000000") == "census.sort.q3.w1.0-10000000"
+    assert filed_name("once") == "once"
+
+
+def test_two_long_items_sharing_a_prefix_are_filed_apart() -> None:
+    shared = "x" * 400
+    assert filed_name(shared + "a") != filed_name(shared + "b")
+    assert "/" not in filed_name("a/" * 200)
+
+
+def test_a_claim_that_cannot_be_written_fails_only_its_own_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One unit's filesystem error is that unit's failure, never the run's."""
+    claim = RunDirectory.claim
+
+    def refuse_b(run: RunDirectory, attempt: UnitAttempt) -> None:
+        if attempt.item == "b":
+            raise OSError(36, "File name too long")
+        claim(run, attempt)
+
+    monkeypatch.setattr(RunDirectory, "claim", refuse_b)
+    summary = sweep(["a", "b", "c"]).execute(RunRequest(directory=tmp_path))
+    failed = RunDirectory(root=tmp_path).read_result("solve", "b")
+    assert summary.landed == 3
+    assert summary.failed == 1
+    assert CALLS == {"solve": 2}
+    assert failed is not None
+    assert failed.status is UnitStatus.FAILED
+    assert "File name too long" in failed.error
+
+
+def test_a_result_that_will_not_write_lands_as_its_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_result = RunDirectory.write_result
+
+    def refuse_success(run: RunDirectory, result: UnitResult) -> None:
+        if result.item == "b" and result.status is UnitStatus.OK:
+            raise OSError(28, "No space left on device")
+        write_result(run, result)
+
+    monkeypatch.setattr(RunDirectory, "write_result", refuse_success)
+    summary = sweep(["a", "b"]).execute(RunRequest(directory=tmp_path))
+    failed = RunDirectory(root=tmp_path).read_result("solve", "b")
+    assert summary.failed == 1
+    assert failed is not None
+    assert "No space left on device" in failed.error
+
+
+def test_a_unit_that_cannot_land_at_all_is_named_in_the_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_result = RunDirectory.write_result
+
+    def refuse_b(run: RunDirectory, result: UnitResult) -> None:
+        if result.item == "b":
+            raise OSError(5, "Input/output error")
+        write_result(run, result)
+
+    monkeypatch.setattr(RunDirectory, "write_result", refuse_b)
+    summary = sweep(["a", "b", "c"]).execute(RunRequest(directory=tmp_path))
+    assert summary.unlanded == ["solve/b"]
+    assert not summary.ok
+    assert "could not be landed: solve/b" in describe_summary(summary)
+    assert RunDirectory(root=tmp_path).read_summary() == summary
+
+
+def test_a_runner_crash_leaves_its_cause_in_the_directory(tmp_path: Path) -> None:
+    """The traceback is read where the run is read, not on a forgotten stderr."""
+    with pytest.raises(PipelineError, match="cannot run middle"):
+        chain().execute(RunRequest(directory=tmp_path, only=["middle"]))
+    run = RunDirectory(root=tmp_path)
+    summary = run.read_summary()
+    assert summary is not None
+    assert "cannot run middle" in summary.crashed
+    assert "PipelineError" in summary.crash_traceback
+    assert not summary.ok
+    assert describe_summary(summary).startswith("run crashed after 0 units")
+    assert "crashed: PipelineError(" in run.log_path.read_text(encoding="utf-8")
+
+
+def test_a_resumed_run_takes_down_the_last_ending_before_claiming(
+    tmp_path: Path,
+) -> None:
+    """Until this attempt writes its own summary, the directory is still running."""
+    sweep(["a"], body=refuses).execute(RunRequest(directory=tmp_path))
+    run = RunDirectory(root=tmp_path)
+    assert run.read_summary() is not None
+    seen: list[bool] = []
+
+    def notes_the_summary(context: StepContext) -> StepOutcome:
+        seen.append(context.run.read_summary() is None)
+        return StepOutcome()
+
+    summary = sweep(["a"], body=notes_the_summary).execute(
+        RunRequest(directory=tmp_path)
+    )
+    assert seen == [True]
+    assert summary.ok
+    assert "resuming after: run failed: 1 unit failed" in run.log_path.read_text(
+        encoding="utf-8"
+    )

@@ -376,12 +376,29 @@ def units(count: int) -> str:
 
 
 def describe_summary(summary: RunSummary) -> str:
-    """How a finished run reads to whoever comes back to it."""
+    """How a finished run reads to whoever comes back to it.
+
+    A crash names its exception, since that is the line a watcher is woken
+    with; the whole traceback is in the summary file it points at.
+    """
+    if summary.crashed:
+        return (
+            f"run crashed after {units(summary.landed)}: {summary.crashed} "
+            "(traceback in summary.json)"
+        )
     if summary.interrupted:
         return f"run interrupted after {units(summary.landed)}"
-    if summary.failed or summary.skipped:
+    if summary.failed or summary.skipped or summary.unlanded:
         skipped = ", ".join(step.id for step in summary.skipped)
-        tail = f"; skipped {skipped}" if skipped else ""
+        unlanded = ", ".join(summary.unlanded)
+        tail = "".join(
+            [
+                f"; {units(len(summary.unlanded))} could not be landed: {unlanded}"
+                if unlanded
+                else "",
+                f"; skipped {skipped}" if skipped else "",
+            ]
+        )
         return f"run failed: {units(summary.failed)} failed{tail}"
     return f"run complete: {units(summary.landed)} landed"
 

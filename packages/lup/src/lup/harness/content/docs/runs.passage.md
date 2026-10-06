@@ -22,11 +22,34 @@ Every write is an atomic rename, because a reader holds no lock: it sees a
 complete record or none. The claim is dropped in the same breath the result
 lands, so no instant exists in which a unit is neither running nor landed.
 
+`<item>` above is the item's own text whenever that is already one safe path
+component, which is every item a sweep ordinarily names. An item that is not —
+empty, `.` or `..`, holding a `/` or a NUL, or too long for the longest file
+the layout derives from it, a result's atomic `.<name>.json.tmp` under the
+255-byte filename limit — is filed under a readable prefix of its text and a
+digest of the whole of it. The item itself is never cut: the manifest, the
+claim and the result each carry it whole, and every reader names a unit by
+those rather than by its file. An item's text therefore never decides whether
+a run survives.
+
+Nothing about one unit ends the run either. A claim or a result that cannot be
+written is that unit's failure, with its traceback, exactly as a step that
+raised is; a unit whose result cannot be written at all is named in the
+summary's `unlanded`, so the tally never quietly loses it.
+
 The summary is what says a run is over. A unit count cannot: a pipeline whose
 second stage failed never lands its fourth, so waiting for the total is
 waiting forever. It is written from a `finally`, so it appears whether the run
-succeeded, failed, or was interrupted — and its absence beside a directory
-nothing is touching is exactly the evidence that the runner was killed.
+succeeded, failed, was interrupted or crashed — and its absence beside a
+directory nothing is touching is exactly the evidence that the runner was
+killed. A crash records its exception in `crashed` and its whole traceback in
+`crash_traceback`, with a line in `run.log` pointing there, because the
+launching shell's stderr is the one place nobody reads.
+
+A run started again in the same directory takes the earlier attempt's summary
+down before it claims anything, writing what it said to the log: until this
+attempt writes its own, the directory holds a run that is still going, and a
+watcher keyed on the summary must not report the last attempt's ending.
 
 ## A claim is a lease
 

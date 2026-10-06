@@ -30,6 +30,7 @@ import traceback
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -52,6 +53,7 @@ from lup.runs.models import (
     UnitResult,
     UnitStatus,
 )
+from lup.runs.progress import describe_summary
 from lup.runs.report import report_progress
 from lup.types import JsonValue
 
@@ -382,6 +384,11 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
     items: dict[str, list[str]] = {}
     skipped: list[SkippedStep] = []
     interrupted: bool = False
+    crashed: str = ""
+    crash_traceback: str = ""
+
+    unlanded: list[str] = []
+    """Units whose result could not be written, by slug, taken under the lock."""
 
     held: dict[str, UnitAttempt] = {}
     """The claims this invocation is holding, by slug.
@@ -446,13 +453,13 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
         A computed fan-out declares none, so what it landed is discovered by
         reading the directory rather than by asking the declaration — the only
         way a resumed run can reuse a fan-out an earlier invocation sized.
+        Each item is read from its result, not its filename, which is the item
+        only when the item was already a safe path component.
         """
         declared = step.declared_items()
         if declared:
             return declared
-        return sorted(
-            path.stem for path in (self.run.units_root / step.id).glob("*.json")
-        )
+        return sorted(result.item for result in self.run.read_step(step.id))
 
     def adopt(self, step: Step) -> None:
         """Take a step this invocation will not run at its landed word."""
@@ -520,6 +527,11 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
         Called on a worker thread, so it touches nothing shared: the claim and
         the result go to their own files, and the result comes back for the
         driving thread to fold in.
+
+        Nothing about one unit ends the run. A claim that cannot be written
+        is that unit's failure, with its traceback, exactly as a step that
+        raised is — the units beside it go on, and the run reports the one
+        that could not start rather than stopping on it.
         """
         context = StepContext(
             run=self.run,
@@ -528,10 +540,14 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
             dependencies=unit.dependencies,
         )
         claimed = UnitAttempt(step=unit.step.id, item=unit.item, pid=os.getpid())
-        self.take(claimed)
+        begun = utc_now()
         try:
+            self.take(claimed)
             result = attempt(unit, context)
-            self.run.write_result(result)
+        except Exception:
+            result = unit_failure(unit, begun, [traceback.format_exc()])
+        try:
+            result = self.land(result)
         finally:
             # Dropped whatever happened, because the lease says who is working
             # this unit and this invocation stops being the answer either way.
@@ -541,6 +557,40 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
         self.run.append_heartbeat(render_landing(result))
         return result
 
+    def land(self, result: UnitResult) -> UnitResult:
+        """Write one unit's result, and say what actually landed.
+
+        A result that will not write — a payload the disk refuses, a record
+        that will not serialize — lands as the unit's failure carrying why,
+        since a failure with no payload is what most often still writes. One
+        that cannot land at all is named in the summary's ``unlanded``, so
+        the tally the summary gives cannot quietly lose it.
+        """
+        try:
+            self.run.write_result(result)
+        except Exception:
+            failure = result.model_copy(
+                update={
+                    "status": UnitStatus.FAILED,
+                    "outcome": "",
+                    "detail": None,
+                    "error": "\n".join(
+                        part for part in (result.error, traceback.format_exc()) if part
+                    ),
+                }
+            )
+        else:
+            return result
+        try:
+            self.run.write_result(failure)
+        except Exception:
+            with self.holding:
+                self.unlanded.append(failure.slug)
+            self.run.append_heartbeat(
+                f"could not land {failure.slug}: {traceback.format_exc()}"
+            )
+        return failure
+
     def summarize(self, name: str) -> RunSummary:
         """How this run ended, counted off the directory rather than off memory.
 
@@ -549,12 +599,17 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
         wants what is in it, not what this process happened to do.
         """
         landed = self.run.read().results
+        with self.holding:
+            unlanded = list(self.unlanded)
         return RunSummary(
             name=name,
             landed=len(landed),
             failed=sum(1 for result in landed if result.status is UnitStatus.FAILED),
             skipped=self.skipped,
             interrupted=self.interrupted,
+            crashed=self.crashed,
+            crash_traceback=self.crash_traceback,
+            unlanded=unlanded,
         )
 
 
@@ -574,15 +629,7 @@ def attempt(unit: PlannedUnit, context: StepContext) -> UnitResult:
             errors.append(traceback.format_exc())
             if remaining:
                 continue
-            return UnitResult(
-                step=unit.step.id,
-                item=unit.item,
-                status=UnitStatus.FAILED,
-                fingerprint=unit.fingerprint,
-                started_at=begun,
-                finished_at=utc_now(),
-                error="\n".join(errors),
-            )
+            return unit_failure(unit, begun, errors)
         return UnitResult(
             step=unit.step.id,
             item=unit.item,
@@ -595,6 +642,19 @@ def attempt(unit: PlannedUnit, context: StepContext) -> UnitResult:
             error="\n".join(errors),
         )
     raise PipelineError(f"{unit.step.id} ran zero times, which cannot happen")
+
+
+def unit_failure(unit: PlannedUnit, begun: datetime, errors: list[str]) -> UnitResult:
+    """One unit's failed result, carrying every traceback that led to it."""
+    return UnitResult(
+        step=unit.step.id,
+        item=unit.item,
+        status=UnitStatus.FAILED,
+        fingerprint=unit.fingerprint,
+        started_at=begun,
+        finished_at=utc_now(),
+        error="\n".join(errors),
+    )
 
 
 def heartbeat(state: RunState, stop: threading.Event, interval: float) -> None:
@@ -730,31 +790,47 @@ class Pipeline(BaseModel, frozen=True):
     def execute(self, request: RunRequest) -> RunSummary:
         """Run the selected steps and return how it ended.
 
-        The summary is written whatever happens, an interrupt included: a
-        follower has no other way to tell a run still working from one whose
-        process is gone, and leaving that ambiguous is what sends people
-        looking for a process table a sandbox will not show them.
+        The summary is written whatever happens, an interrupt or a crash
+        included: a follower has no other way to tell a run still working from
+        one whose process is gone, and leaving that ambiguous is what sends
+        people looking for a process table a sandbox will not show them. A
+        crash writes its cause there and to the log before it propagates,
+        because the launching shell's stderr is the one place nobody reads.
+
+        An earlier attempt's summary is taken down before anything is claimed,
+        and what it said goes to the log: until this attempt writes its own,
+        the directory holds a run that is still going.
         """
         run = RunDirectory(root=request.directory)
         run.root.mkdir(parents=True, exist_ok=True)
+        decided = self.decide(request)
         if request.fresh:
             self.wipe(run)
+        previous = run.retire_summary()
+        if previous is not None:
+            run.append_heartbeat(f"resuming after: {describe_summary(previous)}")
         for slug in run.clear_claims():
             run.append_heartbeat(f"reclaimed {slug}: its lease had lapsed")
         state = RunState(run=run)
-        decided = self.decide(request)
-        manifest = self.declare(run, decided)
-        run.append_heartbeat(f"started {self.name}: {len(self.steps)} steps")
         stop = threading.Event()
         beat = threading.Thread(
             target=heartbeat, args=(state, stop, self.heartbeat_seconds), daemon=True
         )
         beat.start()
         try:
+            manifest = self.declare(run, decided)
+            run.append_heartbeat(f"started {self.name}: {len(self.steps)} steps")
             self.drive(state, manifest, decided, request)
         except KeyboardInterrupt:
             state.interrupted = True
             run.append_heartbeat("interrupted")
+        except Exception as error:
+            state.crashed = repr(error)
+            state.crash_traceback = traceback.format_exc()
+            run.append_heartbeat(
+                f"crashed: {state.crashed}; the traceback is in {run.summary_path.name}"
+            )
+            raise
         finally:
             stop.set()
             beat.join(timeout=self.heartbeat_seconds)
