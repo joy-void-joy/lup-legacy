@@ -13,8 +13,9 @@ run is monitorable by construction: a writer that skipped the manifest would
 fail to typecheck long before it produced an unfollowable run.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -38,6 +39,40 @@ class UnitStatus(StrEnum):
     FAILED = "failed"
 
 
+def gibibytes(amount: float) -> str:
+    """A memory size as a reader compares it, in GiB to one decimal place."""
+    return f"{amount / 2**30:.1f} GiB"
+
+
+class LimitBreach(BaseModel, frozen=True):
+    """A declared limit a unit ran past, and by how much, when it was stopped.
+
+    Kept as fields rather than only as a sentence, because the two readers of
+    a killed unit want different things from it: a person wants the line, and
+    whoever raises the limit and resumes wants the measured value to raise it
+    past.
+    """
+
+    limit: Literal["memory", "timeout"]
+    measured: float
+    """Resident bytes over the unit's whole session, or seconds elapsed."""
+
+    allowed: float
+    after_seconds: float
+    """How long the unit had run when the limit was crossed."""
+
+    def render(self) -> str:
+        """The breach as the one line a failed unit is read by."""
+        after = str(timedelta(seconds=int(self.after_seconds)))
+        if self.limit == "memory":
+            return (
+                f"exceeded memory limit: {gibibytes(self.measured)} > "
+                f"{gibibytes(self.allowed)} after {after}"
+            )
+        allowed = str(timedelta(seconds=int(self.allowed)))
+        return f"exceeded time limit: {after} > {allowed}"
+
+
 class UnitResult(BaseModel, frozen=True):
     """One unit that landed, written atomically once and never edited.
 
@@ -57,6 +92,13 @@ class UnitResult(BaseModel, frozen=True):
     finished_at: datetime
     detail: JsonValue = None
     error: str = ""
+    breach: LimitBreach | None = None
+    """The declared limit the runner stopped this unit for, when it did.
+
+    A unit killed for a limit is not a unit that raised: its traceback would
+    be the watcher's, not the work's, so ``error`` carries the breach's own
+    line and this carries the numbers behind it.
+    """
 
     @property
     def elapsed_seconds(self) -> float:
