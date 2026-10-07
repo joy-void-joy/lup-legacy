@@ -433,6 +433,49 @@ class StepPlan(BaseModel, frozen=True):
     forced: bool
 
 
+class Fault(BaseModel, frozen=True):
+    """One write the runner could not make, in the words of what refused it."""
+
+    what: str
+    error: str
+
+    @classmethod
+    def of(cls, what: str, error: Exception) -> Self:
+        """The fault one exception makes of one write."""
+        return cls(what=what, error=f"{type(error).__name__}: {error}")
+
+
+class Outage(BaseModel, frozen=True):
+    """The writes the runner has been failing to make, and since when.
+
+    Opened by the first write refused, and closed by the first heartbeat line
+    the log takes in a tick whose renewals all went through — the line that
+    reports it, because the log cannot carry the news while it refuses
+    lines, and carries it the moment it takes one again.
+    """
+
+    since: datetime = Field(default_factory=utc_now)
+    failed: dict[str, Fault] = {}
+    """The latest refusal of each write that failed, by what the write was."""
+
+    def including(self, faults: list[Fault]) -> Self:
+        """This outage with more refused writes in it."""
+        return self.model_copy(
+            update={"failed": {**self.failed, **{f.what: f for f in faults}}}
+        )
+
+    def report(self, ongoing: bool) -> str:
+        """What failed and since when, while it lasts or once it is over."""
+        since = self.since.isoformat(timespec="seconds")
+        failed = ", ".join(f"{f.what} ({f.error})" for f in self.failed.values())
+        if ongoing:
+            return f"failing since {since}: could not {failed}"
+        until = utc_now().isoformat(timespec="seconds")
+        return (
+            f"writing again after failing from {since} to {until}: could not {failed}"
+        )
+
+
 class RunState(BaseModel, arbitrary_types_allowed=True):
     """What one execution accumulates while it works.
 
@@ -469,6 +512,14 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
     sessions: SessionRegistry = Field(default_factory=SessionRegistry, exclude=True)
     """The limited units' sessions, which an interrupt or a crash must stop."""
 
+    outage: Outage | None = None
+    """What has been refused since a heartbeat last went through whole.
+
+    Shared across threads as the claims are, and under the same lock: a
+    worker whose landing line is refused adds to it, and the heartbeat
+    reports it and closes it.
+    """
+
     def take(self, attempt: UnitAttempt) -> None:
         """Claim one unit and hold its lease until the unit lands."""
         with self.holding:
@@ -480,17 +531,73 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
         with self.holding:
             self.held.pop(attempt.slug, None)
 
-    def renew(self) -> None:
+    def renew(self) -> list[Fault]:
         """Say every unit this invocation holds is still being worked.
 
         Called from the heartbeat, which already ticks well inside the lease
         and already means "this runner is alive" — per unit rather than for the
         run as a whole, because that is the grain a claim is read at.
+
+        Each claim is renewed on its own, so one the disk refuses costs that
+        claim's renewal and not those of the claims after it. What was refused
+        comes back for the heartbeat to report.
         """
         with self.holding:
             attempts = list(self.held.values())
-        for attempt in attempts:
-            self.run.renew(attempt.step, attempt.item)
+
+        def refused(attempt: UnitAttempt) -> Fault | None:
+            try:
+                self.run.renew(attempt.step, attempt.item)
+            except Exception as error:
+                return Fault.of(f"renew {attempt.slug}", error)
+            return None
+
+        return [
+            fault
+            for fault in (refused(attempt) for attempt in attempts)
+            if fault is not None
+        ]
+
+    def falter(self, faults: list[Fault]) -> Outage:
+        """Take refused writes into the outage, opening one if none stands."""
+        with self.holding:
+            self.outage = (self.outage or Outage()).including(faults)
+            return self.outage
+
+    def standing(self) -> Outage | None:
+        """The outage not yet reported as over, if one is."""
+        with self.holding:
+            return self.outage
+
+    def settle(self, reported: Outage) -> None:
+        """Close the outage a line has just reported, unless it has grown since."""
+        with self.holding:
+            if self.outage == reported:
+                self.outage = None
+
+    def log(self, line: str) -> bool:
+        """Add a line to the run's log, and say whether the log took it.
+
+        A line describes the run and is no part of it, so a log that refuses
+        one costs that line and nothing else — never a unit, never the run. A
+        refused line goes to stderr whole, through logging, which does not
+        raise when stderr is itself on the disk that refused it, and the
+        refusal joins the outage the next line the log takes reports.
+        """
+        try:
+            self.run.append_heartbeat(line)
+        except Exception as error:
+            outage = self.falter(
+                [Fault.of(f"write to {self.run.log_path.name}", error)]
+            )
+            logger.warning(
+                "%s refused a line, %s; the line: %s",
+                self.run.log_path,
+                outage.report(ongoing=True),
+                line,
+            )
+            return False
+        return True
 
     def record(self, result: UnitResult) -> None:
         """Take one landed unit into the picture the remaining steps read."""
@@ -600,7 +707,8 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
         Nothing about one unit ends the run. A claim that cannot be written
         is that unit's failure, with its traceback, exactly as a step that
         raised is — the units beside it go on, and the run reports the one
-        that could not start rather than stopping on it.
+        that could not start rather than stopping on it. A landing line the
+        log refuses costs that line, which goes to stderr instead.
         """
         context = StepContext(
             run=self.run,
@@ -624,7 +732,7 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
             # `write_result` releases the claim on disk; this releases the hold
             # that would otherwise have the heartbeat put it back.
             self.drop(claimed)
-        self.run.append_heartbeat(render_landing(result))
+        self.log(render_landing(result))
         return result
 
     def land(self, result: UnitResult) -> UnitResult:
@@ -656,9 +764,7 @@ class RunState(BaseModel, arbitrary_types_allowed=True):
         except Exception:
             with self.holding:
                 self.unlanded.append(failure.slug)
-            self.run.append_heartbeat(
-                f"could not land {failure.slug}: {traceback.format_exc()}"
-            )
+            self.log(f"could not land {failure.slug}: {traceback.format_exc()}")
         return failure
 
     def summarize(self, name: str) -> RunSummary:
@@ -742,15 +848,49 @@ def heartbeat(state: RunState, stop: threading.Event, interval: float) -> None:
 
     The renewal is the same statement made per unit, and it belongs on this
     thread because the interval is already chosen to sit well inside the claim
-    lease: a runner that has stopped writing lines has also stopped renewing,
-    so the two readings can never disagree about whether it is alive.
+    lease.
+
+    A tick that cannot write ends nothing. A disk filling under a live runner
+    silences it without killing it, and a heartbeat that stopped at the first
+    refusal would leave every claim it held to lapse under units still
+    working — read as abandoned, and run twice by whoever resumed on that
+    reading. Every tick tries again, so the claims are renewed on the first
+    tick the disk takes writes, and only a runner that is gone stops renewing
+    for good.
     """
     while not stop.wait(interval):
-        state.renew()
-        state.run.append_heartbeat(
-            f"working: {len(state.run.read().results)} landed, "
-            f"{len(state.run.running())} running"
+        try:
+            tick(state)
+        except Exception:
+            # Every write in a tick is already its own; this catches what a
+            # tick reads, so a directory that will not list costs one line.
+            logger.exception("heartbeat tick failed; the next one runs as usual")
+
+
+def tick(state: RunState) -> None:
+    """One heartbeat: renew every claim this run holds, then write the line.
+
+    Each write is tried on its own, so one the disk refuses costs only itself.
+    What was refused goes to stderr on every tick it goes on being refused,
+    and every line the log takes while it stands says what failed and since
+    when. The first such line in a tick whose renewals all went through says
+    it is over, and closes it.
+    """
+    faults = state.renew()
+    if faults:
+        logger.warning(
+            "heartbeat %s; the runner goes on and tries again next tick",
+            state.falter(faults).report(ongoing=True),
         )
+    standing = state.standing()
+    line = (
+        f"working: {len(state.run.read().results)} landed, "
+        f"{len(state.run.running())} running"
+    )
+    if standing is not None:
+        line = f"{line}; {standing.report(ongoing=bool(faults))}"
+    if state.log(line) and standing is not None and not faults:
+        state.settle(standing)
 
 
 class Pipeline(BaseModel, frozen=True):
@@ -876,18 +1016,22 @@ class Pipeline(BaseModel, frozen=True):
         An earlier attempt's summary is taken down before anything is claimed,
         and what it said goes to the log: until this attempt writes its own,
         the directory holds a run that is still going.
+
+        Every line is written through :meth:`RunState.log`, so a log the disk
+        refuses costs lines and never the run; an outage still standing when
+        the run ends is reported on its last line.
         """
         run = RunDirectory(root=request.directory)
         run.root.mkdir(parents=True, exist_ok=True)
         decided = self.decide(request)
         if request.fresh:
             self.wipe(run)
+        state = RunState(run=run)
         previous = run.retire_summary()
         if previous is not None:
-            run.append_heartbeat(f"resuming after: {describe_summary(previous)}")
+            state.log(f"resuming after: {describe_summary(previous)}")
         for slug in run.clear_claims():
-            run.append_heartbeat(f"reclaimed {slug}: its lease had lapsed")
-        state = RunState(run=run)
+            state.log(f"reclaimed {slug}: its lease had lapsed")
         stop = threading.Event()
         beat = threading.Thread(
             target=heartbeat, args=(state, stop, self.heartbeat_seconds), daemon=True
@@ -895,15 +1039,15 @@ class Pipeline(BaseModel, frozen=True):
         beat.start()
         try:
             manifest = self.declare(run, decided)
-            run.append_heartbeat(f"started {self.name}: {len(self.steps)} steps")
+            state.log(f"started {self.name}: {len(self.steps)} steps")
             self.drive(state, manifest, decided, request)
         except KeyboardInterrupt:
             state.interrupted = True
-            run.append_heartbeat("interrupted")
+            state.log("interrupted")
         except Exception as error:
             state.crashed = repr(error)
             state.crash_traceback = traceback.format_exc()
-            run.append_heartbeat(
+            state.log(
                 f"crashed: {state.crashed}; the traceback is in {run.summary_path.name}"
             )
             raise
@@ -912,7 +1056,11 @@ class Pipeline(BaseModel, frozen=True):
             beat.join(timeout=self.heartbeat_seconds)
             summary = state.summarize(self.name)
             run.write_summary(summary)
-            run.append_heartbeat(f"finished: {summary.landed} landed")
+            ending = f"finished: {summary.landed} landed"
+            standing = state.standing()
+            if standing is not None:
+                ending = f"{ending}; {standing.report(ongoing=False)}"
+            state.log(ending)
         return summary
 
     def wipe(self, run: RunDirectory) -> None:

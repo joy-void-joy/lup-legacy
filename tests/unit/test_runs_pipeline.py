@@ -14,6 +14,8 @@ result per landed unit, and a summary. A follower that found none of those
 would be watching a run it could never report on.
 """
 
+import logging
+import threading
 from datetime import timedelta
 from pathlib import Path
 
@@ -30,7 +32,13 @@ from lup.runs.directory import (
     filed_name,
     progress_in,
 )
-from lup.runs.models import UnitAttempt, UnitProgress, UnitResult, UnitStatus
+from lup.runs.models import (
+    SINGLE_ITEM,
+    UnitAttempt,
+    UnitProgress,
+    UnitResult,
+    UnitStatus,
+)
 from lup.runs.progress import describe_summary, read_progress
 from lup.runs.pipeline import (
     CallableStep,
@@ -40,10 +48,12 @@ from lup.runs.pipeline import (
     Pipeline,
     PipelineError,
     RunRequest,
+    RunState,
     ShellStep,
     StepBody,
     StepContext,
     StepOutcome,
+    heartbeat,
 )
 
 CALLS: dict[str, int] = {}
@@ -601,3 +611,150 @@ def test_a_resumed_run_takes_down_the_last_ending_before_claiming(
     assert "resuming after: run failed: 1 unit failed" in run.log_path.read_text(
         encoding="utf-8"
     )
+
+
+def no_space() -> OSError:
+    """What every write meets on a disk filled machine-wide."""
+    return OSError(28, "No space left on device")
+
+
+def holding(run: RunDirectory, items: list[str]) -> RunState:
+    """A runner's state holding a claim per item, none renewed within the lease.
+
+    The claims a full disk leaves: every unit still being worked, and nothing
+    able to say so for longer than the lease allows.
+    """
+    state = RunState(run=run)
+    stamp = utc_now() - timedelta(seconds=CLAIM_LEASE_SECONDS * 2)
+    for item in items:
+        state.take(
+            UnitAttempt(
+                step="solve", item=item, pid=1, started_at=stamp, renewed_at=stamp
+            )
+        )
+    return state
+
+
+def test_a_heartbeat_the_disk_refuses_keeps_beating_and_renews_once_it_can(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A full disk silences a live runner, and must not stop its heartbeat.
+
+    Three ticks refuse every renewal and every line. The ticks after them renew
+    every claim, so the units read as held rather than abandoned — which is
+    what keeps anybody from resuming the directory and running them twice —
+    and the first line the log takes says what failed and since when.
+    """
+    run = RunDirectory(root=tmp_path)
+    state = holding(run, ["a", "b"])
+    stop = threading.Event()
+    lines: list[str] = []
+    renew = RunDirectory.renew
+    append = RunDirectory.append_heartbeat
+
+    def renewing(directory: RunDirectory, step: str, item: str = SINGLE_ITEM) -> None:
+        if len(lines) < 3:
+            raise no_space()
+        renew(directory, step, item)
+
+    def appending(directory: RunDirectory, line: str) -> None:
+        lines.append(line)
+        if len(lines) == 5:
+            stop.set()
+        if len(lines) <= 3:
+            raise no_space()
+        append(directory, line)
+
+    monkeypatch.setattr(RunDirectory, "renew", renewing)
+    monkeypatch.setattr(RunDirectory, "append_heartbeat", appending)
+    with caplog.at_level(logging.WARNING, logger="lup.runs.pipeline"):
+        heartbeat(state, stop, interval=0.0)
+
+    reading = read_progress(run)
+    log = run.log_path.read_text(encoding="utf-8")
+    assert len(lines) == 5
+    assert reading.abandoned == []
+    assert sorted(unit.attempt.item for unit in reading.running) == ["a", "b"]
+    assert "no runner holds this" not in reading.describe_activity()
+    assert "writing again after failing from" in log
+    assert "renew solve/a (OSError: [Errno 28] No space left on device)" in log
+    assert "renew solve/b (OSError: [Errno 28] No space left on device)" in log
+    assert "write to run.log (OSError: [Errno 28] No space left on device)" in log
+    assert log.endswith("working: 0 landed, 2 running\n")
+    assert caplog.text.count("refused a line, failing since") == 3
+
+
+def test_a_claim_the_disk_refuses_does_not_keep_the_others_from_renewing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refused claim is renewed first, so stopping at it would renew none."""
+    run = RunDirectory(root=tmp_path)
+    state = holding(run, ["a", "b", "c"])
+    renew = RunDirectory.renew
+
+    def refuse_a(directory: RunDirectory, step: str, item: str = SINGLE_ITEM) -> None:
+        if item == "a":
+            raise no_space()
+        renew(directory, step, item)
+
+    monkeypatch.setattr(RunDirectory, "renew", refuse_a)
+    faults = state.renew()
+
+    assert [fault.what for fault in faults] == ["renew solve/a"]
+    assert {unit.attempt.item: unit.stale for unit in run.running()} == {
+        "a": True,
+        "b": False,
+        "c": False,
+    }
+
+
+def test_a_log_that_refuses_every_line_costs_lines_and_never_the_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Every line describes the run, so none of them can be what ends it.
+
+    The resume line, the landing lines, the start and the end all go to a log
+    that takes none of them. The units land regardless, and each refused line
+    reaches stderr whole rather than being lost.
+    """
+    sweep(["a"], body=refuses).execute(RunRequest(directory=tmp_path))
+    CALLS.clear()
+
+    def refuse(_directory: RunDirectory, _line: str) -> None:
+        raise no_space()
+
+    monkeypatch.setattr(RunDirectory, "append_heartbeat", refuse)
+    with caplog.at_level(logging.WARNING, logger="lup.runs.pipeline"):
+        summary = sweep(["a", "b", "c"]).execute(RunRequest(directory=tmp_path))
+
+    assert summary.ok
+    assert summary.landed == 3
+    assert CALLS == {"solve": 3}
+    assert RunDirectory(root=tmp_path).read_summary() == summary
+    assert "the line: resuming after: run failed" in caplog.text
+    assert "the line: ok solve/b" in caplog.text
+
+
+def test_a_refused_landing_line_is_reported_once_the_log_takes_lines_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The log says what it missed, so a reader of it alone learns lines are gone."""
+    append = RunDirectory.append_heartbeat
+
+    def refuse_landings(directory: RunDirectory, line: str) -> None:
+        if line.startswith(f"{UnitStatus.OK.value} "):
+            raise no_space()
+        append(directory, line)
+
+    monkeypatch.setattr(RunDirectory, "append_heartbeat", refuse_landings)
+    summary = sweep(["a", "b"]).execute(RunRequest(directory=tmp_path))
+    log = RunDirectory(root=tmp_path).log_path.read_text(encoding="utf-8")
+
+    assert summary.ok
+    assert "ok solve/" not in log
+    assert "finished: 2 landed; writing again after failing from" in log
+    assert "could not write to run.log (OSError: [Errno 28]" in log
