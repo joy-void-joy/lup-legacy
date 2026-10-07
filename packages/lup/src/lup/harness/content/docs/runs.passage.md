@@ -38,7 +38,10 @@ raised is; a unit whose result cannot be written at all is named in the
 summary's `unlanded`, so the tally never quietly loses it. Nor does a line in
 `run.log`: a landing, the start, a resume and the end each describe the run
 and are no part of it, so a line the log refuses is logged whole as a warning
-instead and the run goes on.
+instead and the run goes on. So does a run whose rewrite of `manifest.json`,
+made as computed fan-outs resolve, is refused: the runtime plans from the
+declaration and the landed results, so the refusal costs a follower the
+widened total until the next batch's rewrite goes through.
 
 The summary is what says a run is over. A unit count cannot: a pipeline whose
 second stage failed never lands its fourth, so waiting for the total is
