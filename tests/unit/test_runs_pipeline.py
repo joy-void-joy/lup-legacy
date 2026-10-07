@@ -34,6 +34,7 @@ from lup.runs.directory import (
 )
 from lup.runs.models import (
     SINGLE_ITEM,
+    RunManifest,
     UnitAttempt,
     UnitProgress,
     UnitResult,
@@ -758,3 +759,26 @@ def test_a_refused_landing_line_is_reported_once_the_log_takes_lines_again(
     assert "ok solve/" not in log
     assert "finished: 2 landed; writing again after failing from" in log
     assert "could not write to run.log (OSError: [Errno 28]" in log
+
+
+def test_a_manifest_rewrite_the_disk_refuses_costs_the_total_and_never_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The runtime never plans from the manifest it republishes, so losing one ends nothing."""
+    write_manifest = RunDirectory.write_manifest
+    written: list[str] = []
+
+    def refuse_rewrites(directory: RunDirectory, manifest: RunManifest) -> None:
+        written.append(manifest.name)
+        if len(written) > 1:
+            raise no_space()
+        write_manifest(directory, manifest)
+
+    monkeypatch.setattr(RunDirectory, "write_manifest", refuse_rewrites)
+    summary = chain().execute(RunRequest(directory=tmp_path))
+    log = RunDirectory(root=tmp_path).log_path.read_text(encoding="utf-8")
+
+    assert summary.ok
+    assert summary.landed == 3
+    assert len(written) == 4
+    assert "could not rewrite manifest.json (OSError: [Errno 28]" in log

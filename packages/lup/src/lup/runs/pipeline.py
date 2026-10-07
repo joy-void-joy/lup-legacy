@@ -985,6 +985,11 @@ class Pipeline(BaseModel, frozen=True):
         the total a follower sees grows as the run discovers it. Rewriting is
         how the follower learns; an unrewritten manifest would leave a
         thousand-cell sweep reading as one unit forever.
+
+        A rewrite the disk refuses costs the follower its widened total until
+        the next batch's goes through, and never the run: the runtime plans
+        from the declaration and the landed results, never from this file.
+        The refusal joins the outage the heartbeat reports.
         """
         updated = RunManifest(
             name=manifest.name,
@@ -1000,7 +1005,14 @@ class Pipeline(BaseModel, frozen=True):
                 for record in manifest.steps
             ],
         )
-        state.run.write_manifest(updated)
+        try:
+            state.run.write_manifest(updated)
+        except Exception as error:
+            refused = Fault.of(f"rewrite {state.run.manifest_path.name}", error)
+            logger.warning(
+                "%s; the run goes on, and the next batch rewrites it",
+                state.falter([refused]).report(ongoing=True),
+            )
         return updated
 
     def execute(self, request: RunRequest) -> RunSummary:
