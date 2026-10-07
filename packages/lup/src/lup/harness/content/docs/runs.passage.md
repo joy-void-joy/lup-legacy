@@ -35,7 +35,10 @@ a run survives.
 Nothing about one unit ends the run either. A claim or a result that cannot be
 written is that unit's failure, with its traceback, exactly as a step that
 raised is; a unit whose result cannot be written at all is named in the
-summary's `unlanded`, so the tally never quietly loses it.
+summary's `unlanded`, so the tally never quietly loses it. Nor does a line in
+`run.log`: a landing, the start, a resume and the end each describe the run
+and are no part of it, so a line the log refuses is logged whole as a warning
+instead and the run goes on.
 
 The summary is what says a run is over. A unit count cannot: a pipeline whose
 second stage failed never lands its fourth, so waiting for the total is
@@ -59,16 +62,37 @@ indistinguishable from a unit that is simply taking a long time, and age
 cannot separate them: it grows for a healthy unit exactly as fast.
 
 So a claim carries `renewed_at` as well as `started_at`, and the runner
-re-stamps it from the same heartbeat that writes the log line. The interval
-sits well inside the lease, so a runner that stopped writing lines has also
-stopped renewing and the two readings cannot disagree. A claim nobody has
-renewed within the lease is one nobody holds:
+re-stamps it from the same heartbeat that writes the log line, at an interval
+well inside the lease. A claim nobody has renewed within the lease is one
+nobody holds:
 
 - `run monitor` reports it as `abandoned=` rather than counting it as running,
   and says so outright when every claim has lapsed and no summary was written.
 - A resumed run frees the lapsed claims and re-runs those units, naming each in
   the log. Claims whose lease is live are left alone, so two runners sharing a
   directory do not free each other's work.
+
+A runner that cannot write is not a runner that is gone. Each heartbeat renews
+every claim on its own and then writes its line, and a write the disk refuses
+— a full disk, a quota — costs that write alone: it is logged as a warning,
+which reaches stderr unless the application routes logging elsewhere, on
+every tick it goes on being refused, and the next tick tries it again. The
+first line the log takes after every renewal in its tick went through says
+what failed and since when:
+
+```
+working: 412 landed, 9 running; writing again after failing from 2026-10-07T01:40:12+00:00 to 2026-10-07T02:09:17+00:00: could not renew solve/family-3 (OSError: [Errno 28] No space left on device), write to run.log (OSError: [Errno 28] No space left on device)
+```
+
+A run that ends while writes are still being refused says so on its
+`finished` line. Only a runner that is gone stops renewing for good.
+
+While the disk refuses writes, though, nothing can renew a claim, so a live
+runner's claims lapse with everything else and `run monitor` reads them as
+abandoned. That reading lasts exactly as long as the outage, and resuming on
+it runs those units twice: before resuming a directory whose claims all lapsed
+together, look at whether its disk is full and at the runner's stderr. The
+next tick that can write renews them.
 
 The process table is not consulted for liveness, here or anywhere in this
 package. Under a sandbox `/proc` is PID-isolated, so a healthy run is
